@@ -96,7 +96,9 @@ export class DeckController {
       let ok = false;
       switch (key.label) {
         case "Plan":
-          ok = await this.delivery.sendKey(target, "shift+tab");
+          // Interim: open the mode picker (Ctrl+Shift+M). Becomes a one-press
+          // plan⇄auto toggle once the menu's number mapping is known.
+          ok = await this.delivery.sendKey(target, "ctrl+shift+m");
           break;
         case "/compact":
         case "/review":
@@ -124,8 +126,8 @@ export class DeckController {
       case 1:
         if (target) await this.delivery.sendKey(target, "enter");
         return;
-      case 2:
-        if (target) await this.delivery.sendKey(target, "shift+tab");
+      case 2: // Mode — interim: open the mode picker (Ctrl+Shift+M)
+        if (target) await this.delivery.sendKey(target, "ctrl+shift+m");
         return;
       case 3: {
         const canned = this.cfg.cannedCommands["key13"];
