@@ -28,14 +28,6 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
   isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target,
   mod
 ));
-var __decorateClass = (decorators, target, key, kind) => {
-  var result = kind > 1 ? void 0 : kind ? __getOwnPropDesc(target, key) : target;
-  for (var i = decorators.length - 1, decorator; i >= 0; i--)
-    if (decorator = decorators[i])
-      result = (kind ? decorator(target, key, result) : decorator(result)) || result;
-  if (kind && result) __defProp(target, key, result);
-  return result;
-};
 
 // ../../node_modules/ws/lib/constants.js
 var require_constants = __commonJS({
@@ -17298,31 +17290,29 @@ function connect() {
     ws?.close();
   });
 }
-function slotOf(coordinates) {
-  if (!coordinates) return null;
-  return coordinates.row * COLS + coordinates.column;
+function slotOf(payload) {
+  const coords = payload.coordinates;
+  if (!coords) return null;
+  return coords.row * COLS + coords.column;
 }
-var DeckKey = class extends SingletonAction {
+var DeckKey = @action({ UUID: "com.shawnwelsh.claude-deck.key" }) class extends SingletonAction {
   onWillAppear(ev) {
-    const slot = slotOf(ev.payload.coordinates);
+    const slot = slotOf(ev.payload);
     if (slot === null) return;
     keys.set(slot, ev.action);
     const image = images.get(slot);
     if (image) void ev.action.setImage(image);
   }
   onWillDisappear(ev) {
-    const slot = slotOf(ev.payload.coordinates);
+    const slot = slotOf(ev.payload);
     if (slot !== null) keys.delete(slot);
   }
   onKeyDown(ev) {
-    const slot = slotOf(ev.payload.coordinates);
+    const slot = slotOf(ev.payload);
     if (slot === null || ws?.readyState !== wrapper_default.OPEN) return;
     ws.send(JSON.stringify({ type: "press", slot, at: Date.now() }));
   }
 };
-DeckKey = __decorateClass([
-  action({ UUID: "com.shawnwelsh.claude-deck.key" })
-], DeckKey);
 plugin_default.actions.registerAction(new DeckKey());
 connect();
 void plugin_default.connect();

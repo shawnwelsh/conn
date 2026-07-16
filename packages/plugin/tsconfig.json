@@ -2,8 +2,7 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "noEmit": true,
-    "types": ["node"],
-    "experimentalDecorators": true
+    "types": ["node"]
   },
   "include": ["src/**/*.ts"]
 }

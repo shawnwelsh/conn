@@ -62,15 +62,17 @@ function connect(): void {
   });
 }
 
-function slotOf(coordinates?: { column: number; row: number }): number | null {
-  if (!coordinates) return null;
-  return coordinates.row * COLS + coordinates.column;
+/** Multi-action instances have no coordinates — they can't be deck slots. */
+function slotOf(payload: unknown): number | null {
+  const coords = (payload as { coordinates?: { column: number; row: number } }).coordinates;
+  if (!coords) return null;
+  return coords.row * COLS + coords.column;
 }
 
 @action({ UUID: "com.shawnwelsh.claude-deck.key" })
 class DeckKey extends SingletonAction {
   override onWillAppear(ev: WillAppearEvent): void {
-    const slot = slotOf(ev.payload.coordinates);
+    const slot = slotOf(ev.payload);
     if (slot === null) return;
     keys.set(slot, ev.action);
     const image = images.get(slot);
@@ -78,12 +80,12 @@ class DeckKey extends SingletonAction {
   }
 
   override onWillDisappear(ev: WillDisappearEvent): void {
-    const slot = slotOf(ev.payload.coordinates);
+    const slot = slotOf(ev.payload);
     if (slot !== null) keys.delete(slot);
   }
 
   override onKeyDown(ev: KeyDownEvent): void {
-    const slot = slotOf(ev.payload.coordinates);
+    const slot = slotOf(ev.payload);
     if (slot === null || ws?.readyState !== WebSocket.OPEN) return;
     ws.send(JSON.stringify({ type: "press", slot, at: Date.now() }));
   }
