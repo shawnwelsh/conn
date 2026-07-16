@@ -80,6 +80,11 @@ export class AhkAdapter implements DeliveryAdapter {
     return this.withWindow(session, async (query) => this.command(`key|${query}|${chordToAhk(chord)}`));
   }
 
+  async sendSequence(session: SessionRef, chords: string[]): Promise<boolean> {
+    const ahk = chords.map(chordToAhk).join("|");
+    return this.withWindow(session, async (query) => this.command(`seq|${query}|${ahk}`));
+  }
+
   async dispose(): Promise<void> {
     this.proc?.kill();
     this.proc = null;

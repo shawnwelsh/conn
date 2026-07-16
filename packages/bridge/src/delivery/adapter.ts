@@ -21,6 +21,9 @@ export interface DeliveryAdapter {
   sendText(session: SessionRef, text: string): Promise<boolean>;
   /** Press a key chord, e.g. "enter", "escape", "shift+tab", "2". */
   sendKey(session: SessionRef, chord: string): Promise<boolean>;
+  /** Press a series of chords with a short gap between each — for
+   * menu-then-number pickers, e.g. ["ctrl+shift+m", "4"]. */
+  sendSequence(session: SessionRef, chords: string[]): Promise<boolean>;
   dispose(): Promise<void>;
 }
 
@@ -38,6 +41,10 @@ export class NoopAdapter implements DeliveryAdapter {
   }
   async sendKey(s: SessionRef, chord: string): Promise<boolean> {
     this.onCall("sendKey", `${s.label}: ${chord}`);
+    return false;
+  }
+  async sendSequence(s: SessionRef, chords: string[]): Promise<boolean> {
+    this.onCall("sendSequence", `${s.label}: ${chords.join(" , ")}`);
     return false;
   }
   async dispose(): Promise<void> {}

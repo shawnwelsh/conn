@@ -95,11 +95,15 @@ export class DeckController {
     void (async () => {
       let ok = false;
       switch (key.label) {
-        case "Plan":
-          // Interim: open the mode picker (Ctrl+Shift+M). Becomes a one-press
-          // plan⇄auto toggle once the menu's number mapping is known.
-          ok = await this.delivery.sendKey(target, "ctrl+shift+m");
+        case "Plan": {
+          // Blind plan⇄auto toggle: Ctrl+Shift+M then 4 (plan) / 3 (auto).
+          // We can't read the visible tab's real mode, so just alternate.
+          const next = this.layer.controls.planNext;
+          ok = await this.delivery.sendSequence(target, ["ctrl+shift+m", next === "plan" ? "4" : "3"]);
+          this.layer.controls.planNext = next === "plan" ? "auto" : "plan";
+          this.onLayerChanged();
           break;
+        }
         case "/compact":
         case "/review":
           ok =
@@ -126,15 +130,16 @@ export class DeckController {
       case 1:
         if (target) await this.delivery.sendKey(target, "enter");
         return;
-      case 2: // Mode — interim: open the mode picker (Ctrl+Shift+M)
+      case 2: // Mode — open the full mode picker (Ctrl+Shift+M), pick on keyboard
         if (target) await this.delivery.sendKey(target, "ctrl+shift+m");
         return;
       case 3: {
-        const canned = this.cfg.cannedCommands["key13"];
-        if (target && canned) {
-          (await this.delivery.focus(target)) &&
-            (await this.delivery.sendText(target, canned.text)) &&
-            (await this.delivery.sendKey(target, "enter"));
+        // Model cycle: Ctrl+Shift+I then 1-4, advancing each press.
+        if (target) {
+          const n = this.layer.controls.modelNext;
+          await this.delivery.sendSequence(target, ["ctrl+shift+i", String(n)]);
+          this.layer.controls.modelNext = (n % 4) + 1;
+          this.onLayerChanged();
         }
         return;
       }

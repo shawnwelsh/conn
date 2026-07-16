@@ -75,6 +75,21 @@ loop {
         }
         sendChord(parts[3])
         respond("ok")
+      case "seq":
+        ; parts[3..] are chords; send each with a gap so a menu opened by an
+        ; earlier chord is ready for the next (e.g. Ctrl+Shift+M then "4").
+        if (!activate(parts[2])) {
+          respond("err|window not found: " . parts[2])
+          continue
+        }
+        i := 3
+        while (i <= parts.Length) {
+          sendChord(parts[i])
+          if (i < parts.Length)
+            Sleep 200
+          i++
+        }
+        respond("ok")
       default:
         respond("err|unknown command: " . cmd)
     }

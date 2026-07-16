@@ -20,10 +20,28 @@ export interface QuestionContext {
   page: number;
 }
 
+/**
+ * Deck-global control positions. Because the tabbed desktop app hides which
+ * conversation is visible and its real mode, these keys are BLIND toggles —
+ * they alternate their own position and send the corresponding keystroke,
+ * rather than reflecting any tracked session state.
+ */
+export interface DeckControls {
+  /** Mode the Plan key will set on its NEXT press (and the label it shows). */
+  planNext: "plan" | "auto";
+  /** Model number (1-4) the Model key will send on its next press. */
+  modelNext: number;
+}
+
 export interface DeckLayerState {
   row2: Row2Layer;
   permission?: PermissionContext;
   question?: QuestionContext;
+  controls: DeckControls;
+}
+
+export function initialControls(): DeckControls {
+  return { planNext: "plan", modelNext: 1 };
 }
 
 export const ROW2_IDLE_KEYS = [
@@ -107,18 +125,23 @@ export function computeTiles(
         : { text: "Cancel", state: "command", subtext: "to screen" },
     );
   } else {
-    for (const key of ROW2_IDLE_KEYS) {
-      tiles.push({ text: key.label, subtext: key.subtext, state: "command" });
-    }
+    ROW2_IDLE_KEYS.forEach((key, i) => {
+      if (i === 0) {
+        // Plan/Auto blind toggle — shows the mode the next press will set.
+        const next = layer.controls.planNext;
+        tiles.push({ text: next === "plan" ? "Plan" : "Auto", subtext: "mode", state: "command" });
+      } else {
+        tiles.push({ text: key.label, subtext: key.subtext, state: "command" });
+      }
+    });
   }
 
   // Row 3 — globals
-  const canned = cfg.cannedCommands["key13"];
   tiles.push(
     { text: "PTT", subtext: "reserved", state: "blank" },
     { text: "Send", subtext: "enter", state: "command" },
-    { text: "Mode", subtext: "shift+tab", state: "command" },
-    { text: canned?.label ?? "—", subtext: "canned", state: canned ? "command" : "blank" },
+    { text: "Mode", subtext: "menu", state: "command" }, // opens Ctrl+Shift+M (all modes)
+    { text: "Model", subtext: "cycle", state: "command", badge: String(layer.controls.modelNext) },
     { text: "Page", subtext: "profile", state: "blank" },
   );
 

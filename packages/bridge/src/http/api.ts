@@ -17,7 +17,12 @@ export async function registerApiRoutes(
   });
 
   app.get("/api/state", async () => ({
-    layer: { row2: layer.row2, permission: layer.permission ?? null, question: layer.question ?? null },
+    layer: {
+      row2: layer.row2,
+      permission: layer.permission ?? null,
+      question: layer.question ?? null,
+      controls: layer.controls,
+    },
     ...registry.snapshot(),
   }));
 

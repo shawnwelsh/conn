@@ -83,5 +83,12 @@ export class SendKeysAdapter implements DeliveryAdapter {
     return this.run(this.activate(session) + `$sh.SendKeys(${psQuote(chordToSendKeys(chord))}); exit 0`);
   }
 
+  async sendSequence(session: SessionRef, chords: string[]): Promise<boolean> {
+    const sends = chords
+      .map((c) => `$sh.SendKeys(${psQuote(chordToSendKeys(c))}); Start-Sleep -Milliseconds 200;`)
+      .join(" ");
+    return this.run(this.activate(session) + sends + " exit 0");
+  }
+
   async dispose(): Promise<void> {}
 }

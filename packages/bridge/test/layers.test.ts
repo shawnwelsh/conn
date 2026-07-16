@@ -27,7 +27,7 @@ describe("row-1 stale dimming", () => {
     const stale = start(r, "stale");
     stale.lastEventAt = Date.now() - 61 * 60_000; // 61 min ago
 
-    const layer: DeckLayerState = { row2: "idle" };
+    const layer: DeckLayerState = { row2: "idle", controls: { planNext: "plan", modelNext: 1 } };
     const tiles = computeTiles(r, layer, cfg);
 
     expect(tiles[fresh.slot]!.dim).toBeFalsy();
@@ -41,6 +41,7 @@ describe("row-1 stale dimming", () => {
     const layer: DeckLayerState = {
       row2: "permission",
       permission: { sessionId: "asking", toolName: "Bash", summary: "echo x" },
+      controls: { planNext: "plan", modelNext: 1 },
     };
     const tiles = computeTiles(r, layer, cfg);
     expect(tiles[s.slot]!.dim).toBeFalsy();
