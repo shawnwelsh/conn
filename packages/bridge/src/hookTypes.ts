@@ -52,6 +52,12 @@ export interface AskUserQuestionInput {
   }>;
 }
 
-export type AnyHookEvent = HookEventBase & Partial<ToolEvent> & Partial<NotificationEvent> & {
+/** Loose shape for ingest: any event, any extra fields. */
+export interface AnyHookEvent extends HookEventBase {
+  notification_type?: string;
+  message?: string;
+  tool_name?: string;
+  tool_input?: Record<string, unknown>;
+  tool_output?: Record<string, unknown>;
   [key: string]: unknown;
-};
+}

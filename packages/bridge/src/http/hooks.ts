@@ -19,6 +19,9 @@ export interface HookHandlers {
   onQuestion?: (event: AnyHookEvent) => void;
   /** Lets the decision store release any pending request of a dead session. */
   onSessionEnd?: (sessionId: string) => void;
+  /** Fires after every /hooks/event ingest — used to auto-revert the
+   * question layer when its session moves on (answered on screen). */
+  onAnyEvent?: (sessionId: string, eventName: string) => void;
 }
 
 export function registerHookRoutes(
@@ -32,6 +35,7 @@ export function registerHookRoutes(
     log.info({ hook: event.hook_event_name, session: event.session_id, payload: event }, "hook");
     applyEvent(registry, event);
     if (event.hook_event_name === "SessionEnd") handlers.onSessionEnd?.(event.session_id);
+    handlers.onAnyEvent?.(event.session_id, event.hook_event_name);
     return {};
   });
 
