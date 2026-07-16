@@ -14,6 +14,11 @@ export interface SessionEntry {
   lastEventAt: number;
   /** Last tool activity summary, for future badge rendering. */
   lastTool?: string;
+  /** Live session settings, captured from hook payloads — the source of
+   * truth for stateful mode/effort/model keys. */
+  permissionMode?: string;
+  effortLevel?: string;
+  model?: string;
   events: RingBuffer<{ at: number; event: string; detail?: string }>;
 }
 

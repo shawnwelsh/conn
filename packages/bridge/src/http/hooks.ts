@@ -75,6 +75,12 @@ function applyEvent(registry: SessionRegistry, event: AnyHookEvent): void {
   );
   if (event.tool_name) entry.lastTool = String(event.tool_name);
 
+  // Capture live session settings for the stateful mode/effort/model keys.
+  if (typeof event.permission_mode === "string") entry.permissionMode = event.permission_mode;
+  const effort = event["effort"] as { level?: string } | undefined;
+  if (effort?.level) entry.effortLevel = effort.level;
+  if (typeof event["model"] === "string") entry.model = event["model"] as string;
+
   // Subagent activity keeps the parent session alive/thinking but never
   // drives layer-level states directly (except PermissionRequest, which is a
   // real dialog regardless of origin).
