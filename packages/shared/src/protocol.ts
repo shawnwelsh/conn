@@ -36,4 +36,6 @@ export interface TileSpec {
   state: SessionStatus | "answer" | "command" | "blank";
   badge?: string;
   selected?: boolean;
+  /** Render dimmed — used for stale agent slots (no events for a while). */
+  dim?: boolean;
 }

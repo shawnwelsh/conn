@@ -163,6 +163,12 @@ export function renderTile(spec: TileSpec): Buffer {
     ctx.fillText(spec.badge, cx - bw / 2, cy);
   }
 
+  // Stale overlay: darken the whole tile (drawn last, under nothing).
+  if (spec.dim) {
+    ctx.fillStyle = "rgba(0, 0, 0, 0.55)";
+    ctx.fillRect(0, 0, S, S);
+  }
+
   const buf = canvas.toBuffer("image/png");
   cachePut(key, buf);
   return buf;

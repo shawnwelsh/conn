@@ -21,6 +21,7 @@ const samples: Array<[string, TileSpec]> = [
   ["answer-long-option", { text: "Yes, and don't ask again", state: "answer", badge: "2" }],
   ["answer-longer-option", { text: "AutoHotkey v2 daemon (Recommended)", state: "answer", badge: "1" }],
   ["command-compact", { text: "/compact", state: "command" }],
+  ["status-stale", { text: "email-agent", subtext: "done", state: "done", dim: true }],
 ];
 
 for (const [name, spec] of samples) {

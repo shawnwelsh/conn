@@ -51,6 +51,8 @@ export function computeTiles(
     layer.row2 === "permission" ? layer.permission?.sessionId
     : layer.row2 === "question" ? layer.question?.sessionId
     : undefined;
+  const staleMs = cfg.staleSessionMinutes * 60_000;
+  const now = Date.now();
 
   // Row 1 — agent slots
   for (let slot = 0; slot < 5; slot++) {
@@ -60,6 +62,9 @@ export function computeTiles(
       continue;
     }
     const isMorphOrigin = session.sessionId === morphSessionId;
+    // Stale = no events for staleSessionMinutes. A pending morph keeps a key
+    // lit regardless.
+    const stale = !isMorphOrigin && now - session.lastEventAt > staleMs;
     tiles.push({
       text: session.label,
       subtext: isMorphOrigin && layer.row2 === "permission"
@@ -68,6 +73,7 @@ export function computeTiles(
       state: session.status,
       // Flash the requester; steady border for normal targeting.
       selected: isMorphOrigin ? flashPhase : session.sessionId === targeted?.sessionId,
+      dim: stale,
     });
   }
 
