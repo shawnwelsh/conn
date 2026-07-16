@@ -17,6 +17,8 @@ export interface HookHandlers {
   onPermissionRequest?: (event: AnyHookEvent) => Promise<unknown>;
   /** Phase 3: question-layer morph. Must be synchronous-fast. */
   onQuestion?: (event: AnyHookEvent) => void;
+  /** Lets the decision store release any pending request of a dead session. */
+  onSessionEnd?: (sessionId: string) => void;
 }
 
 export function registerHookRoutes(
@@ -29,6 +31,7 @@ export function registerHookRoutes(
     const event = req.body as AnyHookEvent;
     log.info({ hook: event.hook_event_name, session: event.session_id, payload: event }, "hook");
     applyEvent(registry, event);
+    if (event.hook_event_name === "SessionEnd") handlers.onSessionEnd?.(event.session_id);
     return {};
   });
 

@@ -2,6 +2,7 @@ import Fastify from "fastify";
 import { loadConfig } from "./config.js";
 import { createLogger } from "./log.js";
 import { SessionRegistry } from "./registry.js";
+import { DecisionStore } from "./decisions.js";
 import { computeTiles, type DeckLayerState } from "./layers.js";
 import { renderTile, toDataUri } from "./render/tile.js";
 import { DeckSocketServer } from "./ws/server.js";
@@ -24,11 +25,13 @@ const app = Fastify({ logger: false });
 
 let sockets: DeckSocketServer;
 let lastImages: string[] = [];
+let flashPhase = false;
+let flashTimer: ReturnType<typeof setInterval> | null = null;
 
 /** Render loop: recompute all 15 tiles, broadcast only the ones that changed.
  * The tile cache makes unchanged tiles nearly free to recompute. */
 function pushRender(): void {
-  const tiles = computeTiles(registry, layer, cfg);
+  const tiles = computeTiles(registry, layer, cfg, flashPhase);
   const images = tiles.map((t) => toDataUri(renderTile(t)));
   const changed: KeyRender[] = [];
   images.forEach((image, slot) => {
@@ -39,15 +42,61 @@ function pushRender(): void {
   sockets.broadcast(changed, full);
 }
 
+const decisions = new DecisionStore(
+  cfg.decisionTimeoutSeconds * 1000,
+  log,
+  () => sockets?.clientCount > 0,
+  () => syncPermissionLayer(),
+);
+
+/** Keep the row-2 layer in lockstep with the decision queue and run the
+ * flash animation only while something is pending. */
+function syncPermissionLayer(): void {
+  const current = decisions.current;
+  if (current) {
+    layer.row2 = "permission";
+    layer.permission = {
+      sessionId: current.sessionId,
+      toolName: current.toolName,
+      summary: current.summary,
+    };
+    registry.target(current.sessionId); // auto-target the requester
+    if (!flashTimer) {
+      flashTimer = setInterval(() => {
+        flashPhase = !flashPhase;
+        pushRender();
+      }, 500);
+    }
+  } else if (layer.row2 === "permission") {
+    layer.row2 = "idle";
+    layer.permission = undefined;
+    if (flashTimer) {
+      clearInterval(flashTimer);
+      flashTimer = null;
+      flashPhase = false;
+    }
+  }
+  pushRender();
+}
+
 const controller = new DeckController(registry, layer, delivery, cfg, log, pushRender);
+controller.setHooks({
+  onPermissionKey: (index) => {
+    const action = (["allow", "always-allow", "deny", "deny-reason", "show-on-screen"] as const)[index];
+    if (!action) return;
+    const settled = decisions.decide(action);
+    if (settled && action === "show-on-screen") {
+      const session = registry.get(settled.sessionId);
+      if (session) void delivery.focus(session);
+    }
+  },
+});
 
 registry.on("changed", () => pushRender());
 
 registerHookRoutes(app, registry, log, {
-  // Phase 1: permission requests are logged, set status=waiting via the
-  // registry, and defer immediately. Phase 2 replaces this with the held
-  // decision store.
-  onPermissionRequest: async () => ({}),
+  onPermissionRequest: (event) => decisions.hold(event),
+  onSessionEnd: (sessionId) => decisions.releaseSession(sessionId),
 });
 await registerApiRoutes(app, registry, layer);
 

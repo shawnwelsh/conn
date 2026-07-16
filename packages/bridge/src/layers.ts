@@ -41,9 +41,16 @@ export function computeTiles(
   registry: SessionRegistry,
   layer: DeckLayerState,
   cfg: DeckConfig,
+  /** Alternates ~2×/sec while a morph layer is active, driving the flash on
+   * the requesting session's key. */
+  flashPhase = false,
 ): TileSpec[] {
   const tiles: TileSpec[] = [];
   const targeted = registry.targetedSession;
+  const morphSessionId =
+    layer.row2 === "permission" ? layer.permission?.sessionId
+    : layer.row2 === "question" ? layer.question?.sessionId
+    : undefined;
 
   // Row 1 — agent slots
   for (let slot = 0; slot < 5; slot++) {
@@ -52,11 +59,15 @@ export function computeTiles(
       tiles.push({ text: "", state: "blank" });
       continue;
     }
+    const isMorphOrigin = session.sessionId === morphSessionId;
     tiles.push({
       text: session.label,
-      subtext: session.status,
+      subtext: isMorphOrigin && layer.row2 === "permission"
+        ? `${layer.permission!.toolName}: ${layer.permission!.summary}`
+        : session.status,
       state: session.status,
-      selected: session.sessionId === targeted?.sessionId,
+      // Flash the requester; steady border for normal targeting.
+      selected: isMorphOrigin ? flashPhase : session.sessionId === targeted?.sessionId,
     });
   }
 

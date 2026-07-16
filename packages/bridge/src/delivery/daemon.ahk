@@ -1,0 +1,71 @@
+; claude-deck delivery daemon (AutoHotkey v2)
+; Spawned once by the bridge; commands arrive as pipe-delimited lines on stdin:
+;   focus|<winQuery>
+;   text|<winQuery>|<literal text>            (text may contain '|' — join tail)
+;   key|<winQuery>|<ahk Send syntax, e.g. +{Tab}>
+;   ping|
+; One response line per command on stdout: "ok" or "err|<reason>".
+; winQuery uses AHK WinTitle syntax (substring match mode), e.g.
+;   "revops-platform" or "ahk_exe Claude.exe".
+#Requires AutoHotkey v2.0
+#SingleInstance Off
+SetTitleMatchMode 2
+SendMode "Input"
+
+stdin := FileOpen("*", "r", "UTF-8")
+stdout := FileOpen("*", "w", "UTF-8")
+
+respond(msg) {
+  global stdout
+  stdout.WriteLine(msg)
+  stdout.Read(0) ; flush
+}
+
+activate(winQuery) {
+  if (winQuery = "")
+    return false
+  hwnd := WinExist(winQuery)
+  if (!hwnd)
+    return false
+  WinActivate(hwnd)
+  return WinWaitActive(hwnd, , 2) != 0
+}
+
+loop {
+  line := stdin.ReadLine()
+  if (line = "" && stdin.AtEOF)
+    break
+  line := RTrim(line, "`r`n")
+  if (line = "")
+    continue
+  parts := StrSplit(line, "|")
+  cmd := parts[1]
+  try {
+    switch cmd {
+      case "ping":
+        respond("ok")
+      case "focus":
+        respond(activate(parts[2]) ? "ok" : "err|window not found: " . parts[2])
+      case "text":
+        if (!activate(parts[2])) {
+          respond("err|window not found: " . parts[2])
+          continue
+        }
+        ; Re-join remainder in case the text itself contains '|'
+        text := SubStr(line, StrLen(parts[1]) + StrLen(parts[2]) + 3)
+        SendText(text)
+        respond("ok")
+      case "key":
+        if (!activate(parts[2])) {
+          respond("err|window not found: " . parts[2])
+          continue
+        }
+        Send(parts[3])
+        respond("ok")
+      default:
+        respond("err|unknown command: " . cmd)
+    }
+  } catch as e {
+    respond("err|" . e.Message)
+  }
+}
