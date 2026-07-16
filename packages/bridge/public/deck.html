@@ -63,9 +63,17 @@
     const img = document.createElement("img");
     img.alt = "";
     btn.appendChild(img);
-    // Raw presses only — the bridge owns single/double-tap semantics, so a
-    // double-click naturally emits two presses just like hardware would.
-    btn.addEventListener("click", () => send({ type: "press", slot, at: Date.now() }));
+    // Raw key down/up only — the bridge measures the interval to classify
+    // tap / double-tap / long-press, exactly as it will for hardware keys.
+    // Hold the mouse button down to produce a long-press.
+    let down = false;
+    const sendDown = () => { if (!down) { down = true; send({ type: "down", slot, at: Date.now() }); } };
+    const sendUp = () => { if (down) { down = false; send({ type: "up", slot, at: Date.now() }); } };
+    btn.addEventListener("mousedown", (e) => { e.preventDefault(); sendDown(); });
+    btn.addEventListener("mouseup", sendUp);
+    btn.addEventListener("mouseleave", sendUp); // release if dragged off
+    btn.addEventListener("touchstart", (e) => { e.preventDefault(); sendDown(); }, { passive: false });
+    btn.addEventListener("touchend", (e) => { e.preventDefault(); sendUp(); }, { passive: false });
     grid.appendChild(btn);
     keys.push(img);
   }

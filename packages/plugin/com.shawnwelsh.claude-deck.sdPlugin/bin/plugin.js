@@ -17308,9 +17308,15 @@ var DeckKey = @action({ UUID: "com.shawnwelsh.claude-deck.key" }) class extends 
     if (slot !== null) keys.delete(slot);
   }
   onKeyDown(ev) {
+    this.sendEdge(ev, "down");
+  }
+  onKeyUp(ev) {
+    this.sendEdge(ev, "up");
+  }
+  sendEdge(ev, edge) {
     const slot = slotOf(ev.payload);
     if (slot === null || ws?.readyState !== wrapper_default.OPEN) return;
-    ws.send(JSON.stringify({ type: "press", slot, at: Date.now() }));
+    ws.send(JSON.stringify({ type: edge, slot, at: Date.now() }));
   }
 };
 plugin_default.actions.registerAction(new DeckKey());

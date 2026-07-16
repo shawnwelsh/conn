@@ -1,15 +1,23 @@
 import { describe, expect, it } from "vitest";
-import { SessionRegistry, deriveLabel } from "../src/registry.js";
+import { SessionRegistry, deriveLabel, prettifyBranch } from "../src/registry.js";
 
 function start(registry: SessionRegistry, id: string, cwd = `C:\\dev\\${id}`) {
   return registry.ensure({ session_id: id, cwd, hook_event_name: "SessionStart" });
 }
 
+describe("prettifyBranch (feature name)", () => {
+  it("drops the namespace prefix, trailing hash, and date; hyphens→spaces", () => {
+    expect(prettifyBranch("claude/stream-deck-claude-code-736eec")).toBe("stream deck claude code");
+    expect(prettifyBranch("feature/sfdc-quote-fix-2026-07-16")).toBe("sfdc quote fix");
+    expect(prettifyBranch("claude/new-session-testing-0212d5")).toBe("new session testing");
+    expect(prettifyBranch("bugfix/login_flow")).toBe("login flow");
+  });
+});
+
 describe("deriveLabel", () => {
-  it("uses the cwd leaf directory", () => {
-    expect(deriveLabel("C:\\dev\\revops-platform")).toBe("revops-platform");
-    expect(deriveLabel("C:\\dev\\claude-deck\\")).toBe("claude-deck");
-    expect(deriveLabel("/home/user/proj")).toBe("proj");
+  it("falls back to the cwd leaf for non-git dirs", () => {
+    // These temp-ish paths aren't git repos, so we get the leaf directory.
+    expect(deriveLabel("C:\\nope\\not-a-repo-xyz")).toBe("not-a-repo-xyz");
     expect(deriveLabel(undefined)).toBe("session");
   });
 });

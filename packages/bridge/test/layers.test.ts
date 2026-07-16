@@ -8,6 +8,7 @@ const cfg: DeckConfig = {
   decisionTimeoutSeconds: 30,
   slots: 5,
   doubleTapMs: 300,
+  longPressMs: 500,
   staleSessionMinutes: 60,
   alwaysAllowDestination: "session",
   delivery: { adapter: "noop", ahkPath: "" },

@@ -11,6 +11,10 @@
 #SingleInstance Off
 SetTitleMatchMode 2
 SendMode "Input"
+; Terminal emulators frequently drop instantaneously-synthesized modifier
+; combos (e.g. Shift+Tab). A real press duration + inter-key delay makes them
+; register. Applies to Event-mode sends (see sendChord).
+SetKeyDelay 40, 40
 
 stdin := FileOpen("*", "r", "UTF-8")
 stdout := FileOpen("*", "w", "UTF-8")
@@ -28,7 +32,16 @@ activate(winQuery) {
   if (!hwnd)
     return false
   WinActivate(hwnd)
-  return WinWaitActive(hwnd, , 2) != 0
+  if (!WinWaitActive(hwnd, , 2))
+    return false
+  Sleep 120 ; let focus settle before typing
+  return true
+}
+
+; Send a key chord reliably. Event mode honors SetKeyDelay (Input mode does
+; not), giving modifier combos a real hold so terminals register them.
+sendChord(chord) {
+  SendEvent chord
 }
 
 loop {
@@ -60,7 +73,7 @@ loop {
           respond("err|window not found: " . parts[2])
           continue
         }
-        Send(parts[3])
+        sendChord(parts[3])
         respond("ok")
       default:
         respond("err|unknown command: " . cmd)

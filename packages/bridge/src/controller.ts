@@ -5,12 +5,15 @@ import { ROW2_IDLE_KEYS, QUESTION_OPTIONS_PER_PAGE } from "./layers.js";
 import type { DeliveryAdapter } from "./delivery/adapter.js";
 import type { DeckConfig } from "./config.js";
 import type { Logger } from "./log.js";
+import { GestureRecognizer, type Gesture } from "./gestures.js";
 
 /**
- * Routes raw key presses (from any client) to actions. Owns single/double-tap
- * disambiguation — clients report raw presses only.
+ * Routes recognized gestures (from any client) to actions. Clients report raw
+ * key down/up only; the GestureRecognizer classifies tap/double/long here.
  */
 export class DeckController {
+  private readonly gestures: GestureRecognizer;
+
   constructor(
     private readonly registry: SessionRegistry,
     private readonly layer: DeckLayerState,
@@ -23,35 +26,38 @@ export class DeckController {
       onPermissionKey?: (keyIndex: number) => void;
       onQuestionKey?: (optionIndex: number) => void;
       onQuestionPager?: () => void;
+      /** Row-1 long-press → begin a move (wired in the paging increment). */
+      onRow1LongPress?: (slot: Slot) => void;
     } = {},
-  ) {}
+  ) {
+    this.gestures = new GestureRecognizer(
+      { doubleTapMs: cfg.doubleTapMs, longPressMs: cfg.longPressMs },
+      (slot, gesture) => this.dispatch(slot, gesture),
+    );
+  }
 
   setHooks(hooks: typeof this.hooks): void {
     this.hooks = { ...this.hooks, ...hooks };
   }
 
-  private pendingTap = new Map<Slot, ReturnType<typeof setTimeout>>();
+  /** Raw key events from clients — fed straight to the recognizer. */
+  down(slot: Slot): void {
+    this.gestures.down(slot);
+  }
+  up(slot: Slot): void {
+    this.gestures.up(slot);
+  }
 
-  /** Raw press entry point. Row-1 keys get single/double disambiguation;
-   * everything else acts immediately. */
-  press(slot: Slot): void {
+  private dispatch(slot: Slot, gesture: Gesture): void {
     if (slot <= 4) {
-      const pending = this.pendingTap.get(slot);
-      if (pending) {
-        clearTimeout(pending);
-        this.pendingTap.delete(slot);
-        void this.row1DoubleTap(slot);
-      } else {
-        this.pendingTap.set(
-          slot,
-          setTimeout(() => {
-            this.pendingTap.delete(slot);
-            this.row1Tap(slot);
-          }, this.cfg.doubleTapMs),
-        );
+      if (gesture === "long") {
+        this.log.info({ slot }, "row1 long-press");
+        return this.hooks.onRow1LongPress?.(slot);
       }
-      return;
+      if (gesture === "double") return void this.row1DoubleTap(slot);
+      return this.row1Tap(slot);
     }
+    // Rows 2 and 3 act on tap; double/long collapse to a tap for now.
     if (slot <= 9) return this.row2(slot - 5);
     return void this.row3(slot - 10);
   }

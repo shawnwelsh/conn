@@ -67,9 +67,11 @@ export function computeTiles(
     const stale = !isMorphOrigin && now - session.lastEventAt > staleMs;
     tiles.push({
       text: session.label,
+      // Name gets all 3 lines normally (status is conveyed by color); the
+      // tool/command summary only takes the subtext during a permission morph.
       subtext: isMorphOrigin && layer.row2 === "permission"
         ? `${layer.permission!.toolName}: ${layer.permission!.summary}`
-        : session.status,
+        : undefined,
       state: session.status,
       // Flash the requester; steady border for normal targeting.
       selected: isMorphOrigin ? flashPhase : session.sessionId === targeted?.sessionId,

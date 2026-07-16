@@ -14,6 +14,7 @@ import streamDeck, {
   type WillAppearEvent,
   type WillDisappearEvent,
   type KeyDownEvent,
+  type KeyUpEvent,
 } from "@elgato/streamdeck";
 import WebSocket from "ws";
 
@@ -85,9 +86,17 @@ class DeckKey extends SingletonAction {
   }
 
   override onKeyDown(ev: KeyDownEvent): void {
+    this.sendEdge(ev, "down");
+  }
+
+  override onKeyUp(ev: KeyUpEvent): void {
+    this.sendEdge(ev, "up");
+  }
+
+  private sendEdge(ev: KeyDownEvent | KeyUpEvent, edge: "down" | "up"): void {
     const slot = slotOf(ev.payload);
     if (slot === null || ws?.readyState !== WebSocket.OPEN) return;
-    ws.send(JSON.stringify({ type: "press", slot, at: Date.now() }));
+    ws.send(JSON.stringify({ type: edge, slot, at: Date.now() }));
   }
 }
 

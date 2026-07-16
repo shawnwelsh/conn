@@ -191,7 +191,7 @@ await app.listen({ port: cfg.port, host: "127.0.0.1" });
 sockets = new DeckSocketServer(
   app.server,
   log,
-  (slot) => controller.press(slot),
+  (slot, edge) => (edge === "down" ? controller.down(slot) : controller.up(slot)),
   (count) => log.info({ count }, "deck clients"),
 );
 pushRender();

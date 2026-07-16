@@ -24,11 +24,13 @@ export interface KeyRender {
   image: string;
 }
 
-/** Client → bridge. Clients report raw presses only; all interpretation
- * (single vs double tap, layer routing) is bridge-side. */
+/** Client → bridge. Clients report raw key down/up only; ALL interpretation
+ * (single vs double tap, long-press, layer routing) is bridge-side — the
+ * bridge measures the down→up interval to classify the gesture. */
 export type ClientMessage =
   | { type: "identify"; client: "webdeck" | "streamdeck" }
-  | { type: "press"; slot: Slot; at: number };
+  | { type: "down"; slot: Slot; at: number }
+  | { type: "up"; slot: Slot; at: number };
 
 export interface TileSpec {
   text: string;

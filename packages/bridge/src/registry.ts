@@ -1,5 +1,6 @@
 import { EventEmitter } from "node:events";
-import { basename } from "node:path";
+import { basename, join, resolve, isAbsolute, dirname } from "node:path";
+import { readFileSync, statSync } from "node:fs";
 import type { SessionStatus } from "@claude-deck/shared";
 import { RingBuffer } from "./log.js";
 import type { AnyHookEvent } from "./hookTypes.js";
@@ -147,8 +148,53 @@ export class SessionRegistry extends EventEmitter {
   }
 }
 
-/** "C:\dev\revops-platform" → "revops-platform"; worktree paths keep the leaf. */
+/**
+ * A human "feature name" for the session. Worktree dirs are auto-generated
+ * codenames (dazzling-williams-cb6de4) and session_title is empty at
+ * SessionStart, so the branch is the meaningful name:
+ *   claude/stream-deck-claude-code-736eec → "stream deck claude code"
+ * Falls back to the cwd leaf for non-git dirs or main/master checkouts.
+ */
 export function deriveLabel(cwd: string | undefined): string {
   if (!cwd) return "session";
+  const branch = gitBranch(cwd);
+  if (branch && !["main", "master", "HEAD", "develop"].includes(branch)) {
+    const pretty = prettifyBranch(branch);
+    if (pretty) return pretty;
+  }
   return basename(cwd.replace(/[\\/]+$/, "")) || "session";
+}
+
+/** Read the current branch by walking up to the repo's .git (file or dir),
+ * following worktree gitdir pointers. No subprocess — avoids git index locks. */
+function gitBranch(cwd: string): string | null {
+  let dir = cwd;
+  for (let i = 0; i < 30; i++) {
+    const dotgit = join(dir, ".git");
+    try {
+      const st = statSync(dotgit);
+      let gitDir = dotgit;
+      if (st.isFile()) {
+        const m = readFileSync(dotgit, "utf8").trim().match(/^gitdir:\s*(.+)$/);
+        if (!m) return null;
+        gitDir = isAbsolute(m[1]!) ? m[1]! : resolve(dir, m[1]!);
+      }
+      const head = readFileSync(join(gitDir, "HEAD"), "utf8").trim();
+      const rm = head.match(/^ref:\s*refs\/heads\/(.+)$/);
+      return rm ? rm[1]! : null; // detached HEAD → no branch name
+    } catch {
+      const parent = dirname(dir);
+      if (parent === dir) return null;
+      dir = parent;
+    }
+  }
+  return null;
+}
+
+/** claude/stream-deck-...-736eec → "stream deck ...": drop the namespace
+ * prefix, a trailing short hash, and a trailing ISO date; hyphens→spaces. */
+export function prettifyBranch(branch: string): string {
+  let leaf = branch.split("/").pop() ?? branch;
+  leaf = leaf.replace(/-[0-9a-f]{6,}$/i, "").replace(/-\d{4}-\d{2}-\d{2}$/, "");
+  return leaf.replace(/[-_]+/g, " ").trim();
 }

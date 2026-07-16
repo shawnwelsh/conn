@@ -15,7 +15,7 @@ export class DeckSocketServer {
   constructor(
     server: Server,
     private readonly log: Logger,
-    private readonly onPress: (slot: number) => void,
+    private readonly onKey: (slot: number, edge: "down" | "up") => void,
     private readonly onClientCountChange: (count: number) => void,
   ) {
     this.wss = new WebSocketServer({ server, path: "/ws" });
@@ -61,9 +61,9 @@ export class DeckSocketServer {
       if (msg.type === "identify") {
         this.clients.set(ws, msg.client);
         this.log.info({ client: msg.client }, "client identified");
-      } else if (msg.type === "press") {
-        this.log.debug({ slot: msg.slot }, "press");
-        this.onPress(msg.slot);
+      } else if (msg.type === "down" || msg.type === "up") {
+        this.log.debug({ slot: msg.slot, edge: msg.type }, "key");
+        this.onKey(msg.slot, msg.type);
       }
     });
 
