@@ -4,7 +4,7 @@ import { createLogger } from "./log.js";
 import { SessionRegistry } from "./registry.js";
 import { DecisionStore } from "./decisions.js";
 import { computeTiles, initialControls, initialRow1, type DeckLayerState } from "./layers.js";
-import { renderTile, toDataUri } from "./render/tile.js";
+import { renderTile, renderBanner, toDataUri } from "./render/tile.js";
 import { DeckSocketServer } from "./ws/server.js";
 import { DeckController } from "./controller.js";
 import { NoopAdapter, type DeliveryAdapter } from "./delivery/adapter.js";
@@ -51,7 +51,13 @@ let flashTimer: ReturnType<typeof setInterval> | null = null;
  * The tile cache makes unchanged tiles nearly free to recompute. */
 function pushRender(): void {
   const tiles = computeTiles(registry, layer, cfg, flashPhase);
-  const images = tiles.map((t) => toDataUri(renderTile(t)));
+  const images = tiles.map((t) => {
+    // Banner tiles are slices of one wide image; renderBanner caches slices.
+    if (t.bannerSpan && t.bannerIndex !== undefined) {
+      return toDataUri(renderBanner(t.text, t.bannerSpan, t.state)[t.bannerIndex]!);
+    }
+    return toDataUri(renderTile(t));
+  });
   const changed: KeyRender[] = [];
   images.forEach((image, slot) => {
     if (image !== lastImages[slot]) changed.push({ slot, image });

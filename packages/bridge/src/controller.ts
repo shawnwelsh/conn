@@ -7,6 +7,7 @@ import type { DeckConfig } from "./config.js";
 import type { Logger } from "./log.js";
 import { GestureRecognizer, type Gesture } from "./gestures.js";
 import type { ConsoleLauncher } from "./delivery/launcher.js";
+import { activeSuggestion } from "./suggestions.js";
 
 /**
  * Routes recognized gestures (from any client) to actions. Clients report raw
@@ -178,6 +179,27 @@ export class DeckController {
   private row2(index: number): void {
     if (this.layer.row2 === "permission") {
       this.hooks.onPermissionKey?.(index);
+      return;
+    }
+    // Suggestion layer (derived): Accept on key 6, banner keys focus the
+    // session so you can read the context before deciding.
+    const suggestion = activeSuggestion(this.registry, this.layer);
+    if (suggestion) {
+      void (async () => {
+        if (index === 0) {
+          const ok =
+            (await this.delivery.focus(suggestion.session)) &&
+            (await this.delivery.sendText(suggestion.session, this.cfg.suggestionAcceptText)) &&
+            (await this.delivery.sendKey(suggestion.session, "enter"));
+          if (ok) {
+            suggestion.session.suggestion = undefined; // consumed
+            this.onLayerChanged();
+          }
+          this.log.info({ session: suggestion.session.sessionId, ok }, "suggestion accepted");
+        } else {
+          await this.delivery.focus(suggestion.session);
+        }
+      })();
       return;
     }
     if (this.layer.row2 === "question") {

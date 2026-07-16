@@ -30,6 +30,9 @@ export interface SessionEntry {
   windowKind: "console" | "desktop";
   hwnd?: number;
   pid?: number;
+  /** Trailing offer from the last finished turn ("Want me to X?"),
+   * surfaced on the deck for console sessions. Cleared on new activity. */
+  suggestion?: string;
   events: RingBuffer<{ at: number; event: string; detail?: string }>;
 }
 

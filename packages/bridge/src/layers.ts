@@ -1,6 +1,7 @@
 import type { TileSpec, Row2Layer } from "@claude-deck/shared";
 import type { SessionRegistry } from "./registry.js";
 import type { DeckConfig } from "./config.js";
+import { activeSuggestion } from "./suggestions.js";
 
 /**
  * Computes the 15 TileSpecs for the whole deck from registry + layer state.
@@ -178,6 +179,14 @@ export function computeTiles(
         ? { text: `Page ${q.page + 1}/${pages}`, state: "command", subtext: "next page" }
         : { text: "Cancel", state: "command", subtext: "to screen" },
     );
+  } else if (activeSuggestion(registry, layer)) {
+    // Suggestion layer: the targeted console session finished with a
+    // "pre-produced option" — Accept on key 6, the text bannered across 7-10.
+    const s = activeSuggestion(registry, layer)!;
+    tiles.push({ text: "Accept", subtext: `sends "${cfg.suggestionAcceptText}"`, state: "answer" });
+    for (let i = 0; i < 4; i++) {
+      tiles.push({ text: s.text, state: "command", bannerSpan: 4, bannerIndex: i });
+    }
   } else {
     const targetIsConsole = targeted?.windowKind === "console";
     ROW2_IDLE_KEYS.forEach((key, i) => {

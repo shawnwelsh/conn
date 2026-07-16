@@ -33,6 +33,8 @@ export interface DeckConfig {
   cannedCommands: Record<string, { label: string; text: string }>;
   /** Command the "New" key runs in a fresh console window. */
   newSessionCommand: string;
+  /** Text the suggestion-layer Accept key types into the session. */
+  suggestionAcceptText: string;
   log: { level: string; dir: string };
 }
 
@@ -65,6 +67,7 @@ export function loadConfig(): DeckConfig {
   cfg.longPressMs ??= 500;
   cfg.moveCancelSeconds ??= 5;
   cfg.newSessionCommand ??= "claude";
+  cfg.suggestionAcceptText ??= "yes";
   cfg.delivery.windowMode ??= "activeWindow";
   cfg.alwaysAllowDestination ??= "session";
   const validDest = ["session", "localSettings", "projectSettings", "userSettings"];

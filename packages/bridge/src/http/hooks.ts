@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import type { SessionRegistry } from "../registry.js";
 import { nextStatus } from "../status.js";
+import { extractSuggestion } from "../suggestions.js";
 import type { AnyHookEvent } from "../hookTypes.js";
 import type { Logger } from "../log.js";
 
@@ -80,6 +81,14 @@ function applyEvent(registry: SessionRegistry, event: AnyHookEvent): void {
   const effort = event["effort"] as { level?: string } | undefined;
   if (effort?.level) entry.effortLevel = effort.level;
   if (typeof event["model"] === "string") entry.model = event["model"] as string;
+
+  // Suggestion lifecycle: a finished turn may end with a "pre-produced
+  // option"; any new activity invalidates it.
+  if (event.hook_event_name === "Stop") {
+    entry.suggestion = extractSuggestion(event["last_assistant_message"] as string | undefined) ?? undefined;
+  } else if (["UserPromptSubmit", "PostToolUse", "PostToolUseFailure", "PermissionRequest"].includes(event.hook_event_name)) {
+    entry.suggestion = undefined;
+  }
 
   // Subagent activity keeps the parent session alive/thinking but never
   // drives layer-level states directly (except PermissionRequest, which is a
