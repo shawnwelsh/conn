@@ -1,6 +1,7 @@
 node_modules/
 dist/
 logs/
+logs-dev/
 config.json
 probe-log.jsonl
 scratch-probe/.claude/settings.local.json
