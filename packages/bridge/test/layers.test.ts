@@ -7,6 +7,7 @@ const cfg: DeckConfig = {
   port: 3711,
   decisionTimeoutSeconds: 30,
   slots: 5,
+  maxSessions: 15,
   doubleTapMs: 300,
   longPressMs: 500,
   staleSessionMinutes: 60,

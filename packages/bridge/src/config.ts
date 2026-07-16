@@ -6,6 +6,9 @@ export interface DeckConfig {
   port: number;
   decisionTimeoutSeconds: number;
   slots: number;
+  /** Max sessions the registry tracks; beyond this the least-recently-used
+   * overflow session is dropped. The pager browses these. */
+  maxSessions: number;
   doubleTapMs: number;
   longPressMs: number;
   staleSessionMinutes: number;
@@ -53,6 +56,8 @@ export function loadConfig(): DeckConfig {
   if (!Number.isInteger(cfg.port) || cfg.port <= 0) throw new Error("config: port must be a positive integer");
   if (cfg.decisionTimeoutSeconds <= 0) throw new Error("config: decisionTimeoutSeconds must be > 0");
   if (cfg.slots < 1 || cfg.slots > 5) throw new Error("config: slots must be 1-5");
+  cfg.maxSessions ??= 15;
+  if (cfg.maxSessions < cfg.slots) throw new Error("config: maxSessions must be >= slots");
   cfg.longPressMs ??= 500;
   cfg.delivery.windowMode ??= "activeWindow";
   cfg.alwaysAllowDestination ??= "session";

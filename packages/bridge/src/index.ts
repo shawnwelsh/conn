@@ -18,7 +18,7 @@ import type { KeyRender } from "@claude-deck/shared";
 
 const cfg = loadConfig();
 const log = createLogger(cfg);
-const registry = new SessionRegistry(cfg.slots);
+const registry = new SessionRegistry(cfg.slots, cfg.maxSessions);
 const layer: DeckLayerState = { row2: "idle", controls: initialControls() };
 
 async function createDelivery(): Promise<DeliveryAdapter> {
@@ -68,7 +68,13 @@ const decisions = new DecisionStore(
   cfg.alwaysAllowDestination,
 );
 
-/** Run the flash animation only while a morph layer needs it. */
+/** Anything that needs the 2Hz flash: a held permission, a question morph, or
+ * the pager signalling multiple sessions need attention. */
+function flashNeeded(): boolean {
+  return decisions.current !== undefined || layer.row2 === "question" || registry.pagerFlashing();
+}
+
+/** Run the flash animation only while something needs it. */
 function syncFlash(active: boolean): void {
   if (active && !flashTimer) {
     flashTimer = setInterval(() => {
@@ -94,12 +100,11 @@ function syncPermissionLayer(): void {
       summary: current.summary,
     };
     registry.target(current.sessionId); // auto-target the requester
-    syncFlash(true);
   } else if (layer.row2 === "permission") {
     layer.row2 = "idle";
     layer.permission = undefined;
-    syncFlash(false);
   }
+  syncFlash(flashNeeded());
   pushRender();
 }
 
@@ -117,7 +122,7 @@ function showQuestion(event: Parameters<typeof decisions.hold>[0]): void {
     page: 0,
   };
   registry.target(event.session_id);
-  syncFlash(true);
+  syncFlash(flashNeeded());
   pushRender();
 }
 
@@ -125,7 +130,7 @@ function revertQuestion(): void {
   if (layer.row2 !== "question") return;
   layer.row2 = "idle";
   layer.question = undefined;
-  syncFlash(decisions.current !== undefined);
+  syncFlash(flashNeeded());
   pushRender();
 }
 
@@ -172,7 +177,10 @@ controller.setHooks({
   },
 });
 
-registry.on("changed", () => pushRender());
+registry.on("changed", () => {
+  syncFlash(flashNeeded());
+  pushRender();
+});
 
 registerHookRoutes(app, registry, log, {
   onPermissionRequest: (event) => decisions.hold(event),

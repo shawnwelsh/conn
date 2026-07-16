@@ -71,9 +71,22 @@ export function computeTiles(
     : undefined;
   const staleMs = cfg.staleSessionMinutes * 60_000;
   const now = Date.now();
+  const pagerActive = registry.pagerActive();
+  const pagerSlot = cfg.slots - 1; // last slot hosts the pager when active
 
-  // Row 1 — agent slots
+  // Row 1 — agent slots (last slot becomes the Pager when >slots sessions)
   for (let slot = 0; slot < 5; slot++) {
+    if (pagerActive && slot === pagerSlot) {
+      const overflowCount = registry.overflowEntries().length;
+      tiles.push({
+        text: "Pager",
+        subtext: `+${overflowCount} more`,
+        state: "command",
+        // Flash to signal multiple overflow sessions need attention.
+        selected: registry.pagerFlashing() ? flashPhase : false,
+      });
+      continue;
+    }
     const session = slot < cfg.slots ? registry.bySlot(slot) : undefined;
     if (!session) {
       tiles.push({ text: "", state: "blank" });
