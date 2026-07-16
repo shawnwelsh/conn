@@ -65,6 +65,7 @@ const decisions = new DecisionStore(
   log,
   () => sockets?.clientCount > 0,
   () => syncPermissionLayer(),
+  cfg.alwaysAllowDestination,
 );
 
 /** Run the flash animation only while a morph layer needs it. */

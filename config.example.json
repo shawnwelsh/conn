@@ -4,6 +4,7 @@
   "slots": 5,
   "doubleTapMs": 300,
   "staleSessionMinutes": 60,
+  "alwaysAllowDestination": "session",
   "delivery": {
     "adapter": "ahk",
     "ahkPath": "%LOCALAPPDATA%\\Programs\\AutoHotkey\\v2\\AutoHotkey64.exe"

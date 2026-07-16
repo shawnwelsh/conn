@@ -14,8 +14,14 @@ function permEvent(sessionId = "s1", command = "git status"): AnyHookEvent {
   };
 }
 
-function makeStore(opts: { clients?: boolean; timeoutMs?: number } = {}) {
-  return new DecisionStore(opts.timeoutMs ?? 30_000, noopLog, () => opts.clients ?? true, () => {});
+function makeStore(opts: { clients?: boolean; timeoutMs?: number; dest?: "session" | "localSettings" } = {}) {
+  return new DecisionStore(
+    opts.timeoutMs ?? 30_000,
+    noopLog,
+    () => opts.clients ?? true,
+    () => {},
+    opts.dest ?? "session",
+  );
 }
 
 afterEach(() => vi.useRealTimers());
@@ -74,14 +80,29 @@ describe("DecisionStore safety invariants", () => {
 });
 
 describe("always-allow rule derivation stays narrow", () => {
-  it("Bash → exact command rule", async () => {
-    const store = makeStore();
+  it("Bash → exact command rule in CC's PermissionUpdate shape", async () => {
+    const store = makeStore({ dest: "session" });
     const held = store.hold(permEvent("s1", "npm run build"));
     store.decide("always-allow");
     const body = (await held) as any;
+    // Shape verified against the CC 2.1.211 binary (addRules variant).
+    expect(body.hookSpecificOutput.decision.behavior).toBe("allow");
     expect(body.hookSpecificOutput.decision.updatedPermissions).toEqual([
-      { toolName: "Bash", destination: "allow", mode: "always", ruleContent: "Bash(npm run build)" },
+      {
+        type: "addRules",
+        rules: [{ toolName: "Bash", ruleContent: "Bash(npm run build)" }],
+        behavior: "allow",
+        destination: "session",
+      },
     ]);
+  });
+
+  it("honors the configured destination", async () => {
+    const store = makeStore({ dest: "localSettings" });
+    const held = store.hold(permEvent("s1", "ls"));
+    store.decide("always-allow");
+    const body = (await held) as any;
+    expect(body.hookSpecificOutput.decision.updatedPermissions[0].destination).toBe("localSettings");
   });
 
   it("non-derivable tools fall back to one-time allow with NO rule", async () => {

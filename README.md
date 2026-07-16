@@ -38,7 +38,10 @@ connection failure, and timeout are all non-blocking errors.
 2. `npm install`
 3. `cp config.example.json config.json` and adjust. Ship-safe default is
    `delivery.adapter: "noop"`; switch to `"ahk"` once you're ready for the
-   deck to actually type into windows.
+   deck to actually type into windows. `alwaysAllowDestination` controls
+   where the "Always allow" key writes its rule — `"session"` (default; this
+   run only, no disk write) or `"localSettings"` / `"projectSettings"` /
+   `"userSettings"` to persist like CC's own "don't ask again".
 4. `node scripts/install-hooks.mjs` — prints the diff for
    `~/.claude/settings.json` and merges only on confirm (purely additive,
    idempotent; never clobbers existing hook entries). `--dry-run` to preview.

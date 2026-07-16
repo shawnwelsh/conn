@@ -15,6 +15,15 @@ import type { Logger } from "./log.js";
 
 export type PermissionKeyAction = "allow" | "always-allow" | "deny" | "deny-reason" | "show-on-screen";
 
+/** Where an "always allow" rule is written. `session` = this run only, no
+ * disk write (default; a physical key shouldn't silently edit settings
+ * files). The others persist and mirror CC's own "don't ask again". */
+export type AlwaysAllowDestination =
+  | "session"
+  | "localSettings"
+  | "projectSettings"
+  | "userSettings";
+
 export interface PendingPermission {
   id: number;
   sessionId: string;
@@ -38,6 +47,7 @@ export class DecisionStore {
     private readonly log: Logger,
     private readonly hasClients: () => boolean,
     private readonly onQueueChanged: () => void,
+    private readonly alwaysAllowDestination: AlwaysAllowDestination = "session",
   ) {}
 
   /** The permission currently shown on the morph layer (head of queue). */
@@ -79,7 +89,7 @@ export class DecisionStore {
   decide(action: PermissionKeyAction): PendingPermission | undefined {
     const held = this.queue[0];
     if (!held) return undefined;
-    const body = buildDecisionBody(action, held.pending);
+    const body = buildDecisionBody(action, held.pending, this.alwaysAllowDestination);
     this.settle(held, body, `decided: ${action}`);
     return held.pending;
   }
@@ -139,16 +149,32 @@ export function deriveAlwaysRule(pending: PendingPermission): { toolName: string
   return null;
 }
 
-function buildDecisionBody(action: PermissionKeyAction, pending: PendingPermission): unknown {
+function buildDecisionBody(
+  action: PermissionKeyAction,
+  pending: PendingPermission,
+  alwaysAllowDestination: AlwaysAllowDestination,
+): unknown {
   switch (action) {
     case "allow":
       return decision({ behavior: "allow" });
     case "always-allow": {
       const rule = deriveAlwaysRule(pending);
       if (!rule) return decision({ behavior: "allow", message: "claude-deck: allowed once (no narrow rule derivable)" });
+      // Schema verified against the CC 2.1.211 binary: updatedPermissions is
+      // a PermissionUpdate[] discriminated on `type`; the addRules variant is
+      // { type, rules: [{toolName, ruleContent}], behavior, destination }.
+      // The old flat {toolName,destination,mode,ruleContent} shape was
+      // silently dropped ("malformed updatedPermissions ignored").
       return decision({
         behavior: "allow",
-        updatedPermissions: [{ toolName: rule.toolName, destination: "allow", mode: "always", ruleContent: rule.ruleContent }],
+        updatedPermissions: [
+          {
+            type: "addRules",
+            rules: [{ toolName: rule.toolName, ruleContent: rule.ruleContent }],
+            behavior: "allow",
+            destination: alwaysAllowDestination,
+          },
+        ],
       });
     }
     case "deny":
