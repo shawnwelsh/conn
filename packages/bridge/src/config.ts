@@ -15,6 +15,15 @@ export interface DeckConfig {
   delivery: {
     adapter: "ahk" | "sendkeys" | "noop";
     ahkPath: string;
+    /**
+     * How keystroke commands pick their target window:
+     *  - "activeWindow" (default): send to the Claude app's front window —
+     *    i.e. the visible conversation. Correct for the tabbed desktop app,
+     *    where individual conversations aren't separate OS windows.
+     *  - "perSession": resolve each session's own window by title (for
+     *    separate-terminal setups; the tmux adapter supersedes this later).
+     */
+    windowMode: "activeWindow" | "perSession";
   };
   cannedCommands: Record<string, { label: string; text: string }>;
   log: { level: string; dir: string };
@@ -45,6 +54,7 @@ export function loadConfig(): DeckConfig {
   if (cfg.decisionTimeoutSeconds <= 0) throw new Error("config: decisionTimeoutSeconds must be > 0");
   if (cfg.slots < 1 || cfg.slots > 5) throw new Error("config: slots must be 1-5");
   cfg.longPressMs ??= 500;
+  cfg.delivery.windowMode ??= "activeWindow";
   cfg.alwaysAllowDestination ??= "session";
   const validDest = ["session", "localSettings", "projectSettings", "userSettings"];
   if (!validDest.includes(cfg.alwaysAllowDestination)) {

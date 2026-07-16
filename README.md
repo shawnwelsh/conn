@@ -22,6 +22,27 @@ commands.
   (Windows desktop app now via AutoHotkey v2 daemon; tmux `send-keys` adapter
   later touches only this directory).
 
+## Two functions, logically separated
+
+The deck does two distinct things, and they have different reach because the
+Claude desktop app runs every conversation as a tab inside **one** OS window:
+
+1. **Monitor & respond** — per-session, driven entirely by hooks, needs no
+   window focus: live status lights, the permission morph
+   (Allow / Always-allow / Deny), and the question layer. These auto-target
+   the requesting session by `session_id` and work fully regardless of which
+   tab is visible. This is the deck's core.
+2. **Control the active conversation** — window-level keystrokes (mode, Send,
+   Esc, canned commands) that land in whatever conversation is **on screen**.
+   With `delivery.windowMode: "activeWindow"` (default) these intentionally go
+   to the Claude app's front window; the deck does not try to reach a specific
+   background tab, because the desktop app exposes no per-tab window and only
+   relative session cycling (`Ctrl+Tab`), not jump-to-index.
+
+Set `delivery.windowMode: "perSession"` when each session is its own OS window
+(separate terminals) to target them individually; the planned tmux adapter
+supersedes this with true per-pane targeting.
+
 ## Safety model (permission flow)
 
 The deck never approves anything without a physical press. If no press

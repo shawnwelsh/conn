@@ -11,7 +11,7 @@ const cfg: DeckConfig = {
   longPressMs: 500,
   staleSessionMinutes: 60,
   alwaysAllowDestination: "session",
-  delivery: { adapter: "noop", ahkPath: "" },
+  delivery: { adapter: "noop", ahkPath: "", windowMode: "activeWindow" },
   cannedCommands: {},
   log: { level: "info", dir: "logs" },
 };

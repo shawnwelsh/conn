@@ -8,7 +8,8 @@
   "alwaysAllowDestination": "session",
   "delivery": {
     "adapter": "ahk",
-    "ahkPath": "%LOCALAPPDATA%\\Programs\\AutoHotkey\\v2\\AutoHotkey64.exe"
+    "ahkPath": "%LOCALAPPDATA%\\Programs\\AutoHotkey\\v2\\AutoHotkey64.exe",
+    "windowMode": "activeWindow"
   },
   "cannedCommands": {
     "key13": { "label": "Commit", "text": "/save-work" }

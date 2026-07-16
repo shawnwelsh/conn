@@ -49,6 +49,7 @@ export class AhkAdapter implements DeliveryAdapter {
   constructor(
     private readonly ahkPath: string,
     private readonly log: Logger,
+    private readonly windowMode: "activeWindow" | "perSession" = "activeWindow",
   ) {}
 
   async start(): Promise<void> {
@@ -84,11 +85,20 @@ export class AhkAdapter implements DeliveryAdapter {
     this.proc = null;
   }
 
-  /** Try label-specific window first, then the app-level fallback. */
+  /**
+   * Resolve the target window. In "activeWindow" mode we intentionally act on
+   * the Claude app's front window (the visible conversation) — this is the
+   * correct, expected path for the tabbed desktop app, not a degradation. In
+   * "perSession" mode we try the session's own window first, warning if we
+   * can only reach the app.
+   */
   private async withWindow(
     session: SessionRef,
     run: (query: string) => Promise<string>,
   ): Promise<boolean> {
+    if (this.windowMode === "activeWindow") {
+      return (await run(FALLBACK_QUERY)) === "ok";
+    }
     for (const query of [session.label, FALLBACK_QUERY]) {
       const result = await run(query);
       if (result === "ok") {

@@ -24,9 +24,9 @@ const layer: DeckLayerState = { row2: "idle" };
 async function createDelivery(): Promise<DeliveryAdapter> {
   const noop = () =>
     new NoopAdapter((method, detail) => log.warn({ method, detail }, "delivery unavailable (noop adapter)"));
-  if (cfg.delivery.adapter === "sendkeys") return new SendKeysAdapter(log);
+  if (cfg.delivery.adapter === "sendkeys") return new SendKeysAdapter(log, cfg.delivery.windowMode);
   if (cfg.delivery.adapter === "ahk") {
-    const ahk = new AhkAdapter(cfg.delivery.ahkPath, log);
+    const ahk = new AhkAdapter(cfg.delivery.ahkPath, log, cfg.delivery.windowMode);
     try {
       await ahk.start();
       return ahk;

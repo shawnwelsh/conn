@@ -31,7 +31,10 @@ export function escapeSendKeysText(text: string): string {
 }
 
 export class SendKeysAdapter implements DeliveryAdapter {
-  constructor(private readonly log: Logger) {}
+  constructor(
+    private readonly log: Logger,
+    private readonly windowMode: "activeWindow" | "perSession" = "activeWindow",
+  ) {}
 
   private run(script: string): Promise<boolean> {
     return new Promise((resolve) => {
@@ -51,11 +54,17 @@ export class SendKeysAdapter implements DeliveryAdapter {
   }
 
   private activate(session: SessionRef): string {
-    // AppActivate by title substring; falls back to the app name.
+    const sh = `$sh = New-Object -ComObject WScript.Shell; `;
+    const settle = `Start-Sleep -Milliseconds 150; `;
+    if (this.windowMode === "activeWindow") {
+      // Intentionally the app's front window (visible conversation).
+      return sh + `if (-not $sh.AppActivate('Claude')) { exit 1 }; ` + settle;
+    }
+    // Per-session: try the session title, fall back to the app.
     return (
-      `$sh = New-Object -ComObject WScript.Shell; ` +
+      sh +
       `if (-not $sh.AppActivate(${psQuote(session.label)})) { if (-not $sh.AppActivate('Claude')) { exit 1 } }; ` +
-      `Start-Sleep -Milliseconds 150; `
+      settle
     );
   }
 
