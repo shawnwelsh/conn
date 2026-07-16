@@ -10,6 +10,7 @@ import { DeckController } from "./controller.js";
 import { NoopAdapter, type DeliveryAdapter } from "./delivery/adapter.js";
 import { AhkAdapter } from "./delivery/ahk.js";
 import { SendKeysAdapter } from "./delivery/sendkeys.js";
+import { ConsoleLauncher } from "./delivery/launcher.js";
 import { registerHookRoutes } from "./http/hooks.js";
 import { registerApiRoutes } from "./http/api.js";
 import { QUESTION_OPTIONS_PER_PAGE } from "./layers.js";
@@ -135,6 +136,7 @@ function revertQuestion(): void {
 }
 
 const controller = new DeckController(registry, layer, delivery, cfg, log, pushRender);
+controller.setLauncher(new ConsoleLauncher(registry, delivery, cfg.newSessionCommand, log));
 controller.setHooks({
   onPermissionKey: (index) => {
     const action = (["allow", "always-allow", "deny", "deny-reason", "show-on-screen"] as const)[index];

@@ -31,6 +31,8 @@ export interface DeckConfig {
     windowMode: "activeWindow" | "perSession";
   };
   cannedCommands: Record<string, { label: string; text: string }>;
+  /** Command the "New" key runs in a fresh console window. */
+  newSessionCommand: string;
   log: { level: string; dir: string };
 }
 
@@ -62,6 +64,7 @@ export function loadConfig(): DeckConfig {
   if (cfg.maxSessions < cfg.slots) throw new Error("config: maxSessions must be >= slots");
   cfg.longPressMs ??= 500;
   cfg.moveCancelSeconds ??= 5;
+  cfg.newSessionCommand ??= "claude";
   cfg.delivery.windowMode ??= "activeWindow";
   cfg.alwaysAllowDestination ??= "session";
   const validDest = ["session", "localSettings", "projectSettings", "userSettings"];

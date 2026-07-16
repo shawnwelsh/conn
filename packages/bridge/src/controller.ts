@@ -6,6 +6,7 @@ import type { DeliveryAdapter } from "./delivery/adapter.js";
 import type { DeckConfig } from "./config.js";
 import type { Logger } from "./log.js";
 import { GestureRecognizer, type Gesture } from "./gestures.js";
+import type { ConsoleLauncher } from "./delivery/launcher.js";
 
 /**
  * Routes recognized gestures (from any client) to actions. Clients report raw
@@ -27,6 +28,8 @@ export class DeckController {
       onQuestionKey?: (optionIndex: number) => void;
       onQuestionPager?: () => void;
     } = {},
+    /** Optional: the "New" key spawns console sessions through this. */
+    private launcher?: ConsoleLauncher,
   ) {
     this.gestures = new GestureRecognizer(
       { doubleTapMs: cfg.doubleTapMs, longPressMs: cfg.longPressMs },
@@ -36,6 +39,10 @@ export class DeckController {
 
   setHooks(hooks: typeof this.hooks): void {
     this.hooks = { ...this.hooks, ...hooks };
+  }
+
+  setLauncher(launcher: ConsoleLauncher): void {
+    this.launcher = launcher;
   }
 
   /** Raw key events from clients — fed straight to the recognizer. */
@@ -190,12 +197,16 @@ export class DeckController {
       let ok = false;
       switch (key.label) {
         case "Plan": {
-          // Blind plan⇄auto toggle: Ctrl+Shift+M then 4 (plan) / 3 (auto).
-          // We can't read the visible tab's real mode, so just alternate.
-          const next = this.layer.controls.planNext;
-          ok = await this.delivery.sendSequence(target, ["ctrl+shift+m", next === "plan" ? "4" : "3"]);
-          this.layer.controls.planNext = next === "plan" ? "auto" : "plan";
-          this.onLayerChanged();
+          if (target.windowKind === "console") {
+            // TUI dialect: Shift+Tab cycles normal → auto-accept → plan.
+            ok = await this.delivery.sendKey(target, "shift+tab");
+          } else {
+            // Desktop dialect: blind plan⇄auto toggle via the mode picker.
+            const next = this.layer.controls.planNext;
+            ok = await this.delivery.sendSequence(target, ["ctrl+shift+m", next === "plan" ? "4" : "3"]);
+            this.layer.controls.planNext = next === "plan" ? "auto" : "plan";
+            this.onLayerChanged();
+          }
           break;
         }
         case "/compact":
@@ -205,14 +216,17 @@ export class DeckController {
             (await this.delivery.sendText(target, key.label)) &&
             (await this.delivery.sendKey(target, "enter"));
           break;
-        case "New":
-          ok = await this.delivery.sendKey(target, "ctrl+n");
+        case "New": {
+          // Spawn a fresh console session in the targeted session's repo —
+          // it arrives HWND-bound and fully targetable.
+          ok = (await this.launcher?.launch(target.cwd)) ?? false;
           break;
+        }
         case "Esc":
           ok = await this.delivery.sendKey(target, "escape");
           break;
       }
-      this.log.info({ key: key.label, session: target.sessionId, ok }, "row2 command");
+      this.log.info({ key: key.label, session: target.sessionId, kind: target.windowKind, ok }, "row2 command");
     })();
   }
 
@@ -228,8 +242,15 @@ export class DeckController {
         if (target) await this.delivery.sendKey(target, "ctrl+shift+m");
         return;
       case 3: {
-        // Model cycle: Ctrl+Shift+I then 1-4, advancing each press.
-        if (target) {
+        if (!target) return;
+        if (target.windowKind === "console") {
+          // TUI dialect: open the /model picker on screen (you're looking at
+          // the terminal you just surfaced anyway).
+          (await this.delivery.focus(target)) &&
+            (await this.delivery.sendText(target, "/model")) &&
+            (await this.delivery.sendKey(target, "enter"));
+        } else {
+          // Desktop dialect: cycle Ctrl+Shift+I then 1-4.
           const n = this.layer.controls.modelNext;
           await this.delivery.sendSequence(target, ["ctrl+shift+i", String(n)]);
           this.layer.controls.modelNext = (n % 4) + 1;

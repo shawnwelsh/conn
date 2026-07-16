@@ -143,6 +143,8 @@ export function computeTiles(
           ? `${layer.permission!.toolName}: ${layer.permission!.summary}`
           : undefined,
         state: session.status,
+        // Console sessions (own window, fully targetable) get a ›_ badge.
+        badge: session.windowKind === "console" ? "›_" : undefined,
         selected: isMorphOrigin ? flashPhase : session.sessionId === targeted?.sessionId,
         dim: stale,
       });
@@ -177,23 +179,32 @@ export function computeTiles(
         : { text: "Cancel", state: "command", subtext: "to screen" },
     );
   } else {
+    const targetIsConsole = targeted?.windowKind === "console";
     ROW2_IDLE_KEYS.forEach((key, i) => {
       if (i === 0) {
-        // Plan/Auto blind toggle — shows the mode the next press will set.
-        const next = layer.controls.planNext;
-        tiles.push({ text: next === "plan" ? "Plan" : "Auto", subtext: "mode", state: "command" });
+        if (targetIsConsole) {
+          // TUI dialect: Shift+Tab cycles modes; no blind toggle needed.
+          tiles.push({ text: "Mode", subtext: "⇥ cycle", state: "command" });
+        } else {
+          // Desktop dialect: blind plan⇄auto toggle, label = next press.
+          const next = layer.controls.planNext;
+          tiles.push({ text: next === "plan" ? "Plan" : "Auto", subtext: "mode", state: "command" });
+        }
       } else {
         tiles.push({ text: key.label, subtext: key.subtext, state: "command" });
       }
     });
   }
 
-  // Row 3 — globals
+  // Row 3 — globals (Model key speaks the targeted session's dialect)
+  const modelIsConsole = targeted?.windowKind === "console";
   tiles.push(
     { text: "PTT", subtext: "reserved", state: "blank" },
     { text: "Send", subtext: "enter", state: "command" },
     { text: "Mode", subtext: "menu", state: "command" }, // opens Ctrl+Shift+M (all modes)
-    { text: "Model", subtext: "cycle", state: "command", badge: String(layer.controls.modelNext) },
+    modelIsConsole
+      ? { text: "Model", subtext: "/model", state: "command" }
+      : { text: "Model", subtext: "cycle", state: "command", badge: String(layer.controls.modelNext) },
     { text: "Page", subtext: "profile", state: "blank" },
   );
 

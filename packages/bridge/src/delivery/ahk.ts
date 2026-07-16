@@ -85,6 +85,13 @@ export class AhkAdapter implements DeliveryAdapter {
     return this.withWindow(session, async (query) => this.command(`seq|${query}|${ahk}`));
   }
 
+  async findWindowByPid(pid: number): Promise<number | null> {
+    const reply = await this.command(`findpid|${pid}`);
+    const m = reply.match(/^hwnd\|(\d+)$/);
+    const hwnd = m ? Number(m[1]) : 0;
+    return hwnd > 0 ? hwnd : null;
+  }
+
   async dispose(): Promise<void> {
     this.proc?.kill();
     this.proc = null;
@@ -101,6 +108,12 @@ export class AhkAdapter implements DeliveryAdapter {
     session: SessionRef,
     run: (query: string) => Promise<string>,
   ): Promise<boolean> {
+    // A bound HWND (deck-launched console) is exact — use it regardless of
+    // windowMode. Fall through if the window has since closed.
+    if (session.hwnd) {
+      if ((await run(`ahk_id ${session.hwnd}`)) === "ok") return true;
+      this.log.warn({ session: session.label, hwnd: session.hwnd }, "bound window gone; falling back");
+    }
     if (this.windowMode === "activeWindow") {
       return (await run(FALLBACK_QUERY)) === "ok";
     }

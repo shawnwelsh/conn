@@ -12,6 +12,9 @@ export interface SessionRef {
   sessionId: string;
   cwd: string;
   label: string;
+  /** OS window handle when this session has its own window (deck-launched
+   * console). HWND targeting is exact and beats any title matching. */
+  hwnd?: number;
 }
 
 export interface DeliveryAdapter {
@@ -24,6 +27,9 @@ export interface DeliveryAdapter {
   /** Press a series of chords with a short gap between each — for
    * menu-then-number pickers, e.g. ["ctrl+shift+m", "4"]. */
   sendSequence(session: SessionRef, chords: string[]): Promise<boolean>;
+  /** Resolve a process id to its top-level window handle, or null. Used by
+   * the console launcher to bind spawned terminals to sessions. */
+  findWindowByPid(pid: number): Promise<number | null>;
   dispose(): Promise<void>;
 }
 
@@ -46,6 +52,10 @@ export class NoopAdapter implements DeliveryAdapter {
   async sendSequence(s: SessionRef, chords: string[]): Promise<boolean> {
     this.onCall("sendSequence", `${s.label}: ${chords.join(" , ")}`);
     return false;
+  }
+  async findWindowByPid(pid: number): Promise<number | null> {
+    this.onCall("findWindowByPid", String(pid));
+    return null;
   }
   async dispose(): Promise<void> {}
 }

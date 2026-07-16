@@ -21,6 +21,7 @@ class RecordingAdapter implements DeliveryAdapter {
     this.calls.push({ m: "sendSequence", chords });
     return true;
   }
+  async findWindowByPid(): Promise<number | null> { return null; }
   async dispose(): Promise<void> {}
 }
 

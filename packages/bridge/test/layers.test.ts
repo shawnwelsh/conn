@@ -15,6 +15,7 @@ const cfg: DeckConfig = {
   alwaysAllowDestination: "session",
   delivery: { adapter: "noop", ahkPath: "", windowMode: "activeWindow" },
   cannedCommands: {},
+  newSessionCommand: "claude",
   log: { level: "info", dir: "logs" },
 };
 

@@ -90,5 +90,9 @@ export class SendKeysAdapter implements DeliveryAdapter {
     return this.run(this.activate(session) + sends + " exit 0");
   }
 
+  async findWindowByPid(): Promise<number | null> {
+    return null; // SendKeys fallback has no window enumeration
+  }
+
   async dispose(): Promise<void> {}
 }

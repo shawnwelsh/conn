@@ -43,6 +43,28 @@ Set `delivery.windowMode: "perSession"` when each session is its own OS window
 (separate terminals) to target them individually; the planned tmux adapter
 supersedes this with true per-pane targeting.
 
+### Console sessions — full per-session control
+
+The **New** key (row 2) spawns `newSessionCommand` (default `claude`) in a
+fresh console window in the targeted session's repo. The bridge captures the
+console's window handle (via `Start-Process` pid → AHK window lookup — titles
+are useless because CC overwrites them) and binds it to the session that
+starts there, marking it `windowKind: "console"` with a `›_` badge on its key.
+
+Console sessions are fully targetable: double-tap surfaces *that* window, and
+commands go to *that* session even when it's in the background. The deck also
+speaks each kind's dialect automatically:
+
+| Key | Console session (TUI) | Desktop tab |
+|---|---|---|
+| Plan/Mode (row 2) | `Shift+Tab` cycles modes | `Ctrl+Shift+M` + number toggle (blind Plan⇄Auto) |
+| Model (row 3) | types `/model` + Enter | `Ctrl+Shift+I` + number cycle |
+| Focus / commands | exact window (HWND) | app front window (visible tab) |
+
+Deck-launched consoles use the classic console host (targetability over
+aesthetics). Sessions you start yourself in terminals remain
+`windowKind: "desktop"`-behaved unless launched via the deck.
+
 ## Safety model (permission flow)
 
 The deck never approves anything without a physical press. If no press

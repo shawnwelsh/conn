@@ -59,6 +59,13 @@ loop {
         respond("ok")
       case "focus":
         respond(activate(parts[2]) ? "ok" : "err|window not found: " . parts[2])
+      case "findpid":
+        ; Resolve a process id to its top-level window handle (0 if none yet).
+        ; Used by the console launcher to bind a spawned terminal to a session.
+        DetectHiddenWindows true
+        found := WinExist("ahk_pid " . parts[2])
+        DetectHiddenWindows false
+        respond("hwnd|" . (found ? found : 0))
       case "text":
         if (!activate(parts[2])) {
           respond("err|window not found: " . parts[2])

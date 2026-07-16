@@ -19,7 +19,26 @@ export interface SessionEntry {
   permissionMode?: string;
   effortLevel?: string;
   model?: string;
+  /**
+   * Where this session's UI lives, which decides the command dialect:
+   *  - "console": own terminal window (deck-launched, HWND-bound) — TUI
+   *    keystrokes (Shift+Tab, typed /model), precise focus.
+   *  - "desktop": a tab in the Claude desktop app — picker chords
+   *    (Ctrl+Shift+M/I + number), app-level focus.
+   * Unknown sessions default to "desktop" behavior.
+   */
+  windowKind: "console" | "desktop";
+  hwnd?: number;
+  pid?: number;
   events: RingBuffer<{ at: number; event: string; detail?: string }>;
+}
+
+/** A console spawned by the deck, awaiting its session's first hook. */
+export interface PendingLaunch {
+  cwd: string;
+  pid: number;
+  hwnd: number | null;
+  at: number;
 }
 
 export interface RegistrySnapshot {
@@ -48,6 +67,7 @@ export class SessionRegistry extends EventEmitter {
   private overflow: string[] = []; // MRU: index 0 = most recent
   private targeted: string | null = null;
   private pagerFlash = false;
+  private pendingLaunches: PendingLaunch[] = [];
 
   constructor(
     private readonly slotCount: number,
@@ -103,14 +123,34 @@ export class SessionRegistry extends EventEmitter {
         cwd: event.cwd ?? "",
         status: "idle",
         lastEventAt: Date.now(),
+        windowKind: "desktop",
         events: new RingBuffer(this.eventHistorySize),
       };
       this.sessions.set(event.session_id, entry);
+      this.consumePendingLaunch(entry);
       this.place(entry.sessionId);
       if (!this.targeted) this.targeted = entry.sessionId;
       this.emit("changed");
     }
     return entry;
+  }
+
+  /** Record a deck-spawned console so the next session starting in that cwd
+   * binds to its window. */
+  registerPendingLaunch(launch: PendingLaunch): void {
+    this.pendingLaunches.push(launch);
+  }
+
+  private consumePendingLaunch(entry: SessionEntry): void {
+    const MAX_AGE_MS = 90_000;
+    const now = Date.now();
+    this.pendingLaunches = this.pendingLaunches.filter((l) => now - l.at < MAX_AGE_MS);
+    const i = this.pendingLaunches.findIndex((l) => samePath(l.cwd, entry.cwd));
+    if (i === -1) return;
+    const launch = this.pendingLaunches.splice(i, 1)[0]!;
+    entry.windowKind = "console";
+    entry.pid = launch.pid;
+    if (launch.hwnd) entry.hwnd = launch.hwnd;
   }
 
   recordEvent(entry: SessionEntry, event: string, detail?: string): void {
@@ -246,6 +286,12 @@ export class SessionRegistry extends EventEmitter {
   private syncSlots(): void {
     for (const entry of this.sessions.values()) entry.slot = this.working.indexOf(entry.sessionId);
   }
+}
+
+/** Case/separator-insensitive Windows path equality. */
+function samePath(a: string, b: string): boolean {
+  const norm = (p: string) => p.replace(/[\\/]+/g, "\\").replace(/\\+$/, "").toLowerCase();
+  return norm(a) === norm(b);
 }
 
 /**

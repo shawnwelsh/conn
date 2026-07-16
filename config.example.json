@@ -16,6 +16,7 @@
   "cannedCommands": {
     "key13": { "label": "Commit", "text": "/save-work" }
   },
+  "newSessionCommand": "claude",
   "log": {
     "level": "info",
     "dir": "logs"
