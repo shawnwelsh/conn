@@ -1,4 +1,7 @@
 {
+  "permissions": {
+    "ask": ["Bash(*)"]
+  },
   "hooks": {
     "SessionStart": [{ "hooks": [{ "type": "http", "url": "http://127.0.0.1:3711/hooks/event", "timeout": 3 }] }],
     "SessionEnd": [{ "hooks": [{ "type": "http", "url": "http://127.0.0.1:3711/hooks/event", "timeout": 3 }] }],
