@@ -33,7 +33,19 @@ export interface DeckControls {
   modelNext: number;
 }
 
+/** Row-1 interaction mode:
+ *  - "agents": normal slots (+ pager key when active).
+ *  - "pager": browsing overflow sessions to pick one into slot #1.
+ *  - "move": a long-press is pending; slots show numbered drop targets. */
+export interface Row1State {
+  mode: "agents" | "pager" | "move";
+  pagerPage: number;
+  /** Session being relocated while in "move" mode. */
+  moveSource?: string;
+}
+
 export interface DeckLayerState {
+  row1: Row1State;
   row2: Row2Layer;
   permission?: PermissionContext;
   question?: QuestionContext;
@@ -42,6 +54,10 @@ export interface DeckLayerState {
 
 export function initialControls(): DeckControls {
   return { planNext: "plan", modelNext: 1 };
+}
+
+export function initialRow1(): Row1State {
+  return { mode: "agents", pagerPage: 0 };
 }
 
 export const ROW2_IDLE_KEYS = [
@@ -74,40 +90,63 @@ export function computeTiles(
   const pagerActive = registry.pagerActive();
   const pagerSlot = cfg.slots - 1; // last slot hosts the pager when active
 
-  // Row 1 — agent slots (last slot becomes the Pager when >slots sessions)
-  for (let slot = 0; slot < 5; slot++) {
-    if (pagerActive && slot === pagerSlot) {
-      const overflowCount = registry.overflowEntries().length;
+  // Row 1 — depends on the row-1 mode.
+  if (layer.row1.mode === "pager") {
+    // Browse overflow sessions, `slots-1` per page; last key advances/closes.
+    const entries = registry.overflowEntries();
+    const perPage = cfg.slots - 1;
+    const pages = Math.max(1, Math.ceil(entries.length / perPage));
+    const page = Math.min(layer.row1.pagerPage, pages - 1);
+    for (let slot = 0; slot < perPage; slot++) {
+      const e = entries[page * perPage + slot];
+      tiles.push(
+        e
+          ? { text: e.label, subtext: e.status, state: "answer", badge: String(page * perPage + slot + 1) }
+          : { text: "", state: "blank" },
+      );
+    }
+    tiles.push(
+      pages > 1
+        ? { text: `Page ${page + 1}/${pages}`, subtext: "next", state: "command" }
+        : { text: "Close", subtext: "pager", state: "command" },
+    );
+  } else if (layer.row1.mode === "move") {
+    // Numbered drop targets (insert-before); last key cancels.
+    const src = layer.row1.moveSource ? registry.get(layer.row1.moveSource) : undefined;
+    for (let slot = 0; slot < cfg.slots - 1; slot++) {
+      const cur = registry.bySlot(slot);
+      tiles.push({ text: cur?.label ?? "empty", subtext: "drop here", state: "answer", badge: String(slot + 1) });
+    }
+    tiles.push({ text: "Cancel", subtext: src ? `moving ${src.label}` : "move", state: "command" });
+  } else {
+    // agents mode — normal slots, last slot becomes the Pager when active.
+    for (let slot = 0; slot < 5; slot++) {
+      if (pagerActive && slot === pagerSlot) {
+        tiles.push({
+          text: "Pager",
+          subtext: `+${registry.overflowEntries().length} more`,
+          state: "command",
+          selected: registry.pagerFlashing() ? flashPhase : false,
+        });
+        continue;
+      }
+      const session = slot < cfg.slots ? registry.bySlot(slot) : undefined;
+      if (!session) {
+        tiles.push({ text: "", state: "blank" });
+        continue;
+      }
+      const isMorphOrigin = session.sessionId === morphSessionId;
+      const stale = !isMorphOrigin && now - session.lastEventAt > staleMs;
       tiles.push({
-        text: "Pager",
-        subtext: `+${overflowCount} more`,
-        state: "command",
-        // Flash to signal multiple overflow sessions need attention.
-        selected: registry.pagerFlashing() ? flashPhase : false,
+        text: session.label,
+        subtext: isMorphOrigin && layer.row2 === "permission"
+          ? `${layer.permission!.toolName}: ${layer.permission!.summary}`
+          : undefined,
+        state: session.status,
+        selected: isMorphOrigin ? flashPhase : session.sessionId === targeted?.sessionId,
+        dim: stale,
       });
-      continue;
     }
-    const session = slot < cfg.slots ? registry.bySlot(slot) : undefined;
-    if (!session) {
-      tiles.push({ text: "", state: "blank" });
-      continue;
-    }
-    const isMorphOrigin = session.sessionId === morphSessionId;
-    // Stale = no events for staleSessionMinutes. A pending morph keeps a key
-    // lit regardless.
-    const stale = !isMorphOrigin && now - session.lastEventAt > staleMs;
-    tiles.push({
-      text: session.label,
-      // Name gets all 3 lines normally (status is conveyed by color); the
-      // tool/command summary only takes the subtext during a permission morph.
-      subtext: isMorphOrigin && layer.row2 === "permission"
-        ? `${layer.permission!.toolName}: ${layer.permission!.summary}`
-        : undefined,
-      state: session.status,
-      // Flash the requester; steady border for normal targeting.
-      selected: isMorphOrigin ? flashPhase : session.sessionId === targeted?.sessionId,
-      dim: stale,
-    });
   }
 
   // Row 2 — morphing layer

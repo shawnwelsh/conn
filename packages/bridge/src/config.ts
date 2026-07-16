@@ -11,6 +11,8 @@ export interface DeckConfig {
   maxSessions: number;
   doubleTapMs: number;
   longPressMs: number;
+  /** Seconds a pending long-press move waits for a target before cancelling. */
+  moveCancelSeconds: number;
   staleSessionMinutes: number;
   /** Where an "always allow" deck press writes its rule. Default "session"
    * (this run only, no disk write). */
@@ -59,6 +61,7 @@ export function loadConfig(): DeckConfig {
   cfg.maxSessions ??= 15;
   if (cfg.maxSessions < cfg.slots) throw new Error("config: maxSessions must be >= slots");
   cfg.longPressMs ??= 500;
+  cfg.moveCancelSeconds ??= 5;
   cfg.delivery.windowMode ??= "activeWindow";
   cfg.alwaysAllowDestination ??= "session";
   const validDest = ["session", "localSettings", "projectSettings", "userSettings"];

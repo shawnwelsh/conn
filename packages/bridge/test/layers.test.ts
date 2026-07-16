@@ -10,6 +10,7 @@ const cfg: DeckConfig = {
   maxSessions: 15,
   doubleTapMs: 300,
   longPressMs: 500,
+  moveCancelSeconds: 5,
   staleSessionMinutes: 60,
   alwaysAllowDestination: "session",
   delivery: { adapter: "noop", ahkPath: "", windowMode: "activeWindow" },
@@ -28,7 +29,11 @@ describe("row-1 stale dimming", () => {
     const stale = start(r, "stale");
     stale.lastEventAt = Date.now() - 61 * 60_000; // 61 min ago
 
-    const layer: DeckLayerState = { row2: "idle", controls: { planNext: "plan", modelNext: 1 } };
+    const layer: DeckLayerState = {
+      row1: { mode: "agents", pagerPage: 0 },
+      row2: "idle",
+      controls: { planNext: "plan", modelNext: 1 },
+    };
     const tiles = computeTiles(r, layer, cfg);
 
     expect(tiles[fresh.slot]!.dim).toBeFalsy();
@@ -40,6 +45,7 @@ describe("row-1 stale dimming", () => {
     const s = start(r, "asking");
     s.lastEventAt = Date.now() - 120 * 60_000; // very old
     const layer: DeckLayerState = {
+      row1: { mode: "agents", pagerPage: 0 },
       row2: "permission",
       permission: { sessionId: "asking", toolName: "Bash", summary: "echo x" },
       controls: { planNext: "plan", modelNext: 1 },

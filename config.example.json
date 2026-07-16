@@ -5,6 +5,7 @@
   "maxSessions": 15,
   "doubleTapMs": 300,
   "longPressMs": 500,
+  "moveCancelSeconds": 5,
   "staleSessionMinutes": 60,
   "alwaysAllowDestination": "session",
   "delivery": {

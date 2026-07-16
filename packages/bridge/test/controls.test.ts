@@ -1,11 +1,11 @@
 import { describe, expect, it, beforeEach } from "vitest";
 import { DeckController } from "../src/controller.js";
 import { SessionRegistry } from "../src/registry.js";
-import { initialControls, type DeckLayerState } from "../src/layers.js";
+import { initialControls, initialRow1, type DeckLayerState } from "../src/layers.js";
 import type { DeckConfig } from "../src/config.js";
 import type { DeliveryAdapter, SessionRef } from "../src/delivery/adapter.js";
 
-const cfg = { doubleTapMs: 300, longPressMs: 500, cannedCommands: {} } as unknown as DeckConfig;
+const cfg = { slots: 5, doubleTapMs: 300, longPressMs: 500, moveCancelSeconds: 5, cannedCommands: {} } as unknown as DeckConfig;
 const noopLog = { info: () => {}, warn: () => {}, debug: () => {} } as never;
 const flush = () => new Promise((r) => setTimeout(r, 10));
 
@@ -33,7 +33,7 @@ describe("Plan/Model blind toggles", () => {
   beforeEach(() => {
     registry = new SessionRegistry(5);
     registry.ensure({ session_id: "s1", cwd: "C:\\dev\\x", hook_event_name: "SessionStart" });
-    layer = { row2: "idle", controls: initialControls() };
+    layer = { row1: initialRow1(), row2: "idle", controls: initialControls() };
     delivery = new RecordingAdapter();
     controller = new DeckController(registry, layer, delivery, cfg, noopLog, () => {});
   });

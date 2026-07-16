@@ -26,8 +26,6 @@ export class DeckController {
       onPermissionKey?: (keyIndex: number) => void;
       onQuestionKey?: (optionIndex: number) => void;
       onQuestionPager?: () => void;
-      /** Row-1 long-press → begin a move (wired in the paging increment). */
-      onRow1LongPress?: (slot: Slot) => void;
     } = {},
   ) {
     this.gestures = new GestureRecognizer(
@@ -48,18 +46,36 @@ export class DeckController {
     this.gestures.up(slot);
   }
 
+  private moveTimer: ReturnType<typeof setTimeout> | null = null;
+
   private dispatch(slot: Slot, gesture: Gesture): void {
-    if (slot <= 4) {
-      if (gesture === "long") {
-        this.log.info({ slot }, "row1 long-press");
-        return this.hooks.onRow1LongPress?.(slot);
-      }
-      if (gesture === "double") return void this.row1DoubleTap(slot);
-      return this.row1Tap(slot);
-    }
+    if (slot <= 4) return this.row1(slot, gesture);
     // Rows 2 and 3 act on tap; double/long collapse to a tap for now.
     if (slot <= 9) return this.row2(slot - 5);
     return void this.row3(slot - 10);
+  }
+
+  /** Row-1 gesture routing, dependent on the current row-1 mode. */
+  private row1(slot: Slot, gesture: Gesture): void {
+    const last = this.cfg.slots - 1; // last physical key = pager/control slot
+    switch (this.layer.row1.mode) {
+      case "move":
+        if (gesture === "long") return; // ignore long-press while placing
+        if (slot === last) return this.cancelMove();
+        return this.completeMove(slot);
+      case "pager":
+        if (gesture === "long" && slot < last) return this.beginMoveFromPager(slot);
+        if (slot === last) return this.pagerAdvanceOrClose();
+        return this.pagerPick(slot);
+      default: // agents
+        if (this.registry.pagerActive() && slot === last) {
+          if (gesture !== "long") this.openPager();
+          return;
+        }
+        if (gesture === "long") return this.beginMove(this.registry.bySlot(slot)?.sessionId);
+        if (gesture === "double") return void this.row1DoubleTap(slot);
+        return this.row1Tap(slot);
+    }
   }
 
   private row1Tap(slot: Slot): void {
@@ -72,6 +88,84 @@ export class DeckController {
     if (!session) return;
     const ok = await this.delivery.focus(session);
     this.log.info({ slot, session: session.sessionId, ok }, "focus");
+  }
+
+  // --- Pager (browse overflow → pick into slot #1) ---
+
+  private openPager(): void {
+    this.layer.row1 = { mode: "pager", pagerPage: 0 };
+    this.registry.clearPagerFlash();
+    this.onLayerChanged();
+  }
+
+  private closePager(): void {
+    this.layer.row1 = { mode: "agents", pagerPage: 0 };
+    this.onLayerChanged();
+  }
+
+  private pagerPick(slot: Slot): void {
+    const perPage = this.cfg.slots - 1;
+    const entry = this.registry.overflowEntries()[this.layer.row1.pagerPage * perPage + slot];
+    if (entry) {
+      this.registry.promoteToFront(entry.sessionId);
+      this.log.info({ session: entry.sessionId }, "pager pick → slot 1");
+    }
+    this.closePager();
+  }
+
+  private pagerAdvanceOrClose(): void {
+    const perPage = this.cfg.slots - 1;
+    const pages = Math.max(1, Math.ceil(this.registry.overflowEntries().length / perPage));
+    if (pages > 1) {
+      this.layer.row1.pagerPage = (this.layer.row1.pagerPage + 1) % pages;
+      this.onLayerChanged();
+    } else {
+      this.closePager();
+    }
+  }
+
+  // --- Move (long-press a session, then tap its landing slot) ---
+
+  private beginMove(sessionId: string | undefined): void {
+    if (!sessionId) return;
+    this.layer.row1 = { mode: "move", pagerPage: 0, moveSource: sessionId };
+    this.armMoveTimer();
+    this.log.info({ session: sessionId }, "move: begin");
+    this.onLayerChanged();
+  }
+
+  private beginMoveFromPager(slot: Slot): void {
+    const perPage = this.cfg.slots - 1;
+    const entry = this.registry.overflowEntries()[this.layer.row1.pagerPage * perPage + slot];
+    this.beginMove(entry?.sessionId);
+  }
+
+  private completeMove(targetIndex: number): void {
+    const src = this.layer.row1.moveSource;
+    if (src) {
+      this.registry.moveToSlot(src, targetIndex);
+      this.log.info({ session: src, targetIndex }, "move: placed");
+    }
+    this.endMove();
+  }
+
+  private cancelMove(): void {
+    this.log.info("move: cancelled");
+    this.endMove();
+  }
+
+  private endMove(): void {
+    if (this.moveTimer) clearTimeout(this.moveTimer);
+    this.moveTimer = null;
+    this.layer.row1 = { mode: "agents", pagerPage: 0 };
+    this.onLayerChanged();
+  }
+
+  private armMoveTimer(): void {
+    if (this.moveTimer) clearTimeout(this.moveTimer);
+    this.moveTimer = setTimeout(() => {
+      if (this.layer.row1.mode === "move") this.cancelMove();
+    }, this.cfg.moveCancelSeconds * 1000);
   }
 
   private row2(index: number): void {
