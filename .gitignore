@@ -1,0 +1,7 @@
+node_modules/
+dist/
+logs/
+config.json
+probe-log.jsonl
+scratch-probe/.claude/settings.local.json
+*.tsbuildinfo
