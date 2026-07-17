@@ -57,18 +57,20 @@ describe("dead bound-window handling (exact-target sessions never fall back)", (
     expect(calls).toEqual(["focus|ahk_exe Claude.exe"]);
   });
 
-  it("background ControlSend delivery (ok|bg) counts as success", async () => {
-    const { adapter, calls } = stubbed(() => "ok|bg");
+  it("delivers to a bound console via its exact HWND (ControlSend daemon-side)", async () => {
+    const { adapter, calls } = stubbed(() => "ok");
     const ok = await adapter.sendKey({ sessionId: "s", cwd: "", label: "x", hwnd: 42 }, "escape");
     expect(ok).toBe(true);
     expect(calls).toEqual(["key|ahk_id 42|{Esc}"]);
   });
 
-  it("alive-but-unfocusable (err|noactivate) fails without a fallback attempt", async () => {
-    const { adapter, calls } = stubbed(() => "err|noactivate");
-    const ok = await adapter.focus({ sessionId: "s", cwd: "", label: "x", hwnd: 42 });
-    expect(ok).toBe(false);
-    expect(calls).toEqual(["focus|ahk_id 42"]);
+  it("distinguishes gone / noactivate / timeout, none falling back to the app", async () => {
+    for (const reply of ["err|gone", "err|noactivate", "err|timeout"]) {
+      const { adapter, calls } = stubbed(() => reply);
+      const ok = await adapter.sendKey({ sessionId: "s", cwd: "", label: "x", hwnd: 42 }, "enter");
+      expect(ok).toBe(false);
+      expect(calls).toEqual(["key|ahk_id 42|{Enter}"]); // exact window only
+    }
   });
 });
 

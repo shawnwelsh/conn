@@ -19,7 +19,9 @@ import type { Logger } from "../log.js";
 
 const DAEMON_PATH = join(dirname(fileURLToPath(import.meta.url)), "daemon.ahk");
 const FALLBACK_QUERY = "ahk_exe Claude.exe";
-const COMMAND_TIMEOUT_MS = 4000;
+// ControlSend is fast; focus() activation (double-tap) can take a couple of
+// seconds through the foreground-lock workarounds — allow generous headroom.
+const COMMAND_TIMEOUT_MS = 8000;
 
 /** chord ("shift+tab", "ctrl+n", "enter", "2") → AHK v2 Send syntax. */
 export function chordToAhk(chord: string): string {
@@ -110,42 +112,34 @@ export class AhkAdapter implements DeliveryAdapter {
    * "perSession" mode we try the session's own window first, warning if we
    * can only reach the app.
    */
-  /** "ok" = delivered focused; "ok|bg" = delivered via ControlSend without
-   * focus (foreground lock refused activation) — both are success. */
-  private static delivered(reply: string): boolean {
-    return reply === "ok" || reply === "ok|bg";
-  }
-
   private async withWindow(
     session: SessionRef,
     run: (query: string) => Promise<string>,
   ): Promise<boolean> {
     // A bound HWND (deck-launched console) is exact — use it regardless of
-    // windowMode. If that window is GONE, refuse delivery entirely: an
-    // exact-target session must never degrade to typing into whatever
-    // conversation happens to be visible in the app.
+    // windowMode. Console commands go via ControlSend (focus-free) daemon
+    // side. If the window is GONE, refuse: an exact-target session must never
+    // degrade to typing into whatever conversation happens to be visible.
     if (session.hwnd) {
       const reply = await run(`ahk_id ${session.hwnd}`);
-      if (AhkAdapter.delivered(reply)) {
-        if (reply === "ok|bg") {
-          this.log.info({ session: session.label }, "delivered in background (ControlSend, no focus)");
-        }
-        return true;
-      }
-      this.log.warn(
-        { session: session.label, hwnd: session.hwnd, reply },
-        reply === "err|noactivate"
-          ? "delivery failed: window alive but focus refused (foreground lock)"
-          : "delivery refused: bound window gone (session likely closed) — not falling back",
-      );
+      if (reply === "ok") return true;
+      const why =
+        reply === "err|gone"
+          ? "delivery refused: bound window gone (session likely closed) — not falling back"
+          : reply === "err|noactivate"
+            ? "delivery failed: window alive but focus refused (foreground lock)"
+            : reply === "err|timeout"
+              ? "delivery failed: AHK daemon did not respond in time"
+              : `delivery failed: ${reply}`;
+      this.log.warn({ session: session.label, hwnd: session.hwnd, reply }, why);
       return false;
     }
     if (this.windowMode === "activeWindow") {
-      return AhkAdapter.delivered(await run(FALLBACK_QUERY));
+      return (await run(FALLBACK_QUERY)) === "ok";
     }
     for (const query of [session.label, FALLBACK_QUERY]) {
       const result = await run(query);
-      if (AhkAdapter.delivered(result)) {
+      if (result === "ok") {
         if (query === FALLBACK_QUERY) {
           this.log.warn({ session: session.label }, "delivery degraded: focused app, not the specific session window");
         }

@@ -32,18 +32,39 @@ resolveWin(winQuery) {
   return WinExist(winQuery)
 }
 
-; Bring a window to the foreground. Returns "ok", or "noactivate" when the
-; window EXISTS but Windows' foreground lock refuses the activation.
+; Bound = we address a specific window handle (a deck-launched console), which
+; takes the focus-free ControlSend path. App-level queries (ahk_exe …) don't.
+isBound(winQuery) {
+  return InStr(winQuery, "ahk_id ") = 1
+}
+
+; Bring a window to the foreground (for focus / double-tap surfacing).
+; Returns "ok", or "noactivate" when the window EXISTS but Windows' foreground
+; lock refuses activation. Escalates through the standard workarounds.
 activateHwnd(hwnd) {
+  if (WinActive(hwnd))
+    return "ok"
   WinActivate(hwnd)
-  if (!WinWaitActive(hwnd, , 2)) {
-    ; A brief Alt tap grants foreground rights — the classic workaround.
-    Send "{Alt down}{Alt up}"
+  if (WinWaitActive(hwnd, , 1))
+    return settle()
+  ; A brief Alt tap grants foreground rights — the classic workaround.
+  Send "{Alt down}{Alt up}"
+  WinActivate(hwnd)
+  if (WinWaitActive(hwnd, , 1))
+    return settle()
+  ; Last resort: minimize+restore usually defeats a stubborn foreground lock.
+  try {
+    WinMinimize(hwnd)
+    WinRestore(hwnd)
     WinActivate(hwnd)
-    if (!WinWaitActive(hwnd, , 2))
-      return "noactivate"
+    if (WinWaitActive(hwnd, , 1))
+      return settle()
   }
-  Sleep 120 ; let focus settle before typing
+  return "noactivate"
+}
+
+settle() {
+  Sleep 120
   return "ok"
 }
 
@@ -91,14 +112,16 @@ loop {
         }
         ; Re-join remainder in case the text itself contains '|'
         text := SubStr(line, StrLen(parts[1]) + StrLen(parts[2]) + 3)
-        if (activateHwnd(hwnd) = "ok") {
+        if (isBound(parts[2])) {
+          ; Bound console window: ControlSend delivers straight to the console
+          ; input buffer — no focus needed or stolen (proven reliable).
+          ControlSendText(text, , parts[2])
+          respond("ok")
+        } else if (activateHwnd(hwnd) = "ok") {
           SendText(text)
           respond("ok")
         } else {
-          ; Foreground lock refused focus — deliver directly to the window
-          ; instead. ControlSend doesn't need (or steal) focus.
-          ControlSendText(text, , "ahk_id " . hwnd)
-          respond("ok|bg")
+          respond("err|noactivate")
         }
       case "key":
         hwnd := resolveWin(parts[2])
@@ -106,12 +129,14 @@ loop {
           respond("err|gone")
           continue
         }
-        if (activateHwnd(hwnd) = "ok") {
+        if (isBound(parts[2])) {
+          ControlSend(parts[3], , parts[2])
+          respond("ok")
+        } else if (activateHwnd(hwnd) = "ok") {
           sendChord(parts[3])
           respond("ok")
         } else {
-          ControlSend(parts[3], , "ahk_id " . hwnd)
-          respond("ok|bg")
+          respond("err|noactivate")
         }
       case "seq":
         ; parts[3..] are chords; send each with a gap so a menu opened by an
@@ -121,18 +146,23 @@ loop {
           respond("err|gone")
           continue
         }
-        bg := activateHwnd(hwnd) != "ok"
+        bound := isBound(parts[2])
+        focused := bound ? false : (activateHwnd(hwnd) = "ok")
+        if (!bound && !focused) {
+          respond("err|noactivate")
+          continue
+        }
         i := 3
         while (i <= parts.Length) {
-          if (bg)
-            ControlSend(parts[i], , "ahk_id " . hwnd)
+          if (bound)
+            ControlSend(parts[i], , parts[2])
           else
             sendChord(parts[i])
           if (i < parts.Length)
             Sleep 200
           i++
         }
-        respond(bg ? "ok|bg" : "ok")
+        respond("ok")
       default:
         respond("err|unknown command: " . cmd)
     }
