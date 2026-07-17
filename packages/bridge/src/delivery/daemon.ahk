@@ -94,11 +94,12 @@ loop {
         else
           respond(activateHwnd(hwnd) = "ok" ? "ok" : "err|noactivate")
       case "findpid":
-        ; Resolve a process id to its top-level window handle (0 if none yet).
-        ; Used by the console launcher to bind a spawned terminal to a session.
-        DetectHiddenWindows true
+        ; Resolve a process id to its VISIBLE top-level window (0 if none yet).
+        ; Never enable DetectHiddenWindows here: console processes own hidden
+        ; plumbing windows (PseudoConsoleWindow under ConPTY, MSCTFIME UI)
+        ; that match first and are undeliverable — binding one sends every
+        ; keystroke into the void while reporting ok.
         found := WinExist("ahk_pid " . parts[2])
-        DetectHiddenWindows false
         respond("hwnd|" . (found ? found : 0))
       case "checkwin":
         ; Liveness probe for a bound window handle (minimized counts as

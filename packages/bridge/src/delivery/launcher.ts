@@ -17,6 +17,11 @@ import type { Logger } from "../log.js";
  * a pending launch — the next SessionStart arriving from that cwd (within
  * 90s) binds to the handle and is classified windowKind: "console".
  *
+ * Why classic conhost: with Windows Terminal as the default terminal, every
+ * spawned console's visible window belongs to the single WindowsTerminal.exe
+ * process — per-session pid→window binding is impossible and ControlSend to
+ * the pid's hidden PseudoConsoleWindow silently delivers nothing.
+ *
  * With worktrees enabled (default), each New press also creates a FRESH git
  * worktree on branch `deck/<codename>` — parallel sessions never share a
  * working tree, and because row-1 labels derive from the branch, the
@@ -198,14 +203,26 @@ export class ConsoleLauncher {
         "launcher: spawning into a cwd already used by another session — they will share the working tree",
       );
     }
-    // ShellExecute (Start-Process) is the only spawn path that reliably
-    // creates a real console window — Node's detached spawn uses
-    // DETACHED_PROCESS on Windows, which creates NO console at all.
-    // -PassThru hands back the cmd.exe pid for HWND binding.
+    // Spawn under CLASSIC conhost explicitly. Windows 11 delegates new
+    // consoles to Windows Terminal, where the visible window belongs to
+    // WindowsTerminal.exe (ONE process for all windows) and the spawned pid
+    // owns only a hidden PseudoConsoleWindow — ControlSend into it reports ok
+    // and delivers nothing. conhost.exe hosting yields a real
+    // ConsoleWindowClass window owned by the cmd CHILD (classic consoles
+    // attribute the window to the client, so we resolve and return the child
+    // pid, not conhost's). Raw-mode VT input arrives focus-free via
+    // ControlSend — including Shift+Tab as ESC[Z (probe-proven).
+    // ShellExecute (Start-Process) remains the spawn mechanism: Node's
+    // detached spawn creates NO console window on Windows at all.
     const psq = (s: string) => "'" + s.replace(/'/g, "''") + "'";
     const script =
-      `(Start-Process -FilePath cmd.exe -ArgumentList '/k',${psq(this.command)} ` +
-      `-WorkingDirectory ${psq(spawnDir)} -PassThru).Id`;
+      `$p = Start-Process -FilePath conhost.exe -ArgumentList 'cmd','/k',${psq(this.command)} ` +
+      `-WorkingDirectory ${psq(spawnDir)} -PassThru; ` +
+      `$child = $null; ` +
+      `for ($i = 0; $i -lt 24 -and -not $child; $i++) { ` +
+      `Start-Sleep -Milliseconds 250; ` +
+      `$child = (Get-CimInstance Win32_Process -Filter "ParentProcessId=$($p.Id) and Name='cmd.exe'" | Select-Object -First 1).ProcessId }; ` +
+      `if ($child) { $child } else { 0 }`;
     const pid = await new Promise<number | null>((resolve) => {
       const ps = spawn("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", script], {
         stdio: ["ignore", "pipe", "ignore"],
@@ -216,7 +233,7 @@ export class ConsoleLauncher {
       const timer = setTimeout(() => {
         ps.kill();
         resolve(null);
-      }, 8000);
+      }, 15_000); // spawn + CIM child-pid poll (~6s worst case) need headroom
       ps.on("exit", () => {
         clearTimeout(timer);
         const n = Number(out.trim());
