@@ -276,8 +276,13 @@ export function computeTiles(
 
   // Row 3 — PTT / interrupt / globals, paged behind the Page key.
   if (layer.row3Page === 1) {
+    // Mode (menu) speaks the desktop picker chord (Ctrl+Shift+M); the console
+    // TUI has no such menu — hide the key there (console mode cycling is the
+    // row-2 "mode" builtin, Shift+Tab).
     tiles.push(
-      { text: "Mode", subtext: "menu", state: "command", icon: "menu" }, // Ctrl+Shift+M picker
+      targeted?.windowKind === "desktop"
+        ? { text: "Mode", subtext: "menu", state: "command", icon: "menu" }
+        : { text: "", state: "blank" },
       { text: "", state: "blank" },
       { text: "", state: "blank" },
       { text: "", state: "blank" },

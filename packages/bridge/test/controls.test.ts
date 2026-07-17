@@ -120,6 +120,15 @@ describe("row 3 globals", () => {
     expect(layer.row3Page).toBe(0);
   });
 
+  it("Mode(menu) no-ops for console sessions — the TUI has no picker chord", async () => {
+    registry.registerPendingLaunch({ cwd: "C:\\dev\\con", pid: 9, hwnd: 77, at: Date.now() });
+    const con = registry.ensure({ session_id: "con", cwd: "C:\\dev\\con", hook_event_name: "SessionStart" });
+    registry.target(con.sessionId);
+    await (controller as any).row3(4); // → globals page
+    await (controller as any).row3(0); // Mode(menu) slot — hidden for consoles
+    expect(delivery.calls).toEqual([]);
+  });
+
   it("New works with NO targeted session via newSessionDir (global key)", async () => {
     const emptyRegistry = new SessionRegistry(5); // no sessions at all
     const cfgWithDir = { ...(cfg as object), newSessionDir: "C:\\dev\\mainrepo" } as DeckConfig;

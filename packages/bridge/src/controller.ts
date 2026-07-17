@@ -380,8 +380,10 @@ export class DeckController {
       return;
     }
     if (this.layer.row3Page === 1) {
-      if (index === 0 && target) {
-        // Mode (menu): open the full Ctrl+Shift+M picker on screen.
+      if (index === 0 && target && target.windowKind === "desktop") {
+        // Mode (menu): open the full Ctrl+Shift+M picker on screen. Desktop
+        // dialect only — the console TUI has no picker chord, and the key
+        // renders blank there.
         const ok = await this.delivery.sendKey(target, "ctrl+shift+m");
         this.log.info({ key: "ModeMenu", session: target.sessionId, ok }, "row3 command");
       }
