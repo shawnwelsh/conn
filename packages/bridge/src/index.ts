@@ -75,6 +75,9 @@ let flashTimer: ReturnType<typeof setInterval> | null = null;
 /** Render loop: recompute all 15 tiles, broadcast only the ones that changed.
  * The tile cache makes unchanged tiles nearly free to recompute. */
 function pushRender(): void {
+  // Boot: events can fire (e.g. STT status) before the WS server exists;
+  // the explicit pushRender() after listen paints whatever state accrued.
+  if (!sockets) return;
   const tiles = computeTiles(registry, layer, cfg, commands.all(), flashPhase);
   const images = tiles.map((t) => {
     // Banner tiles are slices of one wide image; renderBanner caches slices.
