@@ -184,8 +184,11 @@ export class ConsoleLauncher {
     }
 
     // Two sessions editing one working tree WILL step on each other's files;
-    // allow it (fallback path) but say so loudly.
-    const sharing = this.registry.all().filter((s) => samePath(s.cwd, spawnDir));
+    // allow it (fallback path) but say so loudly. (Excluding provisional
+    // entries — the key we just claimed for THIS launch isn't a conflict.)
+    const sharing = this.registry
+      .all()
+      .filter((s) => !s.sessionId.startsWith("launching:") && samePath(s.cwd, spawnDir));
     if (sharing.length > 0) {
       this.log.warn(
         { cwd: spawnDir, existing: sharing.map((s) => s.label) },

@@ -32,8 +32,15 @@ activate(winQuery) {
   if (!hwnd)
     return false
   WinActivate(hwnd)
-  if (!WinWaitActive(hwnd, , 2))
-    return false
+  if (!WinWaitActive(hwnd, , 2)) {
+    ; Windows foreground-lock can refuse activation requested on behalf of a
+    ; background process (e.g. surfacing a freshly spawned console). A brief
+    ; Alt tap grants foreground rights — the classic workaround — then retry.
+    Send "{Alt down}{Alt up}"
+    WinActivate(hwnd)
+    if (!WinWaitActive(hwnd, , 2))
+      return false
+  }
   Sleep 120 ; let focus settle before typing
   return true
 }
