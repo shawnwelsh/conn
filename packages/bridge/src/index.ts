@@ -214,9 +214,12 @@ pushRender();
 
 log.info({ port: cfg.port }, `claude-deck bridge up — web deck at http://127.0.0.1:${cfg.port}/`);
 
-// Periodic re-render so stale-session dimming (Phase 3) and clock-driven
-// states can refresh without an inbound event.
-setInterval(() => pushRender(), 30_000).unref();
+// Periodic sweep: re-derive labels (branch renames reach the buttons) and
+// re-render so stale-session dimming refreshes without an inbound event.
+setInterval(() => {
+  registry.refreshLabels();
+  pushRender();
+}, 30_000).unref();
 
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
   process.on(signal, () => {

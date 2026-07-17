@@ -9,6 +9,9 @@ export interface SessionEntry {
   sessionId: string;
   slot: number; // 0..slots-1, or -1 when overflowed
   label: string;
+  /** Label before duplicate-disambiguation — compared on refresh so a branch
+   * rename updates the button without suffixes flapping. */
+  labelBase: string;
   cwd: string;
   status: SessionStatus;
   lastEventAt: number;
@@ -122,13 +125,11 @@ export class SessionRegistry extends EventEmitter {
       // Disambiguate duplicate feature names (e.g. two sessions in the same
       // worktree/branch): second one becomes "name 2", then "name 3", …
       const base = deriveLabel(event.cwd);
-      const taken = new Set(this.all().map((s) => s.label));
-      let label = base;
-      for (let n = 2; taken.has(label); n++) label = `${base} ${n}`;
       entry = {
         sessionId: event.session_id,
         slot: -1,
-        label,
+        label: this.dedupeLabel(base, event.session_id),
+        labelBase: base,
         cwd: event.cwd ?? "",
         status: "idle",
         lastEventAt: Date.now(),
@@ -148,6 +149,33 @@ export class SessionRegistry extends EventEmitter {
    * binds to its window. */
   registerPendingLaunch(launch: PendingLaunch): void {
     this.pendingLaunches.push(launch);
+  }
+
+  private dedupeLabel(base: string, forSessionId: string): string {
+    const taken = new Set(
+      this.all().filter((s) => s.sessionId !== forSessionId).map((s) => s.label),
+    );
+    let label = base;
+    for (let n = 2; taken.has(label); n++) label = `${base} ${n}`;
+    return label;
+  }
+
+  /**
+   * Re-derive labels from the filesystem so a branch rename shows up on the
+   * button ("the name IS the feature"). Called by the render loop's periodic
+   * sweep; only sessions whose BASE name changed are touched, so existing
+   * duplicate suffixes never flap.
+   */
+  refreshLabels(): void {
+    let changed = false;
+    for (const entry of this.sessions.values()) {
+      const base = deriveLabel(entry.cwd);
+      if (base === entry.labelBase) continue;
+      entry.labelBase = base;
+      entry.label = this.dedupeLabel(base, entry.sessionId);
+      changed = true;
+    }
+    if (changed) this.emit("changed");
   }
 
   private consumePendingLaunch(entry: SessionEntry): void {

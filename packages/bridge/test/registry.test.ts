@@ -1,4 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, beforeAll, afterAll } from "vitest";
+import { mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { SessionRegistry, deriveLabel, prettifyBranch } from "../src/registry.js";
 
 function start(registry: SessionRegistry, id: string, cwd = `C:\\dev\\${id}`) {
@@ -31,6 +34,43 @@ describe("duplicate label disambiguation", () => {
     expect(a.label).toBe("same-dir");
     expect(b.label).toBe("same-dir 2");
     expect(c.label).toBe("same-dir 3");
+  });
+});
+
+describe("live label refresh (branch rename → button)", () => {
+  const repo = join(tmpdir(), `claude-deck-labelrefresh-${process.pid}`);
+
+  beforeAll(() => {
+    // A fake repo: .git dir with a HEAD file is all deriveLabel reads.
+    mkdirSync(join(repo, ".git"), { recursive: true });
+    writeFileSync(join(repo, ".git", "HEAD"), "ref: refs/heads/deck/nimble-badger\n");
+  });
+  afterAll(() => rmSync(repo, { recursive: true, force: true }));
+
+  it("re-derives the label after a branch rename, without suffix flapping", () => {
+    const r = new SessionRegistry(5);
+    const e = r.ensure({ session_id: "s1", cwd: repo, hook_event_name: "SessionStart" });
+    expect(e.label).toBe("nimble badger");
+
+    // Rename the branch (what `git branch -m` does to HEAD).
+    writeFileSync(join(repo, ".git", "HEAD"), "ref: refs/heads/deck/quote-editor-access-fix\n");
+    r.refreshLabels();
+    expect(e.label).toBe("quote editor access fix");
+    expect(e.labelBase).toBe("quote editor access fix");
+
+    // No-op sweep: nothing changes, suffixes don't churn.
+    r.refreshLabels();
+    expect(e.label).toBe("quote editor access fix");
+  });
+
+  it("keeps duplicate suffixes stable across refreshes", () => {
+    const r = new SessionRegistry(5);
+    const a = r.ensure({ session_id: "a", cwd: "C:\\nope\\dupe", hook_event_name: "SessionStart" });
+    const b = r.ensure({ session_id: "b", cwd: "C:\\nope\\dupe", hook_event_name: "SessionStart" });
+    r.refreshLabels();
+    r.refreshLabels();
+    expect(a.label).toBe("dupe");
+    expect(b.label).toBe("dupe 2");
   });
 });
 
