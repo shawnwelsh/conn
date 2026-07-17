@@ -375,9 +375,12 @@ export class DeckController {
       case 2: // Esc — interrupt the targeted session
         if (target) await this.delivery.sendKey(target, "escape");
         return;
-      case 3: // New — fresh worktree + console session
-        if (!target) {
-          this.log.warn("New ignored: no targeted session");
+      case 3: {
+        // New — fresh worktree + console session. A GLOBAL key: works with
+        // no session targeted (targeted repo → configured default repo).
+        const dir = target?.cwd ?? this.cfg.newSessionDir;
+        if (!dir) {
+          this.log.warn("New ignored: no targeted session and no newSessionDir configured");
           return;
         }
         if (this.layer.launching) {
@@ -387,13 +390,14 @@ export class DeckController {
         this.layer.launching = true;
         this.onLayerChanged();
         try {
-          const ok = (await this.launcher?.launch(target.cwd)) ?? false;
-          this.log.info({ key: "New", cwd: target.cwd, ok }, "row3 command");
+          const ok = (await this.launcher?.launch(dir)) ?? false;
+          this.log.info({ key: "New", cwd: dir, ok }, "row3 command");
         } finally {
           this.layer.launching = false;
           this.onLayerChanged();
         }
         return;
+      }
     }
   }
 }

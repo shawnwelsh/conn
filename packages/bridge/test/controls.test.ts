@@ -120,6 +120,16 @@ describe("row 3 globals", () => {
     expect(layer.row3Page).toBe(0);
   });
 
+  it("New works with NO targeted session via newSessionDir (global key)", async () => {
+    const emptyRegistry = new SessionRegistry(5); // no sessions at all
+    const cfgWithDir = { ...(cfg as object), newSessionDir: "C:\\dev\\mainrepo" } as DeckConfig;
+    const c2 = new DeckController(emptyRegistry, layer, delivery, cfgWithDir, noopLog, () => {});
+    const launches: string[] = [];
+    c2.setLauncher({ launch: async (cwd: string) => { launches.push(cwd); return true; } } as never);
+    await (c2 as any).row3(3);
+    expect(launches).toEqual(["C:\\dev\\mainrepo"]);
+  });
+
   it("New sets the launching flag during flight and ignores double-presses", async () => {
     let resolveLaunch!: (v: boolean) => void;
     const launches: string[] = [];

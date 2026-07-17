@@ -37,6 +37,9 @@ export interface DeckConfig {
   commandsFile: string;
   /** Command the "New" key runs in a fresh console window. */
   newSessionCommand: string;
+  /** Repo the New key uses when NO session is targeted (New is a global —
+   * it must work on an empty deck). Unset = New needs a target. */
+  newSessionDir?: string;
   /** When true (default), New creates a fresh git worktree on branch
    * deck/<codename> — the codename becomes the feature name on the button. */
   newSessionWorktrees: boolean;
