@@ -194,8 +194,10 @@ export class DeckController {
     if (suggestion) {
       void (async () => {
         if (index === 0) {
+          // Focus-free: the accept surface is console-only, and ControlSend
+          // delivers without activation. Gating on focus() would abort here
+          // when the foreground lock refuses to surface a background console.
           const ok =
-            (await this.delivery.focus(suggestion.session)) &&
             (await this.delivery.sendText(suggestion.session, this.cfg.suggestionAcceptText)) &&
             (await this.delivery.sendKey(suggestion.session, "enter"));
           if (ok) {
@@ -300,8 +302,12 @@ export class DeckController {
     } else if (entry.kind === "builtin" && entry.id === "model") {
       ok = await this.cycleModel(target);
     } else if (entry.kind === "text") {
+      // Deliver focus-free. ControlSend (console) and the app-activate path
+      // inside sendText (desktop) both type without a prior focus(); gating on
+      // focus() wrongly aborts bound-console delivery when the foreground lock
+      // refuses activation, and running a command shouldn't yank the window
+      // forward anyway.
       ok =
-        (await this.delivery.focus(target)) &&
         (await this.delivery.sendText(target, entry.text)) &&
         (await this.delivery.sendKey(target, "enter"));
     }
@@ -311,7 +317,6 @@ export class DeckController {
   private async cycleModel(target: SessionEntry): Promise<boolean> {
     if (target.windowKind === "console") {
       return (
-        (await this.delivery.focus(target)) &&
         (await this.delivery.sendText(target, "/model")) &&
         (await this.delivery.sendKey(target, "enter"))
       );

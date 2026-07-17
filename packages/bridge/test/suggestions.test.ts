@@ -76,13 +76,13 @@ describe("suggestion layer gating + accept", () => {
     expect(activeSuggestion(r, layer)).toBeNull();
   });
 
-  it("Accept focuses, types the accept text, presses Enter, and consumes", async () => {
+  it("Accept types the accept text focus-free, presses Enter, and consumes", async () => {
     const e = consoleSession("c1", "Want me to continue?");
     const adapter = new RecordingAdapter();
     const c = new DeckController(r, layer, adapter, cfg, noopLog, () => {});
     (c as any).row2(0);
     await flush();
-    expect(adapter.calls).toEqual(["focus", "text:yes", "key:enter"]);
+    expect(adapter.calls).toEqual(["text:yes", "key:enter"]);
     expect(e.suggestion).toBeUndefined();
     expect(activeSuggestion(r, layer)).toBeNull();
   });

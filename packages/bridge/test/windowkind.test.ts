@@ -90,7 +90,7 @@ describe("per-kind command dialects", () => {
     r.ensure({ session_id: "con", cwd: "C:\\dev\\x", hook_event_name: "SessionStart" });
     (c as any).row2(1);
     await flush();
-    expect(adapter.calls).toEqual(["focus", "text:/model", "key:enter"]);
+    expect(adapter.calls).toEqual(["text:/model", "key:enter"]);
 
     adapter.calls = [];
     const desk = r.ensure({ session_id: "desk", cwd: "C:\\dev\\y", hook_event_name: "SessionStart" });

@@ -82,12 +82,12 @@ describe("mode/model builtin commands (blind toggles)", () => {
     expect(seen).toEqual(["1", "2", "3", "4", "1"]);
   });
 
-  it("text commands deliver as focus → type → Enter", async () => {
+  it("text commands deliver focus-free as type → Enter", async () => {
     (controller as any).row2(2);
     await flush();
-    expect(delivery.calls.map((c) => c.m)).toEqual(["focus", "sendText", "sendKey"]);
-    expect(delivery.calls[1]!.chords).toEqual(["/compact"]);
-    expect(delivery.calls[2]!.chords).toEqual(["enter"]);
+    expect(delivery.calls.map((c) => c.m)).toEqual(["sendText", "sendKey"]);
+    expect(delivery.calls[0]!.chords).toEqual(["/compact"]);
+    expect(delivery.calls[1]!.chords).toEqual(["enter"]);
   });
 });
 

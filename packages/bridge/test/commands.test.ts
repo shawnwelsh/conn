@@ -78,7 +78,7 @@ describe("row-2 command pager + move", () => {
     expect(layer.row2Cmd.page).toBe(1);
     (controller as any).row2(1); // tap /f → execute + close
     await flush();
-    expect(calls).toEqual(["focus", "text:/f", "key:enter"]);
+    expect(calls).toEqual(["text:/f", "key:enter"]);
     expect(layer.row2Cmd.mode).toBe("default");
   });
 
