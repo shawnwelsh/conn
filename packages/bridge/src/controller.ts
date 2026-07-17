@@ -236,9 +236,11 @@ export class DeckController {
         const absolute = cmd.page * COMMANDS_PER_PAGE + index;
         if (gesture === "long" && index < last) return this.beginCmdMove(absolute);
         if (index === last) {
+          // Advance pages; stepping past the last page closes the pager so
+          // there's always a keystroke-free way out.
           const pages = Math.max(1, Math.ceil(entries.length / COMMANDS_PER_PAGE));
-          if (pages > 1) {
-            cmd.page = (cmd.page + 1) % pages;
+          if (cmd.page + 1 < pages) {
+            cmd.page += 1;
             this.onLayerChanged();
           } else {
             this.closeCmdPager();
@@ -264,6 +266,7 @@ export class DeckController {
         }
         const entry = entries[index];
         if (entry) void this.executeCommand(entry);
+        else this.log.debug({ index }, "row2 tap on empty command slot");
         return;
       }
     }
@@ -273,7 +276,13 @@ export class DeckController {
    * dialect (console TUI vs desktop pickers). */
   private async executeCommand(entry: CommandEntry): Promise<void> {
     const target = this.registry.targetedSession;
-    if (!target) return;
+    if (!target) {
+      this.log.warn(
+        { key: entry.kind === "builtin" ? entry.id : entry.label },
+        "row2 command ignored: no targeted session",
+      );
+      return;
+    }
     let ok = false;
     const name = entry.kind === "builtin" ? entry.id : entry.label;
     if (entry.kind === "builtin" && entry.id === "mode") {

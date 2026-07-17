@@ -83,6 +83,15 @@ describe("row-2 command pager + move", () => {
     expect(layer.row2Cmd.mode).toBe("default");
   });
 
+  it("stepping past the last page closes the pager (keystroke-free exit)", () => {
+    const { layer, controller } = setup(["/a", "/b", "/c", "/d", "/e", "/f"]);
+    (controller as any).row2(4); // open (page 0)
+    (controller as any).row2(4); // → page 1 (last)
+    (controller as any).row2(4); // past the end → close
+    expect(layer.row2Cmd.mode).toBe("default");
+    expect(layer.row2Cmd.page).toBe(0);
+  });
+
   it("long-press begins a move; drop persists via the store", async () => {
     vi.useFakeTimers();
     const { store, layer, controller } = setup(["/a", "/b", "/c", "/d", "/e"]);

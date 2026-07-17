@@ -20,6 +20,8 @@ export async function registerApiRoutes(
     layer: {
       row1: layer.row1,
       row2: layer.row2,
+      row2Cmd: layer.row2Cmd,
+      row3Page: layer.row3Page,
       permission: layer.permission ?? null,
       question: layer.question ?? null,
       controls: layer.controls,
