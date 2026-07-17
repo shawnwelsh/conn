@@ -116,9 +116,7 @@ export class ConsoleLauncher {
 
   /** Create `<root>/.claude/worktrees/<name>` on branch `deck/<name>`.
    * Returns the worktree path, or null on any failure (caller falls back). */
-  private async createWorktree(root: string): Promise<string | null> {
-    const name = this.codename(root);
-    const dir = join(root, ".claude", "worktrees", name);
+  private async createWorktree(root: string, name: string, dir: string): Promise<string | null> {
     this.log.info({ root, name, timeoutMs: this.worktreeTimeoutMs }, "launcher: creating worktree…");
     const args = ["-C", root, "worktree", "add", dir, "-b", `deck/${name}`];
     const result = await new Promise<{ code: number | null; err: string }>((res) => {
@@ -163,18 +161,26 @@ export class ConsoleLauncher {
       return false;
     }
 
+    // Claim the deck key IMMEDIATELY — the codename and target dir are
+    // computable in microseconds; everything slow (OneDrive git, spawn,
+    // window polling) happens after the user already sees the key.
     let spawnDir = cwd;
-    if (this.useWorktrees) {
-      const root = findRepoRoot(cwd);
-      if (root) {
-        const worktree = await this.createWorktree(root);
-        if (worktree) {
-          spawnDir = worktree;
-          this.preTrust(worktree);
-        }
+    const root = this.useWorktrees ? findRepoRoot(cwd) : null;
+    if (this.useWorktrees && !root) this.log.warn({ cwd }, "launcher: not a git repo — spawning in place");
+    if (root) {
+      const name = this.codename(root);
+      const dir = join(root, ".claude", "worktrees", name);
+      this.registry.addProvisionalAt(dir);
+      const worktree = await this.createWorktree(root, name, dir);
+      if (worktree) {
+        spawnDir = worktree;
+        this.preTrust(worktree);
+        this.registry.refreshLabels(); // branch now exists → spaced feature name
       } else {
-        this.log.warn({ cwd }, "launcher: not a git repo — spawning in place");
+        this.registry.repointProvisional(dir, cwd); // shared-dir fallback keeps the key
       }
+    } else {
+      this.registry.addProvisionalAt(cwd);
     }
 
     // Two sessions editing one working tree WILL step on each other's files;
@@ -213,6 +219,7 @@ export class ConsoleLauncher {
     });
     if (!pid) {
       this.log.warn({ cwd: spawnDir }, "launcher: spawn failed (no pid)");
+      this.registry.dropProvisional(spawnDir); // take the key back
       return false;
     }
 
@@ -236,13 +243,9 @@ export class ConsoleLauncher {
       if (!surfaced) this.log.warn({ hwnd }, "launcher: could not surface the new console");
     }
 
-    const launch = { cwd: spawnDir, pid, hwnd, at: Date.now() };
-    this.registry.registerPendingLaunch(launch);
-    // Claim a key NOW — CC fires no SessionStart at interactive launch, so
-    // without a provisional entry the console stays invisible until the
-    // user's first prompt. Adopted in place when the real session speaks.
-    this.registry.addProvisional(launch);
-    this.log.info({ cwd: spawnDir, pid, hwnd }, "launcher: console spawned, provisional key claimed");
+    this.registry.registerPendingLaunch({ cwd: spawnDir, pid, hwnd, at: Date.now() });
+    this.registry.bindProvisional(spawnDir, { pid, hwnd });
+    this.log.info({ cwd: spawnDir, pid, hwnd }, "launcher: console spawned and bound to its key");
     return true;
   }
 }

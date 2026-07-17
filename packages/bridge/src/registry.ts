@@ -161,34 +161,69 @@ export class SessionRegistry extends EventEmitter {
     this.pendingLaunches.push(launch);
   }
 
+  private provisionalSeq = 0;
+
   /**
-   * Show a just-spawned console on the deck IMMEDIATELY. Claude Code fires no
-   * SessionStart at interactive launch (observed on 2.1.211: a session's
-   * first hook is its first prompt/tool event), so without this a fresh
-   * console is invisible until the user types something into it. The
-   * provisional entry is adopted in place — same slot, same label — when the
-   * real session's first hook arrives from that cwd.
+   * Claim a key for a console launch the INSTANT it's requested — before the
+   * worktree exists or anything spawns. Claude Code fires no SessionStart at
+   * interactive launch (observed on 2.1.211: a session's first hook is its
+   * first prompt/tool event), so this provisional entry is the only way a
+   * fresh console is visible before the user types. It's enriched via
+   * bindProvisional/repointProvisional as the launch progresses, and adopted
+   * in place when the real session's first hook arrives from that cwd.
    */
-  addProvisional(launch: PendingLaunch): SessionEntry {
+  addProvisionalAt(cwd: string): SessionEntry {
+    const id = `launching:${++this.provisionalSeq}`;
+    const base = deriveLabel(cwd);
     const entry: SessionEntry = {
-      sessionId: `launching:${launch.pid}`,
+      sessionId: id,
       slot: -1,
-      label: this.dedupeLabel(deriveLabel(launch.cwd), `launching:${launch.pid}`),
-      labelBase: deriveLabel(launch.cwd),
-      cwd: launch.cwd,
+      label: this.dedupeLabel(base, id),
+      labelBase: base,
+      cwd,
       status: "idle",
       lastEventAt: Date.now(),
       windowKind: "console",
-      hwnd: launch.hwnd ?? undefined,
-      pid: launch.pid,
       events: new RingBuffer(this.eventHistorySize),
     };
-    this.sessions.set(entry.sessionId, entry);
-    this.place(entry.sessionId);
+    this.sessions.set(id, entry);
+    this.place(id);
     // Pressing New means your attention is headed there — target it.
-    this.targeted = entry.sessionId;
+    this.targeted = id;
     this.emit("changed");
     return entry;
+  }
+
+  /** Attach the spawned process/window to a provisional entry. */
+  bindProvisional(cwd: string, bind: { pid: number; hwnd: number | null }): void {
+    const entry = this.findProvisional(cwd);
+    if (!entry) return;
+    entry.pid = bind.pid;
+    if (bind.hwnd) entry.hwnd = bind.hwnd;
+    this.emit("changed");
+  }
+
+  /** Worktree creation fell back — the console will spawn elsewhere. */
+  repointProvisional(oldCwd: string, newCwd: string): void {
+    const entry = this.findProvisional(oldCwd);
+    if (!entry) return;
+    entry.cwd = newCwd;
+    entry.labelBase = deriveLabel(newCwd);
+    entry.label = this.dedupeLabel(entry.labelBase, entry.sessionId);
+    this.emit("changed");
+  }
+
+  /** The launch failed outright — take the key back. */
+  dropProvisional(cwd: string): void {
+    const entry = this.findProvisional(cwd);
+    if (entry) this.release(entry.sessionId);
+  }
+
+  private findProvisional(cwd: string): SessionEntry | undefined {
+    for (const entry of this.sessions.values()) {
+      if (entry.sessionId.startsWith("launching:") && samePath(entry.cwd, cwd)) return entry;
+    }
+    return undefined;
   }
 
   /** Adopt a provisional entry for a real session id: keep its slot/order and

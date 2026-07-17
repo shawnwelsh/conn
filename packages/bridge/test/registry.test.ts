@@ -38,39 +38,53 @@ describe("duplicate label disambiguation", () => {
 });
 
 describe("provisional launch keys (no SessionStart at interactive launch)", () => {
-  const launch = { cwd: "C:\\dev\\repo\\.claude\\worktrees\\amber-wombat", pid: 4242, hwnd: 777, at: Date.now() };
+  const wt = "C:\\dev\\repo\\.claude\\worktrees\\amber-wombat";
 
-  it("claims a key immediately at spawn with the console binding", () => {
+  it("claims a key the instant the launch is requested, before any binding", () => {
     const r = new SessionRegistry(5);
-    const p = r.addProvisional(launch);
-    expect(p.sessionId).toBe("launching:4242");
+    const p = r.addProvisionalAt(wt);
     expect(p.windowKind).toBe("console");
-    expect(p.hwnd).toBe(777);
-    expect(r.snapshot().working).toContain("launching:4242");
-    expect(r.targetedSession?.sessionId).toBe("launching:4242"); // first session auto-targets
+    expect(p.hwnd).toBeUndefined(); // nothing spawned yet
+    expect(r.snapshot().working).toContain(p.sessionId);
+    expect(r.targetedSession?.sessionId).toBe(p.sessionId); // New = attention there
+
+    r.bindProvisional(wt, { pid: 4242, hwnd: 777 });
+    expect(r.get(p.sessionId)?.pid).toBe(4242);
+    expect(r.get(p.sessionId)?.hwnd).toBe(777);
   });
 
   it("is adopted in place when the real session's first hook arrives", () => {
     const r = new SessionRegistry(5);
     start(r, "existing");
-    r.registerPendingLaunch(launch);
-    r.addProvisional(launch);
-    const slotBefore = r.get("launching:4242")!.slot;
+    const p = r.addProvisionalAt(wt);
+    const provId = p.sessionId; // adoption mutates the entry in place
+    r.registerPendingLaunch({ cwd: wt, pid: 4242, hwnd: 777, at: Date.now() });
+    r.bindProvisional(wt, { pid: 4242, hwnd: 777 });
+    const slotBefore = r.get(provId)!.slot;
 
-    const real = r.ensure({ session_id: "real-abc", cwd: launch.cwd.replace(/\\/g, "/"), hook_event_name: "UserPromptSubmit" });
+    const real = r.ensure({ session_id: "real-abc", cwd: wt.replace(/\\/g, "/"), hook_event_name: "UserPromptSubmit" });
     expect(real.slot).toBe(slotBefore); // same key, no jump
     expect(real.hwnd).toBe(777);
     expect(real.windowKind).toBe("console");
-    expect(r.get("launching:4242")).toBeUndefined(); // no duplicate
-    expect(r.all().filter((s) => samePath(s.cwd, launch.cwd)).length).toBe(1);
+    expect(r.get(provId)).toBeUndefined(); // no duplicate under the old id
+    expect(r.all().filter((s) => samePath(s.cwd, wt)).length).toBe(1);
   });
 
   it("does not adopt for unrelated cwds", () => {
     const r = new SessionRegistry(5);
-    r.addProvisional(launch);
+    const p = r.addProvisionalAt(wt);
     const other = r.ensure({ session_id: "other", cwd: "C:\\dev\\elsewhere", hook_event_name: "SessionStart" });
     expect(other.sessionId).toBe("other");
-    expect(r.get("launching:4242")).toBeDefined();
+    expect(r.get(p.sessionId)).toBeDefined();
+  });
+
+  it("repoints on worktree fallback and drops on spawn failure", () => {
+    const r = new SessionRegistry(5);
+    const p = r.addProvisionalAt(wt);
+    r.repointProvisional(wt, "C:\\dev\\repo");
+    expect(r.get(p.sessionId)?.cwd).toBe("C:\\dev\\repo");
+    r.dropProvisional("C:\\dev\\repo");
+    expect(r.get(p.sessionId)).toBeUndefined();
   });
 });
 
