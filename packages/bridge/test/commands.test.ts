@@ -48,7 +48,7 @@ describe("CommandStore", () => {
 });
 
 describe("row-2 command pager + move", () => {
-  const cfg = { slots: 5, doubleTapMs: 300, longPressMs: 500, moveCancelSeconds: 5 } as unknown as DeckConfig;
+  const cfg = { slots: 5, doubleTapMs: 300, longPressMs: 500, moveCancelSeconds: 5, cmdPagerRevertSeconds: 6 } as unknown as DeckConfig;
 
   function setup(entryNames: string[]) {
     writeFileSync(file, JSON.stringify(entryNames));
@@ -71,11 +71,10 @@ describe("row-2 command pager + move", () => {
 
   const flush = () => new Promise((r) => setTimeout(r, 10));
 
-  it("key 10 opens the pager when more than 4 entries; tap executes and closes", async () => {
+  it("key 10 opens the pager straight to page two (default row already shows page one)", async () => {
     const { layer, controller, calls } = setup(["/a", "/b", "/c", "/d", "/e", "/f"]);
-    (controller as any).row2(4); // pager key
+    (controller as any).row2(4); // pager key → jump past the visible page to the hidden /e /f
     expect(layer.row2Cmd.mode).toBe("pager");
-    (controller as any).row2(4); // next page → page 2 shows /e /f
     expect(layer.row2Cmd.page).toBe(1);
     (controller as any).row2(1); // tap /f → execute + close
     await flush();
@@ -83,13 +82,39 @@ describe("row-2 command pager + move", () => {
     expect(layer.row2Cmd.mode).toBe("default");
   });
 
-  it("stepping past the last page closes the pager (keystroke-free exit)", () => {
+  it("the Page key cycles forward through pages and wraps (never a dead-end)", () => {
+    const { layer, controller } = setup(["/a", "/b", "/c", "/d", "/e", "/f"]); // 2 pages
+    (controller as any).row2(4); // open → page two (index 1)
+    expect(layer.row2Cmd.page).toBe(1);
+    (controller as any).row2(4); // cycle → page one (index 0)
+    expect(layer.row2Cmd.mode).toBe("pager");
+    expect(layer.row2Cmd.page).toBe(0);
+    (controller as any).row2(4); // wrap → page two (index 1)
+    expect(layer.row2Cmd.page).toBe(1);
+  });
+
+  it("reverts to the default view after cmdPagerRevertSeconds without a Page press", () => {
+    vi.useFakeTimers();
     const { layer, controller } = setup(["/a", "/b", "/c", "/d", "/e", "/f"]);
-    (controller as any).row2(4); // open (page 0)
-    (controller as any).row2(4); // → page 1 (last)
-    (controller as any).row2(4); // past the end → close
+    (controller as any).row2(4); // open pager
+    expect(layer.row2Cmd.mode).toBe("pager");
+    vi.advanceTimersByTime(cfg.cmdPagerRevertSeconds * 1000 + 50);
     expect(layer.row2Cmd.mode).toBe("default");
     expect(layer.row2Cmd.page).toBe(0);
+    vi.useRealTimers();
+  });
+
+  it("each Page press re-arms the idle-revert timer", () => {
+    vi.useFakeTimers();
+    const { layer, controller } = setup(["/a", "/b", "/c", "/d", "/e", "/f"]);
+    (controller as any).row2(4); // open
+    vi.advanceTimersByTime(cfg.cmdPagerRevertSeconds * 1000 - 100); // almost expired
+    (controller as any).row2(4); // page press re-arms the timer
+    vi.advanceTimersByTime(cfg.cmdPagerRevertSeconds * 1000 - 100); // old deadline would have fired
+    expect(layer.row2Cmd.mode).toBe("pager");
+    vi.advanceTimersByTime(200); // cross the re-armed deadline
+    expect(layer.row2Cmd.mode).toBe("default");
+    vi.useRealTimers();
   });
 
   it("long-press begins a move; drop persists via the store", async () => {

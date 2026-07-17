@@ -13,6 +13,9 @@ export interface DeckConfig {
   longPressMs: number;
   /** Seconds a pending long-press move waits for a target before cancelling. */
   moveCancelSeconds: number;
+  /** Seconds the row-2 command pager waits (with no Page press) before it
+   * reverts to the default lineup view (page one). */
+  cmdPagerRevertSeconds: number;
   staleSessionMinutes: number;
   /** Hours a dead-window (skulled) session lingers before being swept. */
   deadSessionSweepHours: number;
@@ -80,6 +83,7 @@ export function loadConfig(): DeckConfig {
   if (cfg.maxSessions < cfg.slots) throw new Error("config: maxSessions must be >= slots");
   cfg.longPressMs ??= 500;
   cfg.moveCancelSeconds ??= 5;
+  cfg.cmdPagerRevertSeconds ??= 6;
   cfg.deadSessionSweepHours ??= 3;
   cfg.newSessionCommand ??= "claude";
   cfg.newSessionWorktrees ??= true;

@@ -11,6 +11,7 @@ const cfg: DeckConfig = {
   doubleTapMs: 300,
   longPressMs: 500,
   moveCancelSeconds: 5,
+  cmdPagerRevertSeconds: 6,
   staleSessionMinutes: 60,
   deadSessionSweepHours: 3,
   alwaysAllowDestination: "session",

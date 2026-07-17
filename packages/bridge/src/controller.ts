@@ -236,15 +236,14 @@ export class DeckController {
         const absolute = cmd.page * COMMANDS_PER_PAGE + index;
         if (gesture === "long" && index < last) return this.beginCmdMove(absolute);
         if (index === last) {
-          // Advance pages; stepping past the last page closes the pager so
-          // there's always a keystroke-free way out.
+          // Cycle forward through all pages (wrap). The pager otherwise closes
+          // on a command tap or the idle timeout — never leaving you stuck. If
+          // the lineup shrank to a single page while open, the key closes.
           const pages = Math.max(1, Math.ceil(entries.length / COMMANDS_PER_PAGE));
-          if (cmd.page + 1 < pages) {
-            cmd.page += 1;
-            this.onLayerChanged();
-          } else {
-            this.closeCmdPager();
-          }
+          if (pages <= 1) return this.closeCmdPager();
+          cmd.page = (cmd.page + 1) % pages;
+          this.armCmdPagerTimer();
+          this.onLayerChanged();
           return;
         }
         const entry = entries[absolute];
@@ -255,7 +254,11 @@ export class DeckController {
       default: {
         if (index === last) {
           if (gesture !== "long" && entries.length > COMMANDS_PER_PAGE) {
-            this.layer.row2Cmd = { mode: "pager", page: 0 };
+            // Open on page TWO — page one's commands are already on the
+            // default row, so jump straight to the hidden ones.
+            const pages = Math.ceil(entries.length / COMMANDS_PER_PAGE);
+            this.layer.row2Cmd = { mode: "pager", page: pages > 1 ? 1 : 0 };
+            this.armCmdPagerTimer();
             this.onLayerChanged();
           }
           return;
@@ -336,6 +339,8 @@ export class DeckController {
   }
 
   private closeCmdPager(): void {
+    if (this.cmdPagerTimer) clearTimeout(this.cmdPagerTimer);
+    this.cmdPagerTimer = null;
     this.layer.row2Cmd = { mode: "default", page: 0 };
     this.onLayerChanged();
   }
@@ -347,6 +352,17 @@ export class DeckController {
     this.cmdMoveTimer = setTimeout(() => {
       if (this.layer.row2Cmd.mode === "move") this.endCmdMove(true);
     }, this.cfg.moveCancelSeconds * 1000);
+  }
+
+  private cmdPagerTimer: ReturnType<typeof setTimeout> | null = null;
+
+  /** Idle-revert the command pager to the default view when the Page key
+   * hasn't been pressed for a while — re-armed on every page advance. */
+  private armCmdPagerTimer(): void {
+    if (this.cmdPagerTimer) clearTimeout(this.cmdPagerTimer);
+    this.cmdPagerTimer = setTimeout(() => {
+      if (this.layer.row2Cmd.mode === "pager") this.closeCmdPager();
+    }, this.cfg.cmdPagerRevertSeconds * 1000);
   }
 
   /** Row 3: PTT / interrupt / globals; the Page key flips global pages. */
