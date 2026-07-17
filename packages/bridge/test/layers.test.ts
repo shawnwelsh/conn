@@ -15,7 +15,7 @@ const cfg: DeckConfig = {
   deadSessionSweepHours: 3,
   alwaysAllowDestination: "session",
   delivery: { adapter: "noop", ahkPath: "", windowMode: "activeWindow" },
-  cannedCommands: {},
+  commandsFile: "commands.json",
   newSessionCommand: "claude",
   newSessionWorktrees: true,
   suggestionAcceptText: "yes",
@@ -36,6 +36,8 @@ describe("row-1 stale dimming", () => {
     const layer: DeckLayerState = {
       row1: { mode: "agents", pagerPage: 0 },
       row2: "idle",
+      row2Cmd: { mode: "default", page: 0 },
+      row3Page: 0,
       controls: { planNext: "plan", modelNext: 1 },
     };
     const tiles = computeTiles(r, layer, cfg);
@@ -51,6 +53,8 @@ describe("row-1 stale dimming", () => {
     const layer: DeckLayerState = {
       row1: { mode: "agents", pagerPage: 0 },
       row2: "permission",
+      row2Cmd: { mode: "default", page: 0 },
+      row3Page: 0,
       permission: { sessionId: "asking", toolName: "Bash", summary: "echo x" },
       controls: { planNext: "plan", modelNext: 1 },
     };

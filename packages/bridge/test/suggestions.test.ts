@@ -2,7 +2,7 @@ import { describe, expect, it, beforeEach } from "vitest";
 import { extractSuggestion, activeSuggestion } from "../src/suggestions.js";
 import { SessionRegistry } from "../src/registry.js";
 import { DeckController } from "../src/controller.js";
-import { initialRow1, initialControls, type DeckLayerState } from "../src/layers.js";
+import { initialRow1, initialRow2Cmd, initialControls, type DeckLayerState } from "../src/layers.js";
 import type { DeckConfig } from "../src/config.js";
 import type { DeliveryAdapter, SessionRef } from "../src/delivery/adapter.js";
 
@@ -55,7 +55,7 @@ describe("suggestion layer gating + accept", () => {
 
   beforeEach(() => {
     r = new SessionRegistry(5);
-    layer = { row1: initialRow1(), row2: "idle", controls: initialControls() };
+    layer = { row1: initialRow1(), row2: "idle", row2Cmd: initialRow2Cmd(), row3Page: 0, controls: initialControls() };
   });
 
   function consoleSession(id: string, suggestion?: string) {

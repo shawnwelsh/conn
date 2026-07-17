@@ -46,6 +46,7 @@ export function activeSuggestion(
   layer: DeckLayerState,
 ): { session: SessionEntry; text: string } | null {
   if (layer.row2 !== "idle" || layer.row1.mode !== "agents") return null;
+  if (layer.row2Cmd.mode !== "default") return null; // don't stomp pager/move
   const session = registry.targetedSession;
   if (!session || session.windowKind !== "console") return null;
   if (session.status !== "done" || !session.suggestion) return null;

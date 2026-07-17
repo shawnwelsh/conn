@@ -3,7 +3,8 @@ import { loadConfig } from "./config.js";
 import { createLogger } from "./log.js";
 import { SessionRegistry } from "./registry.js";
 import { DecisionStore } from "./decisions.js";
-import { computeTiles, initialControls, initialRow1, type DeckLayerState } from "./layers.js";
+import { computeTiles, initialControls, initialRow1, initialRow2Cmd, type DeckLayerState } from "./layers.js";
+import { CommandStore } from "./commands.js";
 import { renderTile, renderBanner, toDataUri } from "./render/tile.js";
 import { DeckSocketServer } from "./ws/server.js";
 import { DeckController } from "./controller.js";
@@ -21,7 +22,17 @@ import type { KeyRender } from "@claude-deck/shared";
 const cfg = loadConfig();
 const log = createLogger(cfg);
 const registry = new SessionRegistry(cfg.slots, cfg.maxSessions);
-const layer: DeckLayerState = { row1: initialRow1(), row2: "idle", controls: initialControls() };
+const layer: DeckLayerState = {
+  row1: initialRow1(),
+  row2: "idle",
+  row2Cmd: initialRow2Cmd(),
+  row3Page: 0,
+  controls: initialControls(),
+};
+
+const commands = new CommandStore(cfg.commandsFile, log, () => pushRender());
+commands.load();
+commands.startWatching();
 
 async function createDelivery(): Promise<DeliveryAdapter> {
   const noop = () =>
@@ -51,7 +62,7 @@ let flashTimer: ReturnType<typeof setInterval> | null = null;
 /** Render loop: recompute all 15 tiles, broadcast only the ones that changed.
  * The tile cache makes unchanged tiles nearly free to recompute. */
 function pushRender(): void {
-  const tiles = computeTiles(registry, layer, cfg, flashPhase);
+  const tiles = computeTiles(registry, layer, cfg, commands.all(), flashPhase);
   const images = tiles.map((t) => {
     // Banner tiles are slices of one wide image; renderBanner caches slices.
     if (t.bannerSpan && t.bannerIndex !== undefined) {
@@ -144,6 +155,7 @@ function revertQuestion(): void {
 
 const controller = new DeckController(registry, layer, delivery, cfg, log, pushRender);
 controller.setLauncher(new ConsoleLauncher(registry, delivery, cfg.newSessionCommand, log, cfg.newSessionWorktrees));
+controller.setCommands(commands);
 controller.setHooks({
   onPermissionKey: (index) => {
     const action = (["allow", "always-allow", "deny", "deny-reason", "show-on-screen"] as const)[index];
@@ -227,6 +239,7 @@ setInterval(() => {
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
   process.on(signal, () => {
     log.info({ signal }, "shutting down");
+    commands.dispose();
     void delivery.dispose().finally(() => process.exit(0));
   });
 }

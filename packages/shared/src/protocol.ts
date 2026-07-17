@@ -42,6 +42,8 @@ export interface TileSpec {
   dim?: boolean;
   /** Session's bound window is gone (dead console) — skull-and-crossbones. */
   dead?: boolean;
+  /** Vector icon drawn above the label (row-3 globals etc.). */
+  icon?: "mic" | "send" | "esc" | "new" | "page" | "menu";
   /** Banner membership: this tile is slice `bannerIndex` of one string
    * rendered across `bannerSpan` adjacent keys (text carries the full
    * string on every slice). */

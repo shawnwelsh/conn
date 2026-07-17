@@ -1,7 +1,7 @@
 import { describe, expect, it, beforeEach, vi, afterEach } from "vitest";
 import { DeckController } from "../src/controller.js";
 import { SessionRegistry } from "../src/registry.js";
-import { initialRow1, type DeckLayerState } from "../src/layers.js";
+import { initialRow1, initialRow2Cmd, type DeckLayerState } from "../src/layers.js";
 import type { DeckConfig } from "../src/config.js";
 import { NoopAdapter } from "../src/delivery/adapter.js";
 
@@ -33,7 +33,13 @@ describe("pager + long-press move (row-1 modes)", () => {
     vi.useFakeTimers();
     r = new SessionRegistry(5);
     seed(r, ["a", "b", "c", "d", "e", "f"]); // working [a,b,c,d], overflow [e,f]
-    layer = { row1: initialRow1(), row2: "idle", controls: { planNext: "plan", modelNext: 1 } };
+    layer = {
+      row1: initialRow1(),
+      row2: "idle",
+      row2Cmd: initialRow2Cmd(),
+      row3Page: 0,
+      controls: { planNext: "plan", modelNext: 1 },
+    };
     c = new DeckController(r, layer, new NoopAdapter(() => {}), cfg, noopLog, () => {});
   });
   afterEach(() => vi.useRealTimers());

@@ -32,7 +32,9 @@ export interface DeckConfig {
      */
     windowMode: "activeWindow" | "perSession";
   };
-  cannedCommands: Record<string, { label: string; text: string }>;
+  /** Row-2 command lineup file (JSON array, up to 15 entries; "mode"/"model"
+   * builtins plus slash-command strings). Relative to the repo root. */
+  commandsFile: string;
   /** Command the "New" key runs in a fresh console window. */
   newSessionCommand: string;
   /** When true (default), New creates a fresh git worktree on branch
@@ -63,6 +65,7 @@ export function loadConfig(): DeckConfig {
   const cfg = JSON.parse(readFileSync(path, "utf8")) as DeckConfig;
   cfg.delivery.ahkPath = expandEnv(cfg.delivery.ahkPath);
   cfg.log.dir = resolve(REPO_ROOT, cfg.log.dir); // cwd-independent
+  cfg.commandsFile = resolve(REPO_ROOT, cfg.commandsFile ?? "commands.json");
 
   if (!Number.isInteger(cfg.port) || cfg.port <= 0) throw new Error("config: port must be a positive integer");
   if (cfg.decisionTimeoutSeconds <= 0) throw new Error("config: decisionTimeoutSeconds must be > 0");

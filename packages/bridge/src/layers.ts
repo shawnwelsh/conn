@@ -1,7 +1,8 @@
 import type { TileSpec, Row2Layer } from "@claude-deck/shared";
-import type { SessionRegistry } from "./registry.js";
+import type { SessionRegistry, SessionEntry } from "./registry.js";
 import type { DeckConfig } from "./config.js";
 import { activeSuggestion } from "./suggestions.js";
+import type { CommandEntry } from "./commands.js";
 
 /**
  * Computes the 15 TileSpecs for the whole deck from registry + layer state.
@@ -45,9 +46,23 @@ export interface Row1State {
   moveSource?: string;
 }
 
+/** Row-2 command-lineup interaction (only while row2 === "idle"):
+ *  - "default": first 4 entries + pager key.
+ *  - "pager": browse all entries, 4/page; tap executes, last key pages/closes.
+ *  - "move": insert-before drop targets for the entry being relocated. */
+export interface Row2CmdState {
+  mode: "default" | "pager" | "move";
+  page: number;
+  /** Entry index being relocated while in "move" mode. */
+  moveSource?: number;
+}
+
 export interface DeckLayerState {
   row1: Row1State;
   row2: Row2Layer;
+  row2Cmd: Row2CmdState;
+  /** Row-3 globals page: 0 = PTT/Send/Esc/New, 1 = Mode-menu + future. */
+  row3Page: number;
   permission?: PermissionContext;
   question?: QuestionContext;
   controls: DeckControls;
@@ -61,13 +76,32 @@ export function initialRow1(): Row1State {
   return { mode: "agents", pagerPage: 0 };
 }
 
-export const ROW2_IDLE_KEYS = [
-  { label: "Plan", subtext: "toggle" },
-  { label: "/compact", subtext: "" },
-  { label: "/review", subtext: "" },
-  { label: "New", subtext: "session" },
-  { label: "Esc", subtext: "interrupt" },
-] as const;
+export function initialRow2Cmd(): Row2CmdState {
+  return { mode: "default", page: 0 };
+}
+
+/** Visible command keys per row-2 view (key 10 is the pager/control key). */
+export const COMMANDS_PER_PAGE = 4;
+
+/** The tile for one command entry, speaking the targeted session's dialect. */
+export function commandTile(
+  entry: CommandEntry,
+  targeted: SessionEntry | undefined,
+  controls: DeckControls,
+): TileSpec {
+  if (entry.kind === "builtin" && entry.id === "mode") {
+    if (targeted?.windowKind === "console") return { text: "Mode", subtext: "⇥ cycle", state: "command" };
+    const next = controls.planNext;
+    return { text: next === "plan" ? "Plan" : "Auto", subtext: "mode", state: "command" };
+  }
+  if (entry.kind === "builtin" && entry.id === "model") {
+    return targeted?.windowKind === "console"
+      ? { text: "Model", subtext: "/model", state: "command" }
+      : { text: "Model", subtext: "cycle", state: "command", badge: String(controls.modelNext) };
+  }
+  const t = entry as Extract<CommandEntry, { kind: "text" }>;
+  return { text: t.label, subtext: t.label === t.text ? undefined : t.text, state: "command" };
+}
 
 /** Options shown per question page: keys 5-8 are options, key 9 is the pager. */
 export const QUESTION_OPTIONS_PER_PAGE = 4;
@@ -76,6 +110,8 @@ export function computeTiles(
   registry: SessionRegistry,
   layer: DeckLayerState,
   cfg: DeckConfig,
+  /** The row-2 command lineup (from commands.json), in order. */
+  commands: readonly CommandEntry[] = [],
   /** Alternates ~2×/sec while a morph layer is active, driving the flash on
    * the requesting session's key. */
   flashPhase = false,
@@ -194,35 +230,65 @@ export function computeTiles(
     for (let i = 0; i < 4; i++) {
       tiles.push({ text: s.text, state: "command", bannerSpan: 4, bannerIndex: i });
     }
+  } else if (layer.row2Cmd.mode === "pager") {
+    // Browse the whole lineup, 4/page; tap EXECUTES, long-press moves.
+    const pages = Math.max(1, Math.ceil(commands.length / COMMANDS_PER_PAGE));
+    const page = Math.min(layer.row2Cmd.page, pages - 1);
+    for (let i = 0; i < COMMANDS_PER_PAGE; i++) {
+      const entry = commands[page * COMMANDS_PER_PAGE + i];
+      tiles.push(
+        entry
+          ? { ...commandTile(entry, targeted, layer.controls), badge: String(page * COMMANDS_PER_PAGE + i + 1) }
+          : { text: "", state: "blank" },
+      );
+    }
+    tiles.push(
+      pages > 1
+        ? { text: `Page ${page + 1}/${pages}`, subtext: "next", state: "command" }
+        : { text: "Close", subtext: "commands", state: "command" },
+    );
+  } else if (layer.row2Cmd.mode === "move") {
+    // Insert-before drop targets over the first 4 lineup positions.
+    const src = layer.row2Cmd.moveSource !== undefined ? commands[layer.row2Cmd.moveSource] : undefined;
+    const srcLabel = src ? (src.kind === "builtin" ? src.id : src.label) : "command";
+    for (let i = 0; i < COMMANDS_PER_PAGE; i++) {
+      const cur = commands[i];
+      const curLabel = cur ? (cur.kind === "builtin" ? cur.id : cur.label) : "end";
+      tiles.push({ text: curLabel, subtext: "drop here", state: "answer", badge: String(i + 1) });
+    }
+    tiles.push({ text: "Cancel", subtext: `moving ${srcLabel}`, state: "command" });
   } else {
-    const targetIsConsole = targeted?.windowKind === "console";
-    ROW2_IDLE_KEYS.forEach((key, i) => {
-      if (i === 0) {
-        if (targetIsConsole) {
-          // TUI dialect: Shift+Tab cycles modes; no blind toggle needed.
-          tiles.push({ text: "Mode", subtext: "⇥ cycle", state: "command" });
-        } else {
-          // Desktop dialect: blind plan⇄auto toggle, label = next press.
-          const next = layer.controls.planNext;
-          tiles.push({ text: next === "plan" ? "Plan" : "Auto", subtext: "mode", state: "command" });
-        }
-      } else {
-        tiles.push({ text: key.label, subtext: key.subtext, state: "command" });
-      }
-    });
+    // Default: first 4 lineup entries + the command pager key.
+    for (let i = 0; i < COMMANDS_PER_PAGE; i++) {
+      const entry = commands[i];
+      tiles.push(entry ? commandTile(entry, targeted, layer.controls) : { text: "", state: "blank" });
+    }
+    const hidden = Math.max(0, commands.length - COMMANDS_PER_PAGE);
+    tiles.push(
+      hidden > 0
+        ? { text: "Cmds", subtext: `+${hidden} more`, state: "command", icon: "page" }
+        : { text: "", state: "blank" },
+    );
   }
 
-  // Row 3 — globals (Model key speaks the targeted session's dialect)
-  const modelIsConsole = targeted?.windowKind === "console";
-  tiles.push(
-    { text: "PTT", subtext: "reserved", state: "blank" },
-    { text: "Send", subtext: "enter", state: "command" },
-    { text: "Mode", subtext: "menu", state: "command" }, // opens Ctrl+Shift+M (all modes)
-    modelIsConsole
-      ? { text: "Model", subtext: "/model", state: "command" }
-      : { text: "Model", subtext: "cycle", state: "command", badge: String(layer.controls.modelNext) },
-    { text: "Page", subtext: "profile", state: "blank" },
-  );
+  // Row 3 — PTT / interrupt / globals, paged behind the Page key.
+  if (layer.row3Page === 1) {
+    tiles.push(
+      { text: "Mode", subtext: "menu", state: "command", icon: "menu" }, // Ctrl+Shift+M picker
+      { text: "", state: "blank" },
+      { text: "", state: "blank" },
+      { text: "", state: "blank" },
+      { text: "Page", subtext: "back", state: "command", icon: "page" },
+    );
+  } else {
+    tiles.push(
+      { text: "PTT", subtext: "reserved", state: "blank", icon: "mic" },
+      { text: "Send", subtext: "enter", state: "command", icon: "send" },
+      { text: "Esc", subtext: "interrupt", state: "command", icon: "esc" },
+      { text: "New", subtext: "worktree", state: "command", icon: "new" },
+      { text: "Page", subtext: "more", state: "command", icon: "page" },
+    );
+  }
 
   return tiles;
 }

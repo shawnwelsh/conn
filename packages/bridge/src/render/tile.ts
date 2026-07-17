@@ -125,18 +125,28 @@ export function renderTile(spec: TileSpec): Buffer {
   const maxWidth = S - pad * 2;
   const hasSub = Boolean(spec.subtext);
 
-  // Main text: up to 3 lines, auto-fit.
-  const { fontPx, lines } = fitText(ctx, spec.text, maxWidth, hasSub ? 2 : 3);
-  ctx.font = `600 ${fontPx}px ${FONT_FAMILY}`;
-  ctx.fillStyle = theme.fg;
-  ctx.textBaseline = "middle";
-  const lineHeight = fontPx * 1.15;
-  const blockHeight = lines.length * lineHeight;
-  const centerY = hasSub ? (S - 30) / 2 : S / 2;
-  lines.forEach((line, i) => {
-    const y = centerY - blockHeight / 2 + lineHeight * (i + 0.5);
-    ctx.fillText(line.text, (S - line.width) / 2, y);
-  });
+  if (spec.icon) {
+    // Icon layout: vector glyph on top, label + subtext beneath.
+    drawIcon(ctx, spec.icon, S / 2, S * 0.36, S * 0.2, theme.fg);
+    ctx.font = `600 24px ${FONT_FAMILY}`;
+    ctx.fillStyle = theme.fg;
+    ctx.textBaseline = "middle";
+    const w = ctx.measureText(spec.text).width;
+    ctx.fillText(spec.text, (S - w) / 2, S * 0.72);
+  } else {
+    // Main text: up to 3 lines, auto-fit.
+    const { fontPx, lines } = fitText(ctx, spec.text, maxWidth, hasSub ? 2 : 3);
+    ctx.font = `600 ${fontPx}px ${FONT_FAMILY}`;
+    ctx.fillStyle = theme.fg;
+    ctx.textBaseline = "middle";
+    const lineHeight = fontPx * 1.15;
+    const blockHeight = lines.length * lineHeight;
+    const centerY = hasSub ? (S - 30) / 2 : S / 2;
+    lines.forEach((line, i) => {
+      const y = centerY - blockHeight / 2 + lineHeight * (i + 0.5);
+      ctx.fillText(line.text, (S - line.width) / 2, y);
+    });
+  }
 
   // Subtext: one small line pinned near the bottom.
   if (spec.subtext) {
@@ -237,6 +247,101 @@ export function renderBanner(text: string, span: number, state: string): Buffer[
 
 export function toDataUri(png: Buffer): string {
   return `data:image/png;base64,${png.toString("base64")}`;
+}
+
+/** Simple vector icons for the global keys — drawn, never font glyphs, so
+ * they can't tofu. (cx, cy) center, r ≈ half-size. */
+function drawIcon(
+  ctx: SKRSContext2D,
+  icon: NonNullable<TileSpec["icon"]>,
+  cx: number,
+  cy: number,
+  r: number,
+  color: string,
+): void {
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.fillStyle = color;
+  ctx.lineWidth = r * 0.22;
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+
+  switch (icon) {
+    case "mic": {
+      // Capsule + stand.
+      const w = r * 0.75;
+      ctx.beginPath();
+      ctx.roundRect(cx - w / 2, cy - r, w, r * 1.3, w / 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(cx, cy + r * 0.1, r * 0.75, 0.15 * Math.PI, 0.85 * Math.PI);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(cx, cy + r * 0.85);
+      ctx.lineTo(cx, cy + r * 1.2);
+      ctx.stroke();
+      break;
+    }
+    case "send": {
+      // Paper plane.
+      ctx.beginPath();
+      ctx.moveTo(cx - r, cy - r * 0.7);
+      ctx.lineTo(cx + r * 1.1, cy);
+      ctx.lineTo(cx - r, cy + r * 0.7);
+      ctx.lineTo(cx - r * 0.45, cy);
+      ctx.closePath();
+      ctx.fill();
+      break;
+    }
+    case "esc": {
+      // Bold ✕.
+      ctx.lineWidth = r * 0.32;
+      ctx.beginPath();
+      ctx.moveTo(cx - r * 0.8, cy - r * 0.8);
+      ctx.lineTo(cx + r * 0.8, cy + r * 0.8);
+      ctx.moveTo(cx + r * 0.8, cy - r * 0.8);
+      ctx.lineTo(cx - r * 0.8, cy + r * 0.8);
+      ctx.stroke();
+      break;
+    }
+    case "new": {
+      // Bold ＋.
+      ctx.lineWidth = r * 0.32;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy - r);
+      ctx.lineTo(cx, cy + r);
+      ctx.moveTo(cx - r, cy);
+      ctx.lineTo(cx + r, cy);
+      ctx.stroke();
+      break;
+    }
+    case "page": {
+      // Stacked pages.
+      const w = r * 1.5;
+      const h = r * 1.1;
+      ctx.globalAlpha = 0.45;
+      ctx.beginPath();
+      ctx.roundRect(cx - w / 2 + r * 0.35, cy - h / 2 - r * 0.35, w, h, r * 0.2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+      ctx.beginPath();
+      ctx.roundRect(cx - w / 2, cy - h / 2, w, h, r * 0.2);
+      ctx.fill();
+      break;
+    }
+    case "menu": {
+      // Three bars.
+      ctx.lineWidth = r * 0.26;
+      for (const dy of [-0.65, 0, 0.65]) {
+        ctx.beginPath();
+        ctx.moveTo(cx - r * 0.9, cy + dy * r);
+        ctx.lineTo(cx + r * 0.9, cy + dy * r);
+        ctx.stroke();
+      }
+      break;
+    }
+  }
+  ctx.restore();
 }
 
 /** Vector skull-and-crossbones centered at (cx, cy); r ≈ skull radius. */

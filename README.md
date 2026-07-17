@@ -45,7 +45,7 @@ supersedes this with true per-pane targeting.
 
 ### Console sessions — full per-session control
 
-The **New** key (row 2) spawns `newSessionCommand` (default `claude`) in a
+The **New** key (row 3) spawns `newSessionCommand` (default `claude`) in a
 fresh console window. With `newSessionWorktrees: true` (default) it first
 creates a **fresh git worktree** in the targeted session's repo — branch
 `deck/<codename>`, dir `.claude/worktrees/<codename>` — so parallel sessions
@@ -73,6 +73,21 @@ speaks each kind's dialect automatically:
 Deck-launched consoles use the classic console host (targetability over
 aesthetics). Sessions you start yourself in terminals remain
 `windowKind: "desktop"`-behaved unless launched via the deck.
+
+## Key layout
+
+- **Row 1** — agent slots (feature-name labels, status colors, targeting,
+  long-press move, Pager at ≥6 sessions).
+- **Row 2** — actions for the *targeted* session: the command lineup from
+  `commands.json` (up to 15 entries; `"mode"`/`"model"` builtins plus slash
+  commands sent as type+Enter). First 4 show; key 10 pages the rest — tap in
+  the pager **executes**, long-press starts an insert-before move that
+  persists back to the file. Hand-edit `commands.json` any time; it
+  hot-reloads. Morph layers (permission / question / suggestion) override
+  this row automatically.
+- **Row 3** — PTT (reserved) · Send · Esc (interrupt) · New (worktree
+  console) · Page. Page flips to a second globals page (Mode picker menu,
+  room for more).
 
 ## Safety model (permission flow)
 

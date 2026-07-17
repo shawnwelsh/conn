@@ -1,13 +1,14 @@
 import type { Slot } from "@claude-deck/shared";
-import type { SessionRegistry } from "./registry.js";
+import type { SessionRegistry, SessionEntry } from "./registry.js";
 import type { DeckLayerState } from "./layers.js";
-import { ROW2_IDLE_KEYS, QUESTION_OPTIONS_PER_PAGE } from "./layers.js";
+import { COMMANDS_PER_PAGE, QUESTION_OPTIONS_PER_PAGE } from "./layers.js";
 import type { DeliveryAdapter } from "./delivery/adapter.js";
 import type { DeckConfig } from "./config.js";
 import type { Logger } from "./log.js";
 import { GestureRecognizer, type Gesture } from "./gestures.js";
 import type { ConsoleLauncher } from "./delivery/launcher.js";
 import { activeSuggestion } from "./suggestions.js";
+import type { CommandSource, CommandEntry } from "./commands.js";
 
 /**
  * Routes recognized gestures (from any client) to actions. Clients report raw
@@ -46,6 +47,12 @@ export class DeckController {
     this.launcher = launcher;
   }
 
+  private commands?: CommandSource;
+
+  setCommands(store: CommandSource): void {
+    this.commands = store;
+  }
+
   /** Raw key events from clients — fed straight to the recognizer. */
   down(slot: Slot): void {
     this.gestures.down(slot);
@@ -58,8 +65,8 @@ export class DeckController {
 
   private dispatch(slot: Slot, gesture: Gesture): void {
     if (slot <= 4) return this.row1(slot, gesture);
-    // Rows 2 and 3 act on tap; double/long collapse to a tap for now.
-    if (slot <= 9) return this.row2(slot - 5);
+    if (slot <= 9) return this.row2(slot - 5, gesture);
+    // Row 3 acts on tap; double/long collapse to a tap.
     return void this.row3(slot - 10);
   }
 
@@ -176,9 +183,9 @@ export class DeckController {
     }, this.cfg.moveCancelSeconds * 1000);
   }
 
-  private row2(index: number): void {
+  private row2(index: number, gesture: Gesture = "tap"): void {
     if (this.layer.row2 === "permission") {
-      this.hooks.onPermissionKey?.(index);
+      if (gesture === "tap" || gesture === "double") this.hooks.onPermissionKey?.(index);
       return;
     }
     // Suggestion layer (derived): Accept on key 6, banner keys focus the
@@ -210,77 +217,160 @@ export class DeckController {
       }
       return;
     }
-    // Idle layer commands → targeted session via delivery adapter.
-    const target = this.registry.targetedSession;
-    if (!target) return;
-    const key = ROW2_IDLE_KEYS[index];
-    if (!key) return;
-    void (async () => {
-      let ok = false;
-      switch (key.label) {
-        case "Plan": {
-          if (target.windowKind === "console") {
-            // TUI dialect: Shift+Tab cycles normal → auto-accept → plan.
-            ok = await this.delivery.sendKey(target, "shift+tab");
+    // Command lineup (default / pager / move) — mirrors row 1's mechanics.
+    const entries = this.commands?.all() ?? [];
+    const last = COMMANDS_PER_PAGE; // key 10 = pager/control
+    const cmd = this.layer.row2Cmd;
+    switch (cmd.mode) {
+      case "move": {
+        if (gesture === "long") return;
+        if (index === last) return this.endCmdMove(true);
+        const src = cmd.moveSource;
+        if (src !== undefined) {
+          this.commands?.move(src, index);
+          this.log.info({ from: src, to: index }, "cmd move: placed");
+        }
+        return this.endCmdMove(false);
+      }
+      case "pager": {
+        const absolute = cmd.page * COMMANDS_PER_PAGE + index;
+        if (gesture === "long" && index < last) return this.beginCmdMove(absolute);
+        if (index === last) {
+          const pages = Math.max(1, Math.ceil(entries.length / COMMANDS_PER_PAGE));
+          if (pages > 1) {
+            cmd.page = (cmd.page + 1) % pages;
+            this.onLayerChanged();
           } else {
-            // Desktop dialect: blind plan⇄auto toggle via the mode picker.
-            const next = this.layer.controls.planNext;
-            ok = await this.delivery.sendSequence(target, ["ctrl+shift+m", next === "plan" ? "4" : "3"]);
-            this.layer.controls.planNext = next === "plan" ? "auto" : "plan";
+            this.closeCmdPager();
+          }
+          return;
+        }
+        const entry = entries[absolute];
+        this.closeCmdPager();
+        if (entry) void this.executeCommand(entry);
+        return;
+      }
+      default: {
+        if (index === last) {
+          if (gesture !== "long" && entries.length > COMMANDS_PER_PAGE) {
+            this.layer.row2Cmd = { mode: "pager", page: 0 };
             this.onLayerChanged();
           }
-          break;
+          return;
         }
-        case "/compact":
-        case "/review":
-          ok =
-            (await this.delivery.focus(target)) &&
-            (await this.delivery.sendText(target, key.label)) &&
-            (await this.delivery.sendKey(target, "enter"));
-          break;
-        case "New": {
-          // Spawn a fresh console session in the targeted session's repo —
-          // it arrives HWND-bound and fully targetable.
-          ok = (await this.launcher?.launch(target.cwd)) ?? false;
-          break;
+        if (gesture === "long") {
+          if (entries[index]) this.beginCmdMove(index);
+          return;
         }
-        case "Esc":
-          ok = await this.delivery.sendKey(target, "escape");
-          break;
+        const entry = entries[index];
+        if (entry) void this.executeCommand(entry);
+        return;
       }
-      this.log.info({ key: key.label, session: target.sessionId, kind: target.windowKind, ok }, "row2 command");
-    })();
+    }
   }
 
+  /** Run one lineup entry against the targeted session, speaking its
+   * dialect (console TUI vs desktop pickers). */
+  private async executeCommand(entry: CommandEntry): Promise<void> {
+    const target = this.registry.targetedSession;
+    if (!target) return;
+    let ok = false;
+    const name = entry.kind === "builtin" ? entry.id : entry.label;
+    if (entry.kind === "builtin" && entry.id === "mode") {
+      if (target.windowKind === "console") {
+        ok = await this.delivery.sendKey(target, "shift+tab");
+      } else {
+        const next = this.layer.controls.planNext;
+        ok = await this.delivery.sendSequence(target, ["ctrl+shift+m", next === "plan" ? "4" : "3"]);
+        this.layer.controls.planNext = next === "plan" ? "auto" : "plan";
+        this.onLayerChanged();
+      }
+    } else if (entry.kind === "builtin" && entry.id === "model") {
+      ok = await this.cycleModel(target);
+    } else if (entry.kind === "text") {
+      ok =
+        (await this.delivery.focus(target)) &&
+        (await this.delivery.sendText(target, entry.text)) &&
+        (await this.delivery.sendKey(target, "enter"));
+    }
+    this.log.info({ key: name, session: target.sessionId, kind: target.windowKind, ok }, "row2 command");
+  }
+
+  private async cycleModel(target: SessionEntry): Promise<boolean> {
+    if (target.windowKind === "console") {
+      return (
+        (await this.delivery.focus(target)) &&
+        (await this.delivery.sendText(target, "/model")) &&
+        (await this.delivery.sendKey(target, "enter"))
+      );
+    }
+    const n = this.layer.controls.modelNext;
+    const ok = await this.delivery.sendSequence(target, ["ctrl+shift+i", String(n)]);
+    this.layer.controls.modelNext = (n % 4) + 1;
+    this.onLayerChanged();
+    return ok;
+  }
+
+  private beginCmdMove(entryIndex: number): void {
+    this.layer.row2Cmd = { mode: "move", page: 0, moveSource: entryIndex };
+    this.armCmdMoveTimer();
+    this.log.info({ entryIndex }, "cmd move: begin");
+    this.onLayerChanged();
+  }
+
+  private endCmdMove(cancelled: boolean): void {
+    if (this.cmdMoveTimer) clearTimeout(this.cmdMoveTimer);
+    this.cmdMoveTimer = null;
+    if (cancelled) this.log.info("cmd move: cancelled");
+    this.layer.row2Cmd = { mode: "default", page: 0 };
+    this.onLayerChanged();
+  }
+
+  private closeCmdPager(): void {
+    this.layer.row2Cmd = { mode: "default", page: 0 };
+    this.onLayerChanged();
+  }
+
+  private cmdMoveTimer: ReturnType<typeof setTimeout> | null = null;
+
+  private armCmdMoveTimer(): void {
+    if (this.cmdMoveTimer) clearTimeout(this.cmdMoveTimer);
+    this.cmdMoveTimer = setTimeout(() => {
+      if (this.layer.row2Cmd.mode === "move") this.endCmdMove(true);
+    }, this.cfg.moveCancelSeconds * 1000);
+  }
+
+  /** Row 3: PTT / interrupt / globals; the Page key flips global pages. */
   private async row3(index: number): Promise<void> {
     const target = this.registry.targetedSession;
+    if (index === 4) {
+      // Page — toggle between the two global pages.
+      this.layer.row3Page = this.layer.row3Page === 0 ? 1 : 0;
+      this.onLayerChanged();
+      return;
+    }
+    if (this.layer.row3Page === 1) {
+      if (index === 0 && target) {
+        // Mode (menu): open the full Ctrl+Shift+M picker on screen.
+        const ok = await this.delivery.sendKey(target, "ctrl+shift+m");
+        this.log.info({ key: "ModeMenu", session: target.sessionId, ok }, "row3 command");
+      }
+      return; // remaining page-2 slots reserved for future globals
+    }
     switch (index) {
       case 0: // PTT — reserved (Phase 4)
         return;
       case 1:
         if (target) await this.delivery.sendKey(target, "enter");
         return;
-      case 2: // Mode — open the full mode picker (Ctrl+Shift+M), pick on keyboard
-        if (target) await this.delivery.sendKey(target, "ctrl+shift+m");
+      case 2: // Esc — interrupt the targeted session
+        if (target) await this.delivery.sendKey(target, "escape");
         return;
-      case 3: {
-        if (!target) return;
-        if (target.windowKind === "console") {
-          // TUI dialect: open the /model picker on screen (you're looking at
-          // the terminal you just surfaced anyway).
-          (await this.delivery.focus(target)) &&
-            (await this.delivery.sendText(target, "/model")) &&
-            (await this.delivery.sendKey(target, "enter"));
-        } else {
-          // Desktop dialect: cycle Ctrl+Shift+I then 1-4.
-          const n = this.layer.controls.modelNext;
-          await this.delivery.sendSequence(target, ["ctrl+shift+i", String(n)]);
-          this.layer.controls.modelNext = (n % 4) + 1;
-          this.onLayerChanged();
+      case 3: // New — fresh worktree + console session
+        if (target) {
+          const ok = (await this.launcher?.launch(target.cwd)) ?? false;
+          this.log.info({ key: "New", cwd: target.cwd, ok }, "row3 command");
         }
-        return;
-      }
-      case 4: // Page/profile switch — deck-local, Phase 3+
         return;
     }
   }

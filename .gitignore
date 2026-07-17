@@ -3,6 +3,7 @@ dist/
 logs/
 logs-dev/
 config.json
+commands.json
 probe-log.jsonl
 scratch-probe/.claude/settings.local.json
 *.tsbuildinfo

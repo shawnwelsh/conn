@@ -1,0 +1,10 @@
+[
+  "mode",
+  "model",
+  "/compact",
+  "/review",
+  { "label": "Commit", "text": "/save-work" },
+  "/status",
+  "/context",
+  "/usage"
+]

@@ -58,12 +58,19 @@ describe("per-kind command dialects", () => {
 
   beforeEach(() => {
     r = new SessionRegistry(5);
-    layer = { row1: initialRow1(), row2: "idle", controls: initialControls() };
+    layer = { row1: initialRow1(), row2: "idle", row2Cmd: { mode: "default", page: 0 }, row3Page: 0, controls: initialControls() };
     adapter = new RecordingAdapter();
     c = new DeckController(r, layer, adapter, cfg, noopLog, () => {});
+    c.setCommands({
+      all: () => [
+        { kind: "builtin", id: "mode" },
+        { kind: "builtin", id: "model" },
+      ],
+      move: () => {},
+    });
   });
 
-  it("Plan speaks TUI (shift+tab) to console sessions", async () => {
+  it("mode speaks TUI (shift+tab) to console sessions", async () => {
     r.registerPendingLaunch({ cwd: "C:\\dev\\x", pid: 1, hwnd: 5, at: Date.now() });
     r.ensure({ session_id: "s1", cwd: "C:\\dev\\x", hook_event_name: "SessionStart" });
     (c as any).row2(0);
@@ -71,23 +78,25 @@ describe("per-kind command dialects", () => {
     expect(adapter.calls).toEqual(["key:shift+tab"]);
   });
 
-  it("Plan speaks picker (ctrl+shift+m + number) to desktop sessions", async () => {
+  it("mode speaks picker (ctrl+shift+m + number) to desktop sessions", async () => {
     r.ensure({ session_id: "s1", cwd: "C:\\dev\\x", hook_event_name: "SessionStart" });
     (c as any).row2(0);
     await flush();
     expect(adapter.calls).toEqual(["seq:ctrl+shift+m+4"]);
   });
 
-  it("Model types /model on console, cycles Ctrl+Shift+I on desktop", async () => {
+  it("model types /model on console, cycles Ctrl+Shift+I on desktop", async () => {
     r.registerPendingLaunch({ cwd: "C:\\dev\\x", pid: 1, hwnd: 5, at: Date.now() });
     r.ensure({ session_id: "con", cwd: "C:\\dev\\x", hook_event_name: "SessionStart" });
-    await (c as any).row3(3);
+    (c as any).row2(1);
+    await flush();
     expect(adapter.calls).toEqual(["focus", "text:/model", "key:enter"]);
 
     adapter.calls = [];
     const desk = r.ensure({ session_id: "desk", cwd: "C:\\dev\\y", hook_event_name: "SessionStart" });
     r.target(desk.sessionId);
-    await (c as any).row3(3);
+    (c as any).row2(1);
+    await flush();
     expect(adapter.calls).toEqual(["seq:ctrl+shift+i+1"]);
   });
 });
