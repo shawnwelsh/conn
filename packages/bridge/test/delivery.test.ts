@@ -56,6 +56,20 @@ describe("dead bound-window handling (exact-target sessions never fall back)", (
     expect(ok).toBe(true);
     expect(calls).toEqual(["focus|ahk_exe Claude.exe"]);
   });
+
+  it("background ControlSend delivery (ok|bg) counts as success", async () => {
+    const { adapter, calls } = stubbed(() => "ok|bg");
+    const ok = await adapter.sendKey({ sessionId: "s", cwd: "", label: "x", hwnd: 42 }, "escape");
+    expect(ok).toBe(true);
+    expect(calls).toEqual(["key|ahk_id 42|{Esc}"]);
+  });
+
+  it("alive-but-unfocusable (err|noactivate) fails without a fallback attempt", async () => {
+    const { adapter, calls } = stubbed(() => "err|noactivate");
+    const ok = await adapter.focus({ sessionId: "s", cwd: "", label: "x", hwnd: 42 });
+    expect(ok).toBe(false);
+    expect(calls).toEqual(["focus|ahk_id 42"]);
+  });
 });
 
 describe("escapeSendKeysText", () => {

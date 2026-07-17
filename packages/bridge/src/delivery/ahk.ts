@@ -110,6 +110,12 @@ export class AhkAdapter implements DeliveryAdapter {
    * "perSession" mode we try the session's own window first, warning if we
    * can only reach the app.
    */
+  /** "ok" = delivered focused; "ok|bg" = delivered via ControlSend without
+   * focus (foreground lock refused activation) — both are success. */
+  private static delivered(reply: string): boolean {
+    return reply === "ok" || reply === "ok|bg";
+  }
+
   private async withWindow(
     session: SessionRef,
     run: (query: string) => Promise<string>,
@@ -119,19 +125,27 @@ export class AhkAdapter implements DeliveryAdapter {
     // exact-target session must never degrade to typing into whatever
     // conversation happens to be visible in the app.
     if (session.hwnd) {
-      if ((await run(`ahk_id ${session.hwnd}`)) === "ok") return true;
+      const reply = await run(`ahk_id ${session.hwnd}`);
+      if (AhkAdapter.delivered(reply)) {
+        if (reply === "ok|bg") {
+          this.log.info({ session: session.label }, "delivered in background (ControlSend, no focus)");
+        }
+        return true;
+      }
       this.log.warn(
-        { session: session.label, hwnd: session.hwnd },
-        "delivery refused: bound window gone (session likely closed) — not falling back",
+        { session: session.label, hwnd: session.hwnd, reply },
+        reply === "err|noactivate"
+          ? "delivery failed: window alive but focus refused (foreground lock)"
+          : "delivery refused: bound window gone (session likely closed) — not falling back",
       );
       return false;
     }
     if (this.windowMode === "activeWindow") {
-      return (await run(FALLBACK_QUERY)) === "ok";
+      return AhkAdapter.delivered(await run(FALLBACK_QUERY));
     }
     for (const query of [session.label, FALLBACK_QUERY]) {
       const result = await run(query);
-      if (result === "ok") {
+      if (AhkAdapter.delivered(result)) {
         if (query === FALLBACK_QUERY) {
           this.log.warn({ session: session.label }, "delivery degraded: focused app, not the specific session window");
         }
