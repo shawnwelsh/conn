@@ -376,9 +376,22 @@ export class DeckController {
         if (target) await this.delivery.sendKey(target, "escape");
         return;
       case 3: // New — fresh worktree + console session
-        if (target) {
+        if (!target) {
+          this.log.warn("New ignored: no targeted session");
+          return;
+        }
+        if (this.layer.launching) {
+          this.log.info("New ignored: launch already in flight");
+          return;
+        }
+        this.layer.launching = true;
+        this.onLayerChanged();
+        try {
           const ok = (await this.launcher?.launch(target.cwd)) ?? false;
           this.log.info({ key: "New", cwd: target.cwd, ok }, "row3 command");
+        } finally {
+          this.layer.launching = false;
+          this.onLayerChanged();
         }
         return;
     }

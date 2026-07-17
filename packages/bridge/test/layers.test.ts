@@ -18,6 +18,7 @@ const cfg: DeckConfig = {
   commandsFile: "commands.json",
   newSessionCommand: "claude",
   newSessionWorktrees: true,
+  worktreeTimeoutSeconds: 90,
   suggestionAcceptText: "yes",
   log: { level: "info", dir: "logs" },
 };

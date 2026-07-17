@@ -40,6 +40,9 @@ export interface DeckConfig {
   /** When true (default), New creates a fresh git worktree on branch
    * deck/<codename> — the codename becomes the feature name on the button. */
   newSessionWorktrees: boolean;
+  /** Seconds to wait for `git worktree add` (OneDrive-backed repos are SLOW —
+   * a too-short timeout strands completed worktrees). */
+  worktreeTimeoutSeconds: number;
   /** Text the suggestion-layer Accept key types into the session. */
   suggestionAcceptText: string;
   log: { level: string; dir: string };
@@ -77,6 +80,7 @@ export function loadConfig(): DeckConfig {
   cfg.deadSessionSweepHours ??= 3;
   cfg.newSessionCommand ??= "claude";
   cfg.newSessionWorktrees ??= true;
+  cfg.worktreeTimeoutSeconds ??= 90;
   cfg.suggestionAcceptText ??= "yes";
   cfg.delivery.windowMode ??= "activeWindow";
   cfg.alwaysAllowDestination ??= "session";

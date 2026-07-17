@@ -73,6 +73,7 @@ export class ConsoleLauncher {
     private readonly command: string, // e.g. "claude"
     private readonly log: Logger,
     private readonly useWorktrees: boolean = true,
+    private readonly worktreeTimeoutMs: number = 90_000,
   ) {}
 
   /** Two-word codename, collision-checked against existing worktree dirs.
@@ -91,6 +92,7 @@ export class ConsoleLauncher {
   private async createWorktree(root: string): Promise<string | null> {
     const name = this.codename(root);
     const dir = join(root, ".claude", "worktrees", name);
+    this.log.info({ root, name, timeoutMs: this.worktreeTimeoutMs }, "launcher: creating worktree…");
     const args = ["-C", root, "worktree", "add", dir, "-b", `deck/${name}`];
     const result = await new Promise<{ code: number | null; err: string }>((res) => {
       const git = spawn("git", args, {
@@ -103,13 +105,20 @@ export class ConsoleLauncher {
       const timer = setTimeout(() => {
         git.kill();
         res({ code: null, err: "timeout" });
-      }, 30_000);
+      }, this.worktreeTimeoutMs);
       git.on("exit", (code) => {
         clearTimeout(timer);
         res({ code, err });
       });
     });
     if (result.code !== 0) {
+      // OneDrive-backed repos can finish the checkout AFTER our timeout kill
+      // (git's work completes; only its exit is late). If the worktree
+      // materialized anyway, use it rather than stranding it.
+      if (result.err === "timeout" && existsSync(join(dir, ".git"))) {
+        this.log.warn({ dir }, "launcher: worktree materialized after timeout — using it");
+        return dir;
+      }
       this.log.warn({ root, name, err: result.err.trim() }, "launcher: worktree add failed");
       return null;
     }

@@ -119,4 +119,22 @@ describe("row 3 globals", () => {
     await (controller as any).row3(4);
     expect(layer.row3Page).toBe(0);
   });
+
+  it("New sets the launching flag during flight and ignores double-presses", async () => {
+    let resolveLaunch!: (v: boolean) => void;
+    const launches: string[] = [];
+    controller.setLauncher({
+      launch: (cwd: string) => {
+        launches.push(cwd);
+        return new Promise<boolean>((r) => (resolveLaunch = r));
+      },
+    } as never);
+    const first = (controller as any).row3(3);
+    expect(layer.launching).toBe(true);
+    await (controller as any).row3(3); // in-flight → ignored
+    expect(launches.length).toBe(1);
+    resolveLaunch(true);
+    await first;
+    expect(layer.launching).toBe(false);
+  });
 });

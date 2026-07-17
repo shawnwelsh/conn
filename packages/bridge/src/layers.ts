@@ -63,6 +63,9 @@ export interface DeckLayerState {
   row2Cmd: Row2CmdState;
   /** Row-3 globals page: 0 = PTT/Send/Esc/New, 1 = Mode-menu + future. */
   row3Page: number;
+  /** A console launch (worktree + spawn) is in flight — New shows progress
+   * and further presses are ignored. */
+  launching?: boolean;
   permission?: PermissionContext;
   question?: QuestionContext;
   controls: DeckControls;
@@ -285,7 +288,9 @@ export function computeTiles(
       { text: "PTT", subtext: "reserved", state: "blank", icon: "mic" },
       { text: "Send", subtext: "enter", state: "command", icon: "send" },
       { text: "Esc", subtext: "interrupt", state: "command", icon: "esc" },
-      { text: "New", subtext: "worktree", state: "command", icon: "new" },
+      layer.launching
+        ? { text: "New", subtext: "spawning…", state: "waiting", icon: "new", selected: flashPhase }
+        : { text: "New", subtext: "worktree", state: "command", icon: "new" },
       { text: "Page", subtext: "more", state: "command", icon: "page" },
     );
   }

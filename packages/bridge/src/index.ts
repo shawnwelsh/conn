@@ -90,7 +90,12 @@ const decisions = new DecisionStore(
 /** Anything that needs the 2Hz flash: a held permission, a question morph, or
  * the pager signalling multiple sessions need attention. */
 function flashNeeded(): boolean {
-  return decisions.current !== undefined || layer.row2 === "question" || registry.pagerFlashing();
+  return (
+    decisions.current !== undefined ||
+    layer.row2 === "question" ||
+    registry.pagerFlashing() ||
+    layer.launching === true
+  );
 }
 
 /** Run the flash animation only while something needs it. */
@@ -153,8 +158,20 @@ function revertQuestion(): void {
   pushRender();
 }
 
-const controller = new DeckController(registry, layer, delivery, cfg, log, pushRender);
-controller.setLauncher(new ConsoleLauncher(registry, delivery, cfg.newSessionCommand, log, cfg.newSessionWorktrees));
+const controller = new DeckController(registry, layer, delivery, cfg, log, () => {
+  syncFlash(flashNeeded());
+  pushRender();
+});
+controller.setLauncher(
+  new ConsoleLauncher(
+    registry,
+    delivery,
+    cfg.newSessionCommand,
+    log,
+    cfg.newSessionWorktrees,
+    cfg.worktreeTimeoutSeconds * 1000,
+  ),
+);
 controller.setCommands(commands);
 controller.setHooks({
   onPermissionKey: (index) => {
