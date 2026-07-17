@@ -1,4 +1,4 @@
-import { describe, expect, it, beforeEach } from "vitest";
+import { describe, expect, it, beforeEach, vi } from "vitest";
 import { DeckController } from "../src/controller.js";
 import { SessionRegistry } from "../src/registry.js";
 import { initialControls, initialRow1, initialRow2Cmd, type DeckLayerState } from "../src/layers.js";
@@ -137,6 +137,34 @@ describe("row 3 globals", () => {
     c2.setLauncher({ launch: async (cwd: string) => { launches.push(cwd); return true; } } as never);
     await (c2 as any).row3(3);
     expect(launches).toEqual(["C:\\dev\\mainrepo"]);
+  });
+
+  it("desktop text commands wait desktopSubmitDelayMs before Enter; consoles don't", async () => {
+    vi.useFakeTimers();
+    const cfgDelay = { ...(cfg as object), desktopSubmitDelayMs: 250 } as DeckConfig;
+    const lineup = fakeCommands([{ kind: "text", label: "/status", text: "/status" }]);
+
+    // Desktop session: Enter must lag the typed text by the settle delay —
+    // an instant Enter races the Electron input and is swallowed.
+    const c1 = new DeckController(registry, layer, delivery, cfgDelay, noopLog, () => {});
+    c1.setCommands(lineup);
+    (c1 as any).row2(0);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(delivery.calls.map((c) => c.m)).toEqual(["sendText"]); // Enter still pending
+    await vi.advanceTimersByTimeAsync(250);
+    expect(delivery.calls.map((c) => c.m)).toEqual(["sendText", "sendKey"]);
+
+    // Console session: raw byte stream, no delay.
+    delivery.calls = [];
+    const r2 = new SessionRegistry(5);
+    r2.registerPendingLaunch({ cwd: "C:\\dev\\con", pid: 9, hwnd: 77, at: Date.now() });
+    r2.ensure({ session_id: "con", cwd: "C:\\dev\\con", hook_event_name: "SessionStart" });
+    const c2 = new DeckController(r2, layer, delivery, cfgDelay, noopLog, () => {});
+    c2.setCommands(lineup);
+    (c2 as any).row2(0);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(delivery.calls.map((c) => c.m)).toEqual(["sendText", "sendKey"]);
+    vi.useRealTimers();
   });
 
   it("New sets the launching flag during flight and ignores double-presses", async () => {

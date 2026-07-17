@@ -51,6 +51,10 @@ export interface DeckConfig {
   worktreeTimeoutSeconds: number;
   /** Text the suggestion-layer Accept key types into the session. */
   suggestionAcceptText: string;
+  /** Milliseconds between typed text and the submitting Enter on DESKTOP
+   * sessions — the Electron app renders its input/slash-popup async and an
+   * instant Enter is swallowed. Consoles never delay. */
+  desktopSubmitDelayMs: number;
   log: { level: string; dir: string };
 }
 
@@ -89,6 +93,7 @@ export function loadConfig(): DeckConfig {
   cfg.newSessionWorktrees ??= true;
   cfg.worktreeTimeoutSeconds ??= 90;
   cfg.suggestionAcceptText ??= "yes";
+  cfg.desktopSubmitDelayMs ??= 250;
   cfg.delivery.windowMode ??= "activeWindow";
   cfg.alwaysAllowDestination ??= "session";
   const validDest = ["session", "localSettings", "projectSettings", "userSettings"];

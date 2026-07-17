@@ -21,6 +21,7 @@ const cfg: DeckConfig = {
   newSessionWorktrees: true,
   worktreeTimeoutSeconds: 90,
   suggestionAcceptText: "yes",
+  desktopSubmitDelayMs: 250,
   log: { level: "info", dir: "logs" },
 };
 

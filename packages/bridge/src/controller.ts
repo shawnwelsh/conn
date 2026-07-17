@@ -194,12 +194,7 @@ export class DeckController {
     if (suggestion) {
       void (async () => {
         if (index === 0) {
-          // Focus-free: the accept surface is console-only, and ControlSend
-          // delivers without activation. Gating on focus() would abort here
-          // when the foreground lock refuses to surface a background console.
-          const ok =
-            (await this.delivery.sendText(suggestion.session, this.cfg.suggestionAcceptText)) &&
-            (await this.delivery.sendKey(suggestion.session, "enter"));
+          const ok = await this.typeSubmit(suggestion.session, this.cfg.suggestionAcceptText);
           if (ok) {
             suggestion.session.suggestion = undefined; // consumed
             this.onLayerChanged();
@@ -302,24 +297,34 @@ export class DeckController {
     } else if (entry.kind === "builtin" && entry.id === "model") {
       ok = await this.cycleModel(target);
     } else if (entry.kind === "text") {
-      // Deliver focus-free. ControlSend (console) and the app-activate path
-      // inside sendText (desktop) both type without a prior focus(); gating on
-      // focus() wrongly aborts bound-console delivery when the foreground lock
-      // refuses activation, and running a command shouldn't yank the window
-      // forward anyway.
-      ok =
-        (await this.delivery.sendText(target, entry.text)) &&
-        (await this.delivery.sendKey(target, "enter"));
+      ok = await this.typeSubmit(target, entry.text);
     }
     this.log.info({ key: name, session: target.sessionId, kind: target.windowKind, ok }, "row2 command");
   }
 
+  /**
+   * Type text and submit it, focus-free. ControlSend (console) and the
+   * app-activate path inside sendText (desktop) both type without a prior
+   * focus(); gating on focus() wrongly aborts bound-console delivery when the
+   * foreground lock refuses activation, and running a command shouldn't yank
+   * the window forward anyway.
+   *
+   * Desktop needs a beat between the text and Enter: the Electron app's
+   * slash-command popup and input state render asynchronously, and an
+   * instant Enter races them and is swallowed — the command sits untyped in
+   * the box. Consoles are a raw byte stream and need no delay.
+   */
+  private async typeSubmit(target: SessionEntry, text: string): Promise<boolean> {
+    if (!(await this.delivery.sendText(target, text))) return false;
+    if (target.windowKind === "desktop" && this.cfg.desktopSubmitDelayMs > 0) {
+      await new Promise((r) => setTimeout(r, this.cfg.desktopSubmitDelayMs));
+    }
+    return this.delivery.sendKey(target, "enter");
+  }
+
   private async cycleModel(target: SessionEntry): Promise<boolean> {
     if (target.windowKind === "console") {
-      return (
-        (await this.delivery.sendText(target, "/model")) &&
-        (await this.delivery.sendKey(target, "enter"))
-      );
+      return this.typeSubmit(target, "/model");
     }
     const n = this.layer.controls.modelNext;
     const ok = await this.delivery.sendSequence(target, ["ctrl+shift+i", String(n)]);
