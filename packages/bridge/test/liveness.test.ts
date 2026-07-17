@@ -5,13 +5,15 @@ import { NoopAdapter, type DeliveryAdapter } from "../src/delivery/adapter.js";
 
 const noopLog = { info: () => {}, warn: () => {}, debug: () => {} } as never;
 
-function seedConsole(r: SessionRegistry, id: string, hwnd: number) {
-  r.registerPendingLaunch({ cwd: `C:\\dev\\${id}`, pid: 1, hwnd, at: Date.now() });
+function seedConsole(r: SessionRegistry, id: string, n: number) {
+  // pid and hwnd share the number — liveness keys on the pid (primary signal).
+  r.registerPendingLaunch({ cwd: `C:\\dev\\${id}`, pid: n, hwnd: n, at: Date.now() });
   return r.ensure({ session_id: id, cwd: `C:\\dev\\${id}`, hook_event_name: "SessionStart" });
 }
 
 function adapterWhere(liveness: Record<number, boolean | null>): DeliveryAdapter {
   const a = new NoopAdapter(() => {});
+  a.checkPid = async (pid: number) => liveness[pid] ?? null;
   a.checkWindow = async (hwnd?: number) => liveness[hwnd as number] ?? null;
   return a as DeliveryAdapter;
 }

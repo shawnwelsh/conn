@@ -18,6 +18,7 @@ const cfg: DeckConfig = {
   delivery: { adapter: "noop", ahkPath: "", windowMode: "activeWindow" },
   commandsFile: "commands.json",
   newSessionCommand: "claude",
+  consoleHost: "wt",
   newSessionWorktrees: true,
   worktreeTimeoutSeconds: 90,
   suggestionAcceptText: "yes",

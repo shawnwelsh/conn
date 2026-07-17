@@ -11,16 +11,21 @@ import type { Logger } from "../log.js";
  * Spawns a Claude Code session in its OWN console window and binds that
  * window to the session for exact HWND targeting.
  *
- * Why not window titles: CC overwrites the terminal title with its own
- * ("✳ Claude Code"), so titles can't disambiguate sessions. Instead we track
- * the PID we spawned, ask the AHK daemon for its window handle, and register
- * a pending launch — the next SessionStart arriving from that cwd (within
- * 90s) binds to the handle and is classified windowKind: "console".
+ * Binding model: we track the cmd PID we spawned (delivery injects into its
+ * console input buffer — no window needed) plus the window handle (focus/
+ * surfacing only), and register a pending launch — the next session hook
+ * arriving from that cwd binds and is classified windowKind: "console".
  *
- * Why classic conhost: with Windows Terminal as the default terminal, every
- * spawned console's visible window belongs to the single WindowsTerminal.exe
- * process — per-session pid→window binding is impossible and ControlSend to
- * the pid's hidden PseudoConsoleWindow silently delivers nothing.
+ * Console host (config consoleHost):
+ *  - "wt" (default): Windows Terminal windows — full copy/paste, proper
+ *    rendering. All WT windows belong to one WindowsTerminal.exe process, so
+ *    the window is grabbed once at spawn via a unique --title token, locked
+ *    in place with --suppressApplicationTitle (CC can't retitle it away);
+ *    the cmd pid is resolved by embedding the same token in its command
+ *    line. ControlSend can't reach WT windows — irrelevant, delivery is
+ *    input-buffer injection by PID.
+ *  - "conhost": classic console windows (owned by the cmd child; resolved
+ *    via findpid). No WT dependency; poorer fonts, Mark-mode-only copy.
  *
  * With worktrees enabled (default), each New press also creates a FRESH git
  * worktree on branch `deck/<codename>` — parallel sessions never share a
@@ -83,8 +88,10 @@ export class ConsoleLauncher {
     private readonly worktreeTimeoutMs: number = 90_000,
     /** CC's per-project state file; injectable for tests. */
     private readonly claudeStatePath: string = join(homedir(), ".claude.json"),
-    /** Persists {cwd, pid} so console bindings survive bridge restarts. */
+    /** Persists {cwd, pid, hwnd} so console bindings survive bridge restarts. */
     private readonly bindings?: BindingStore,
+    /** Terminal hosting new consoles: "wt" (Windows Terminal) or "conhost". */
+    private readonly consoleHost: "wt" | "conhost" = "wt",
   ) {}
 
   /**
@@ -203,26 +210,32 @@ export class ConsoleLauncher {
         "launcher: spawning into a cwd already used by another session — they will share the working tree",
       );
     }
-    // Spawn under CLASSIC conhost explicitly. Windows 11 delegates new
-    // consoles to Windows Terminal, where the visible window belongs to
-    // WindowsTerminal.exe (ONE process for all windows) and the spawned pid
-    // owns only a hidden PseudoConsoleWindow — ControlSend into it reports ok
-    // and delivers nothing. conhost.exe hosting yields a real
-    // ConsoleWindowClass window owned by the cmd CHILD (classic consoles
-    // attribute the window to the client, so we resolve and return the child
-    // pid, not conhost's). Raw-mode VT input arrives focus-free via
-    // ControlSend — including Shift+Tab as ESC[Z (probe-proven).
-    // ShellExecute (Start-Process) remains the spawn mechanism: Node's
-    // detached spawn creates NO console window on Windows at all.
+    // ShellExecute (Start-Process) is the spawn mechanism either way: Node's
+    // detached spawn creates NO console window on Windows at all. Both paths
+    // resolve and return the cmd CHILD pid — the process whose console
+    // input buffer delivery injects into.
     const psq = (s: string) => "'" + s.replace(/'/g, "''") + "'";
+    const token = `deck-${basename(spawnDir)}-${Date.now() % 100_000}`;
     const script =
-      `$p = Start-Process -FilePath conhost.exe -ArgumentList 'cmd','/k',${psq(this.command)} ` +
-      `-WorkingDirectory ${psq(spawnDir)} -PassThru; ` +
-      `$child = $null; ` +
-      `for ($i = 0; $i -lt 24 -and -not $child; $i++) { ` +
-      `Start-Sleep -Milliseconds 250; ` +
-      `$child = (Get-CimInstance Win32_Process -Filter "ParentProcessId=$($p.Id) and Name='cmd.exe'" | Select-Object -First 1).ProcessId }; ` +
-      `if ($child) { $child } else { 0 }`;
+      this.consoleHost === "wt"
+        ? // Windows Terminal: fresh window, title locked to our token; the
+          // token inside the cmd line makes the child pid findable by CIM.
+          `$null = Start-Process wt.exe -ArgumentList '-w','new','--title',${psq(token)},` +
+          `'--suppressApplicationTitle','-d',${psq(spawnDir)},'cmd','/k',` +
+          `${psq(`set DECK_LAUNCH=${token}& ${this.command}`)}; ` +
+          `$child = $null; ` +
+          `for ($i = 0; $i -lt 24 -and -not $child; $i++) { ` +
+          `Start-Sleep -Milliseconds 250; ` +
+          `$child = (Get-CimInstance Win32_Process -Filter "Name='cmd.exe'" | ` +
+          `Where-Object { $_.CommandLine -like "*${token}*" } | Select-Object -First 1).ProcessId }; ` +
+          `if ($child) { $child } else { 0 }`
+        : `$p = Start-Process -FilePath conhost.exe -ArgumentList 'cmd','/k',${psq(this.command)} ` +
+          `-WorkingDirectory ${psq(spawnDir)} -PassThru; ` +
+          `$child = $null; ` +
+          `for ($i = 0; $i -lt 24 -and -not $child; $i++) { ` +
+          `Start-Sleep -Milliseconds 250; ` +
+          `$child = (Get-CimInstance Win32_Process -Filter "ParentProcessId=$($p.Id) and Name='cmd.exe'" | Select-Object -First 1).ProcessId }; ` +
+          `if ($child) { $child } else { 0 }`;
     const pid = await new Promise<number | null>((resolve) => {
       const ps = spawn("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", script], {
         stdio: ["ignore", "pipe", "ignore"],
@@ -241,16 +254,20 @@ export class ConsoleLauncher {
       });
     });
     if (!pid) {
-      this.log.warn({ cwd: spawnDir }, "launcher: spawn failed (no pid)");
+      this.log.warn({ cwd: spawnDir, host: this.consoleHost }, "launcher: spawn failed (no pid)");
       this.registry.dropProvisional(spawnDir); // take the key back
       return false;
     }
 
-    // The console window can take a beat to exist; poll for the HWND.
+    // The window can take a beat to exist; poll for the HWND — by locked
+    // title token for WT (the window isn't the cmd's), by pid for conhost.
     let hwnd: number | null = null;
     for (let i = 0; i < 15 && !hwnd; i++) {
       await new Promise((r) => setTimeout(r, 400));
-      hwnd = await this.delivery.findWindowByPid(pid);
+      hwnd =
+        this.consoleHost === "wt"
+          ? ((await this.delivery.findWindowByTitle?.(token)) ?? null)
+          : await this.delivery.findWindowByPid(pid);
     }
 
     // Surface the new console — windows spawned by a background process open
@@ -268,8 +285,8 @@ export class ConsoleLauncher {
 
     this.registry.registerPendingLaunch({ cwd: spawnDir, pid, hwnd, at: Date.now() });
     this.registry.bindProvisional(spawnDir, { pid, hwnd });
-    this.bindings?.upsert({ cwd: spawnDir, pid, at: Date.now() });
-    this.log.info({ cwd: spawnDir, pid, hwnd }, "launcher: console spawned and bound to its key");
+    this.bindings?.upsert({ cwd: spawnDir, pid, hwnd: hwnd ?? undefined, at: Date.now() });
+    this.log.info({ cwd: spawnDir, pid, hwnd, host: this.consoleHost }, "launcher: console spawned and bound to its key");
     return true;
   }
 }

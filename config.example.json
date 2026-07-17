@@ -18,6 +18,7 @@
   },
   "commandsFile": "commands.json",
   "newSessionCommand": "claude",
+  "consoleHost": "wt",
   "newSessionDir": "C:\\path\\to\\your\\main\\repo",
   "newSessionWorktrees": true,
   "worktreeTimeoutSeconds": 90,

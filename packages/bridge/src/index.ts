@@ -190,6 +190,7 @@ controller.setLauncher(
     cfg.worktreeTimeoutSeconds * 1000,
     undefined,
     bindings,
+    cfg.consoleHost,
   ),
 );
 controller.setCommands(commands);

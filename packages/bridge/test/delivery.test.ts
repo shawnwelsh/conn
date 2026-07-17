@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { AhkAdapter, chordToAhk } from "../src/delivery/ahk.js";
+import { AhkAdapter, chordToAhk, chordToVt, pctEncode } from "../src/delivery/ahk.js";
 import { chordToSendKeys, escapeSendKeysText } from "../src/delivery/sendkeys.js";
 
 const noopLog = { info: () => {}, warn: () => {}, debug: () => {} } as never;
@@ -78,5 +78,67 @@ describe("escapeSendKeysText", () => {
   it("escapes SendKeys metacharacters so literal text types verbatim", () => {
     expect(escapeSendKeysText("/save-work")).toBe("/save-work");
     expect(escapeSendKeysText("a+b(c)")).toBe("a{+}b{(}c{)}");
+  });
+});
+
+describe("chordToVt (raw-mode console byte sequences)", () => {
+  it("maps keys to their VT bytes; desktop-only chords map to null", () => {
+    expect(chordToVt("enter")).toBe("\r");
+    expect(chordToVt("escape")).toBe("\x1b");
+    expect(chordToVt("shift+tab")).toBe("\x1b[Z");
+    expect(chordToVt("up")).toBe("\x1b[A");
+    expect(chordToVt("2")).toBe("2");
+    expect(chordToVt("ctrl+c")).toBe("\x03");
+    expect(chordToVt("ctrl+shift+m")).toBeNull();
+    expect(chordToVt("ctrl+shift+i")).toBeNull();
+  });
+});
+
+describe("pctEncode (conwrite payload)", () => {
+  it("escapes control bytes, %, and | — plain text passes through", () => {
+    expect(pctEncode("/status")).toBe("/status");
+    expect(pctEncode("\r")).toBe("%0D");
+    expect(pctEncode("\x1b[Z")).toBe("%1B[Z");
+    expect(pctEncode("50%|a")).toBe("50%25%7Ca");
+  });
+});
+
+describe("console delivery via input-buffer injection (pid-bound sessions)", () => {
+  function stubbed(reply = "ok") {
+    const adapter = new AhkAdapter("C:\\fake\\AutoHotkey64.exe", noopLog, "activeWindow");
+    const calls: string[] = [];
+    (adapter as unknown as { command: (line: string) => Promise<string> }).command = async (line) => {
+      calls.push(line);
+      return reply;
+    };
+    return { adapter, calls };
+  }
+  const con = { sessionId: "s", cwd: "", label: "keen marten", hwnd: 42, pid: 9 };
+
+  it("text and VT-mappable keys inject by pid — never the window", async () => {
+    const { adapter, calls } = stubbed();
+    await adapter.sendText(con, "/status");
+    await adapter.sendKey(con, "enter");
+    await adapter.sendKey(con, "shift+tab");
+    expect(calls).toEqual(["conwrite|9|/status", "conwrite|9|%0D", "conwrite|9|%1B[Z"]);
+  });
+
+  it("desktop-only chords fall back to the window path", async () => {
+    const { adapter, calls } = stubbed();
+    await adapter.sendKey(con, "ctrl+shift+m");
+    expect(calls).toEqual(["key|ahk_id 42|^+m"]);
+  });
+
+  it("a dead console process is a refusal — no app fallback", async () => {
+    const { adapter, calls } = stubbed("err|gone");
+    const ok = await adapter.sendText(con, "hello");
+    expect(ok).toBe(false);
+    expect(calls).toEqual(["conwrite|9|hello"]);
+  });
+
+  it("focus still uses the window (injection can't surface)", async () => {
+    const { adapter, calls } = stubbed();
+    await adapter.focus(con);
+    expect(calls).toEqual(["focus|ahk_id 42"]);
   });
 });

@@ -43,6 +43,45 @@ export function chordToAhk(chord: string): string {
   return mods + (named[key] ?? key);
 }
 
+/**
+ * chord → the VT byte sequence a raw-mode TUI reads for that key. Console
+ * sessions consume a byte stream (the tmux model), so special keys are just
+ * their escape sequences — proven end-to-end via WriteConsoleInput against
+ * both WT- and conhost-hosted raw-mode readers. Returns null for chords with
+ * no VT form (e.g. ctrl+shift+m) — those fall back to the window path.
+ */
+export function chordToVt(chord: string): string | null {
+  const named: Record<string, string> = {
+    enter: "\r",
+    escape: "\x1b",
+    esc: "\x1b",
+    tab: "\t",
+    "shift+tab": "\x1b[Z",
+    space: " ",
+    up: "\x1b[A",
+    down: "\x1b[B",
+    right: "\x1b[C",
+    left: "\x1b[D",
+    backspace: "\x7f",
+  };
+  const key = chord.toLowerCase();
+  if (named[key] !== undefined) return named[key];
+  if (key.length === 1) return key; // plain character (digits for pickers)
+  if (key.startsWith("ctrl+") && key.length === 6) {
+    const c = key.charCodeAt(5) - 96; // ctrl+a → 0x01 … ctrl+z → 0x1a
+    if (c >= 1 && c <= 26) return String.fromCharCode(c);
+  }
+  return null;
+}
+
+/** Encode conwrite payload: control bytes, '%' and '|' become %XX so the
+ * newline/pipe-delimited daemon protocol stays unambiguous. */
+export function pctEncode(text: string): string {
+  return text.replace(/[\x00-\x1f%|\x7f]/g, (c) =>
+    "%" + c.charCodeAt(0).toString(16).toUpperCase().padStart(2, "0"),
+  );
+}
+
 export class AhkAdapter implements DeliveryAdapter {
   private proc: ChildProcessWithoutNullStreams | null = null;
   private lines: Interface | null = null;
@@ -75,16 +114,43 @@ export class AhkAdapter implements DeliveryAdapter {
 
   async sendText(session: SessionRef, text: string): Promise<boolean> {
     const safe = text.replace(/\r?\n/g, " ");
+    if (session.pid) return this.conWrite(session, safe);
     return this.withWindow(session, async (query) => this.command(`text|${query}|${safe}`));
   }
 
   async sendKey(session: SessionRef, chord: string): Promise<boolean> {
+    if (session.pid) {
+      const vt = chordToVt(chord);
+      if (vt !== null) return this.conWrite(session, vt);
+      // No VT form (desktop-app chords) — fall through to the window path.
+    }
     return this.withWindow(session, async (query) => this.command(`key|${query}|${chordToAhk(chord)}`));
   }
 
   async sendSequence(session: SessionRef, chords: string[]): Promise<boolean> {
+    if (session.pid) {
+      const vts = chords.map(chordToVt);
+      if (vts.every((v) => v !== null)) return this.conWrite(session, vts.join(""));
+    }
     const ahk = chords.map(chordToAhk).join("|");
     return this.withWindow(session, async (query) => this.command(`seq|${query}|${ahk}`));
+  }
+
+  /**
+   * Console input-buffer injection (AttachConsole+WriteConsoleInput daemon
+   * side): focus-free, window-free, identical for Windows Terminal and
+   * classic conhost. Exact-target semantics — a dead process is a refusal,
+   * never an app-window fallback.
+   */
+  private async conWrite(session: SessionRef, bytes: string): Promise<boolean> {
+    const reply = await this.command(`conwrite|${session.pid}|${pctEncode(bytes)}`);
+    if (reply === "ok") return true;
+    const why =
+      reply === "err|gone"
+        ? "delivery refused: console process gone (session likely closed) — not falling back"
+        : `delivery failed: ${reply}`;
+    this.log.warn({ session: session.label, pid: session.pid, reply }, why);
+    return false;
   }
 
   async findWindowByPid(pid: number): Promise<number | null> {
@@ -94,10 +160,23 @@ export class AhkAdapter implements DeliveryAdapter {
     return hwnd > 0 ? hwnd : null;
   }
 
+  async findWindowByTitle(title: string): Promise<number | null> {
+    const reply = await this.command(`findtitle|${title}`);
+    const m = reply.match(/^hwnd\|(\d+)$/);
+    const hwnd = m ? Number(m[1]) : 0;
+    return hwnd > 0 ? hwnd : null;
+  }
+
   async checkWindow(hwnd: number): Promise<boolean | null> {
     const reply = await this.command(`checkwin|${hwnd}`);
     const m = reply.match(/^alive\|([01])$/);
     return m ? m[1] === "1" : null; // daemon hiccup → unknown, not dead
+  }
+
+  async checkPid(pid: number): Promise<boolean | null> {
+    const reply = await this.command(`checkpid|${pid}`);
+    const m = reply.match(/^alive\|([01])$/);
+    return m ? m[1] === "1" : null;
   }
 
   async dispose(): Promise<void> {

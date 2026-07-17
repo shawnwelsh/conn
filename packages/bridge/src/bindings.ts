@@ -18,6 +18,10 @@ import type { Logger } from "./log.js";
 export interface PersistedBinding {
   cwd: string;
   pid: number;
+  /** Window handle at spawn time — revalidated (never trusted) at restore.
+   * WT windows can't be re-derived from the pid, so persisting is the only
+   * way focus survives a restart there. */
+  hwnd?: number;
   at: number;
 }
 
@@ -70,14 +74,20 @@ function sameCwd(a: string, b: string): boolean {
 }
 
 /**
- * Boot-time restore: for each persisted binding whose process still owns a
- * window, claim a provisional key (console-kind, bound) so the console is on
+ * Boot-time restore: for each persisted binding whose PROCESS is still
+ * alive, claim a provisional key (console-kind, bound) so the console is on
  * the deck immediately and the session's next hook adopts it in place —
  * exactly the New-key flow, minus the spawn. Dead ones are pruned.
  *
+ * Liveness is the pid, not a window: a WT-hosted console's window belongs to
+ * WindowsTerminal.exe and can never be re-derived from the session's pid.
+ * The persisted hwnd is revalidated (stale handles get recycled); a conhost
+ * session missing one falls back to findpid. No hwnd just means no
+ * focus/surfacing — delivery injects by pid regardless.
+ *
  * Claude Code fires no SessionStart at interactive launch, so an already-
  * running console may stay provisional until its next prompt/tool event —
- * commands still deliver, because the window binding is what matters.
+ * commands still deliver, because the pid binding is what matters.
  */
 export async function restoreConsoleBindings(
   store: BindingStore,
@@ -86,11 +96,18 @@ export async function restoreConsoleBindings(
   log: Logger,
 ): Promise<void> {
   for (const binding of store.load()) {
-    const hwnd = await delivery.findWindowByPid(binding.pid);
-    if (!hwnd) {
+    const alive = await delivery.checkPid?.(binding.pid);
+    if (alive === false) {
       store.removeByCwd(binding.cwd);
       log.info({ cwd: binding.cwd, pid: binding.pid }, "bindings: console gone — pruned");
       continue;
+    }
+    if (alive !== true) continue; // can't tell — keep the record, skip restore
+    let hwnd: number | null = null;
+    if (binding.hwnd && (await delivery.checkWindow(binding.hwnd)) === true) {
+      hwnd = binding.hwnd;
+    } else {
+      hwnd = await delivery.findWindowByPid(binding.pid); // conhost fallback
     }
     registry.addProvisionalAt(binding.cwd);
     registry.bindProvisional(binding.cwd, { pid: binding.pid, hwnd });

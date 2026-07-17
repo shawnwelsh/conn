@@ -39,9 +39,13 @@ describe("BindingStore", () => {
 });
 
 describe("restoreConsoleBindings (boot)", () => {
-  function adapterWithWindows(byPid: Record<number, number>) {
+  function adapterWithWindows(byPid: Record<number, number>, opts?: { windows?: Record<number, boolean> }) {
     const adapter = new NoopAdapter(() => {});
     adapter.findWindowByPid = async (pid: number) => byPid[pid] ?? null;
+    // Pid liveness derives from the byPid map unless a pid is explicitly
+    // alive-but-windowless (WT sessions look like that).
+    adapter.checkPid = async (pid: number) => byPid[pid] !== undefined;
+    adapter.checkWindow = async (hwnd: number) => opts?.windows?.[hwnd] ?? false;
     return adapter;
   }
 
@@ -70,7 +74,7 @@ describe("restoreConsoleBindings (boot)", () => {
     expect(registry.get("real-session")).toBe(adopted);
   });
 
-  it("prunes bindings whose process no longer owns a window", async () => {
+  it("prunes bindings whose PROCESS died; keeps alive ones", async () => {
     const store = new BindingStore(file, noopLog);
     store.upsert({ cwd: "C:\\dev\\wt\\gone", pid: 900, at: 1 });
     store.upsert({ cwd: "C:\\dev\\wt\\alive", pid: 901, at: 2 });
@@ -82,6 +86,37 @@ describe("restoreConsoleBindings (boot)", () => {
     const persisted = store.load();
     expect(persisted).toHaveLength(1);
     expect(persisted[0]!.pid).toBe(901);
+  });
+
+  it("revalidates a persisted hwnd (WT windows can't be re-derived from the pid)", async () => {
+    const store = new BindingStore(file, noopLog);
+    store.upsert({ cwd: "C:\\dev\\wt\\wtwin", pid: 700, hwnd: 4242, at: 1 });
+    const registry = new SessionRegistry(5);
+    // pid alive but windowless per findpid (the WT shape); persisted hwnd OK.
+    const adapter = adapterWithWindows({}, { windows: { 4242: true } });
+    adapter.checkPid = async () => true;
+    await restoreConsoleBindings(store, registry, adapter, noopLog);
+    expect(registry.all()[0]!.hwnd).toBe(4242);
+
+    // Stale persisted hwnd → dropped, not trusted (handles get recycled).
+    rmSync(file, { force: true });
+    const store2 = new BindingStore(file, noopLog);
+    store2.upsert({ cwd: "C:\\dev\\wt\\stale", pid: 701, hwnd: 555, at: 1 });
+    const r2 = new SessionRegistry(5);
+    const a2 = adapterWithWindows({}, { windows: { 555: false } });
+    a2.checkPid = async () => true;
+    await restoreConsoleBindings(store2, r2, a2, noopLog);
+    expect(r2.all()[0]!.hwnd).toBeUndefined();
+  });
+
+  it("unknown pid-liveness keeps the record but restores nothing", async () => {
+    const store = new BindingStore(file, noopLog);
+    store.upsert({ cwd: "C:\\dev\\wt\\maybe", pid: 800, at: 1 });
+    const registry = new SessionRegistry(5);
+    const adapter = new NoopAdapter(() => {}); // checkPid → null (can't tell)
+    await restoreConsoleBindings(store, registry, adapter, noopLog);
+    expect(registry.all()).toHaveLength(0);
+    expect(store.load()).toHaveLength(1); // not erased
   });
 
   it("a dead-window event drops the persisted binding (wired via registry emit)", () => {

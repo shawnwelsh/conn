@@ -40,6 +40,10 @@ export interface DeckConfig {
   commandsFile: string;
   /** Command the "New" key runs in a fresh console window. */
   newSessionCommand: string;
+  /** Terminal hosting deck-spawned consoles: "wt" (Windows Terminal — full
+   * copy/paste + rendering; default) or "conhost" (classic console). Delivery
+   * injects into the console input buffer by pid and works with either. */
+  consoleHost: "wt" | "conhost";
   /** Repo the New key uses when NO session is targeted (New is a global —
    * it must work on an empty deck). Unset = New needs a target. */
   newSessionDir?: string;
@@ -105,6 +109,10 @@ export function loadConfig(): DeckConfig {
   cfg.cmdPagerRevertSeconds ??= 6;
   cfg.deadSessionSweepHours ??= 3;
   cfg.newSessionCommand ??= "claude";
+  cfg.consoleHost ??= "wt";
+  if (!["wt", "conhost"].includes(cfg.consoleHost)) {
+    throw new Error('config: consoleHost must be "wt" or "conhost"');
+  }
   cfg.newSessionWorktrees ??= true;
   cfg.worktreeTimeoutSeconds ??= 90;
   cfg.suggestionAcceptText ??= "yes";

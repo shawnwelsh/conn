@@ -13,8 +13,12 @@ export interface SessionRef {
   cwd: string;
   label: string;
   /** OS window handle when this session has its own window (deck-launched
-   * console). HWND targeting is exact and beats any title matching. */
+   * console). Used for focus/surfacing; delivery prefers `pid`. */
   hwnd?: number;
+  /** Console process id (deck-launched). When present, text/keys inject
+   * straight into the console INPUT BUFFER (AttachConsole+WriteConsoleInput)
+   * — focus-free and host-agnostic (Windows Terminal or classic conhost). */
+  pid?: number;
 }
 
 export interface DeliveryAdapter {
@@ -30,9 +34,15 @@ export interface DeliveryAdapter {
   /** Resolve a process id to its top-level window handle, or null. Used by
    * the console launcher to bind spawned terminals to sessions. */
   findWindowByPid(pid: number): Promise<number | null>;
+  /** Visible window whose title contains the string, or null. Used once at
+   * spawn to grab a Windows Terminal window by its launch title token. */
+  findWindowByTitle?(title: string): Promise<number | null>;
   /** Is this bound window still alive? `null` = adapter can't tell (never
    * treated as dead). Drives the dead-session skull. */
   checkWindow(hwnd: number): Promise<boolean | null>;
+  /** Is this process still alive? `null` = can't tell. The truer liveness
+   * signal for WT-hosted consoles (their window belongs to WT, not them). */
+  checkPid?(pid: number): Promise<boolean | null>;
   dispose(): Promise<void>;
 }
 
@@ -60,7 +70,14 @@ export class NoopAdapter implements DeliveryAdapter {
     this.onCall("findWindowByPid", String(pid));
     return null;
   }
-  async checkWindow(): Promise<boolean | null> {
+  async findWindowByTitle(title: string): Promise<number | null> {
+    this.onCall("findWindowByTitle", title);
+    return null;
+  }
+  async checkWindow(_hwnd: number): Promise<boolean | null> {
+    return null; // can't tell — never marks sessions dead
+  }
+  async checkPid(_pid: number): Promise<boolean | null> {
     return null; // can't tell — never marks sessions dead
   }
   async dispose(): Promise<void> {}
