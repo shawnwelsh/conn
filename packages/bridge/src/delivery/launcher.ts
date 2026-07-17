@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import type { DeliveryAdapter } from "./adapter.js";
-import type { SessionRegistry } from "../registry.js";
+import { samePath, type SessionRegistry } from "../registry.js";
 import type { Logger } from "../log.js";
 
 /**
@@ -28,6 +28,15 @@ export class ConsoleLauncher {
     if (!existsSync(cwd)) {
       this.log.warn({ cwd }, "launcher: cwd does not exist");
       return false;
+    }
+    // Two sessions editing one working tree WILL step on each other's files;
+    // allow it (user's call) but say so loudly.
+    const sharing = this.registry.all().filter((s) => samePath(s.cwd, cwd));
+    if (sharing.length > 0) {
+      this.log.warn(
+        { cwd, existing: sharing.map((s) => s.label) },
+        "launcher: spawning into a cwd already used by another session — they will share the working tree",
+      );
     }
     // ShellExecute (Start-Process) is the only spawn path that reliably
     // creates a real console window — Node's detached spawn uses

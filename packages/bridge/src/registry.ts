@@ -119,10 +119,16 @@ export class SessionRegistry extends EventEmitter {
   ensure(event: AnyHookEvent): SessionEntry {
     let entry = this.sessions.get(event.session_id);
     if (!entry) {
+      // Disambiguate duplicate feature names (e.g. two sessions in the same
+      // worktree/branch): second one becomes "name 2", then "name 3", …
+      const base = deriveLabel(event.cwd);
+      const taken = new Set(this.all().map((s) => s.label));
+      let label = base;
+      for (let n = 2; taken.has(label); n++) label = `${base} ${n}`;
       entry = {
         sessionId: event.session_id,
         slot: -1,
-        label: deriveLabel(event.cwd),
+        label,
         cwd: event.cwd ?? "",
         status: "idle",
         lastEventAt: Date.now(),
@@ -292,7 +298,7 @@ export class SessionRegistry extends EventEmitter {
 }
 
 /** Case/separator-insensitive Windows path equality. */
-function samePath(a: string, b: string): boolean {
+export function samePath(a: string, b: string): boolean {
   const norm = (p: string) => p.replace(/[\\/]+/g, "\\").replace(/\\+$/, "").toLowerCase();
   return norm(a) === norm(b);
 }

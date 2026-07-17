@@ -22,6 +22,18 @@ describe("deriveLabel", () => {
   });
 });
 
+describe("duplicate label disambiguation", () => {
+  it("suffixes sessions that resolve to the same feature name", () => {
+    const r = new SessionRegistry(5);
+    const a = r.ensure({ session_id: "s1", cwd: "C:\\nope\\same-dir", hook_event_name: "SessionStart" });
+    const b = r.ensure({ session_id: "s2", cwd: "C:\\nope\\same-dir", hook_event_name: "SessionStart" });
+    const c = r.ensure({ session_id: "s3", cwd: "C:\\nope\\same-dir", hook_event_name: "SessionStart" });
+    expect(a.label).toBe("same-dir");
+    expect(b.label).toBe("same-dir 2");
+    expect(c.label).toBe("same-dir 3");
+  });
+});
+
 describe("working-set + pager model", () => {
   function fill(r: SessionRegistry, ids: string[]) {
     for (const id of ids) start(r, id);
