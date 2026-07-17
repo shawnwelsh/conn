@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync, statSync } from "node:fs";
 import { join, dirname, resolve, isAbsolute, basename } from "node:path";
+import { homedir } from "node:os";
 import type { DeliveryAdapter } from "./adapter.js";
 import { samePath, type SessionRegistry } from "../registry.js";
 import type { Logger } from "../log.js";
@@ -74,7 +75,33 @@ export class ConsoleLauncher {
     private readonly log: Logger,
     private readonly useWorktrees: boolean = true,
     private readonly worktreeTimeoutMs: number = 90_000,
+    /** CC's per-project state file; injectable for tests. */
+    private readonly claudeStatePath: string = join(homedir(), ".claude.json"),
   ) {}
+
+  /**
+   * Pre-trust a worktree WE just created, so Claude doesn't stall at the
+   * folder-trust prompt in a console nobody has surfaced yet. Scope is
+   * deliberately narrow: only called for deck-created worktrees of a repo
+   * the user already works in — pressing New IS the trust decision.
+   * (Best-effort: CC also writes this file; last-writer-wins is acceptable
+   * for a single-user machine, and failure just means the prompt shows.)
+   */
+  private preTrust(dir: string): void {
+    try {
+      const state = existsSync(this.claudeStatePath)
+        ? JSON.parse(readFileSync(this.claudeStatePath, "utf8"))
+        : {};
+      state.projects ??= {};
+      const existing = state.projects[dir] ?? {};
+      if (existing.hasTrustDialogAccepted === true) return;
+      state.projects[dir] = { ...existing, hasTrustDialogAccepted: true };
+      writeFileSync(this.claudeStatePath, JSON.stringify(state, null, 2));
+      this.log.info({ dir }, "launcher: pre-trusted new worktree");
+    } catch (err) {
+      this.log.warn({ err: String(err), dir }, "launcher: pre-trust failed — the trust prompt will show");
+    }
+  }
 
   /** Two-word codename, collision-checked against existing worktree dirs.
    * This name becomes the branch (deck/<name>), the worktree dir, and —
@@ -141,7 +168,10 @@ export class ConsoleLauncher {
       const root = findRepoRoot(cwd);
       if (root) {
         const worktree = await this.createWorktree(root);
-        if (worktree) spawnDir = worktree;
+        if (worktree) {
+          spawnDir = worktree;
+          this.preTrust(worktree);
+        }
       } else {
         this.log.warn({ cwd }, "launcher: not a git repo — spawning in place");
       }
@@ -191,6 +221,19 @@ export class ConsoleLauncher {
     for (let i = 0; i < 15 && !hwnd; i++) {
       await new Promise((r) => setTimeout(r, 400));
       hwnd = await this.delivery.findWindowByPid(pid);
+    }
+
+    // Surface the new console — windows spawned by a background process open
+    // WITHOUT foreground activation, so without this the console (and any
+    // prompt inside it) sits invisibly behind everything.
+    if (hwnd) {
+      const surfaced = await this.delivery.focus({
+        sessionId: "pending-launch",
+        cwd: spawnDir,
+        label: basename(spawnDir),
+        hwnd,
+      });
+      if (!surfaced) this.log.warn({ hwnd }, "launcher: could not surface the new console");
     }
 
     this.registry.registerPendingLaunch({ cwd: spawnDir, pid, hwnd, at: Date.now() });

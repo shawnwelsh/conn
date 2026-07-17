@@ -1,8 +1,8 @@
 import { describe, expect, it, beforeAll, afterAll } from "vitest";
-import { mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { mkdirSync, writeFileSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { findRepoRoot } from "../src/delivery/launcher.js";
+import { findRepoRoot, ConsoleLauncher } from "../src/delivery/launcher.js";
 
 const fixture = join(tmpdir(), `claude-deck-launcher-test-${process.pid}`);
 
@@ -19,6 +19,40 @@ beforeAll(() => {
 });
 
 afterAll(() => rmSync(fixture, { recursive: true, force: true }));
+
+describe("preTrust (worktree trust seeding)", () => {
+  const statePath = join(fixture, "claude-state.json");
+
+  function callPreTrust(dir: string) {
+    const launcher = new ConsoleLauncher(
+      { all: () => [] } as never, // registry unused by preTrust
+      undefined as never,
+      "claude",
+      { info: () => {}, warn: () => {} } as never,
+      true,
+      1000,
+      statePath,
+    );
+    (launcher as unknown as { preTrust(d: string): void }).preTrust(dir);
+  }
+
+  it("adds hasTrustDialogAccepted for the new dir, preserving existing state", () => {
+    writeFileSync(
+      statePath,
+      JSON.stringify({ userId: "u1", projects: { "C:\\old": { allowedTools: ["Bash"], hasTrustDialogAccepted: true } } }),
+    );
+    callPreTrust("C:\\dev\\repo\\.claude\\worktrees\\amber-wombat");
+    const state = JSON.parse(readFileSync(statePath, "utf8"));
+    expect(state.userId).toBe("u1");
+    expect(state.projects["C:\\old"].allowedTools).toEqual(["Bash"]);
+    expect(state.projects["C:\\dev\\repo\\.claude\\worktrees\\amber-wombat"].hasTrustDialogAccepted).toBe(true);
+  });
+
+  it("tolerates a corrupt state file without throwing", () => {
+    writeFileSync(statePath, "{broken");
+    expect(() => callPreTrust("C:\\dev\\x")).not.toThrow();
+  });
+});
 
 describe("findRepoRoot", () => {
   it("finds the root from inside a normal repo (walking up)", () => {
