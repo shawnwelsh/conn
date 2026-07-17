@@ -4,6 +4,7 @@ import { join, dirname, resolve, isAbsolute, basename } from "node:path";
 import { homedir } from "node:os";
 import type { DeliveryAdapter } from "./adapter.js";
 import { samePath, type SessionRegistry } from "../registry.js";
+import type { BindingStore } from "../bindings.js";
 import type { Logger } from "../log.js";
 
 /**
@@ -77,6 +78,8 @@ export class ConsoleLauncher {
     private readonly worktreeTimeoutMs: number = 90_000,
     /** CC's per-project state file; injectable for tests. */
     private readonly claudeStatePath: string = join(homedir(), ".claude.json"),
+    /** Persists {cwd, pid} so console bindings survive bridge restarts. */
+    private readonly bindings?: BindingStore,
   ) {}
 
   /**
@@ -248,6 +251,7 @@ export class ConsoleLauncher {
 
     this.registry.registerPendingLaunch({ cwd: spawnDir, pid, hwnd, at: Date.now() });
     this.registry.bindProvisional(spawnDir, { pid, hwnd });
+    this.bindings?.upsert({ cwd: spawnDir, pid, at: Date.now() });
     this.log.info({ cwd: spawnDir, pid, hwnd }, "launcher: console spawned and bound to its key");
     return true;
   }

@@ -368,6 +368,7 @@ export class SessionRegistry extends EventEmitter {
     if (!entry || entry.windowDead) return;
     entry.windowDead = true;
     entry.deadAt = Date.now();
+    this.emit("windowDead", entry); // listeners drop the persisted binding
     this.working = this.working.filter((s) => s !== sessionId);
     this.overflow = this.overflow.filter((s) => s !== sessionId);
     this.overflow.push(sessionId); // end of the line

@@ -1,7 +1,9 @@
 import Fastify from "fastify";
+import { join } from "node:path";
 import { loadConfig } from "./config.js";
 import { createLogger } from "./log.js";
-import { SessionRegistry } from "./registry.js";
+import { SessionRegistry, type SessionEntry } from "./registry.js";
+import { BindingStore, restoreConsoleBindings } from "./bindings.js";
 import { DecisionStore } from "./decisions.js";
 import { computeTiles, initialControls, initialRow1, initialRow2Cmd, type DeckLayerState } from "./layers.js";
 import { CommandStore } from "./commands.js";
@@ -51,6 +53,16 @@ async function createDelivery(): Promise<DeliveryAdapter> {
   return noop();
 }
 const delivery = await createDelivery();
+
+// Console bindings survive restarts: restore live ones BEFORE hooks can
+// arrive, so a returning session adopts its console key (kind + HWND)
+// instead of re-registering as a desktop session. Skip when delivery can't
+// resolve windows (noop) — pruning would wrongly erase every binding.
+const bindings = new BindingStore(join(cfg.log.dir, "console-bindings.json"), log);
+if (delivery instanceof AhkAdapter) {
+  await restoreConsoleBindings(bindings, registry, delivery, log);
+}
+registry.on("windowDead", (entry: SessionEntry) => bindings.removeByCwd(entry.cwd));
 
 const app = Fastify({ logger: false });
 
@@ -170,6 +182,8 @@ controller.setLauncher(
     log,
     cfg.newSessionWorktrees,
     cfg.worktreeTimeoutSeconds * 1000,
+    undefined,
+    bindings,
   ),
 );
 controller.setCommands(commands);
