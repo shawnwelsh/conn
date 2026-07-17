@@ -142,7 +142,7 @@ function revertQuestion(): void {
 }
 
 const controller = new DeckController(registry, layer, delivery, cfg, log, pushRender);
-controller.setLauncher(new ConsoleLauncher(registry, delivery, cfg.newSessionCommand, log));
+controller.setLauncher(new ConsoleLauncher(registry, delivery, cfg.newSessionCommand, log, cfg.newSessionWorktrees));
 controller.setHooks({
   onPermissionKey: (index) => {
     const action = (["allow", "always-allow", "deny", "deny-reason", "show-on-screen"] as const)[index];

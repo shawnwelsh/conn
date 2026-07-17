@@ -33,6 +33,9 @@ export interface DeckConfig {
   cannedCommands: Record<string, { label: string; text: string }>;
   /** Command the "New" key runs in a fresh console window. */
   newSessionCommand: string;
+  /** When true (default), New creates a fresh git worktree on branch
+   * deck/<codename> — the codename becomes the feature name on the button. */
+  newSessionWorktrees: boolean;
   /** Text the suggestion-layer Accept key types into the session. */
   suggestionAcceptText: string;
   log: { level: string; dir: string };
@@ -67,6 +70,7 @@ export function loadConfig(): DeckConfig {
   cfg.longPressMs ??= 500;
   cfg.moveCancelSeconds ??= 5;
   cfg.newSessionCommand ??= "claude";
+  cfg.newSessionWorktrees ??= true;
   cfg.suggestionAcceptText ??= "yes";
   cfg.delivery.windowMode ??= "activeWindow";
   cfg.alwaysAllowDestination ??= "session";

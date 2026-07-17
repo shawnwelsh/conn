@@ -46,10 +46,19 @@ supersedes this with true per-pane targeting.
 ### Console sessions — full per-session control
 
 The **New** key (row 2) spawns `newSessionCommand` (default `claude`) in a
-fresh console window in the targeted session's repo. The bridge captures the
-console's window handle (via `Start-Process` pid → AHK window lookup — titles
-are useless because CC overwrites them) and binds it to the session that
-starts there, marking it `windowKind: "console"` with a `›_` badge on its key.
+fresh console window. With `newSessionWorktrees: true` (default) it first
+creates a **fresh git worktree** in the targeted session's repo — branch
+`deck/<codename>`, dir `.claude/worktrees/<codename>` — so parallel sessions
+never share a working tree, and **the codename becomes the feature name on
+the button** (labels derive from the branch: `deck/nimble-badger` → "nimble
+badger"). Non-git dirs or git failures fall back to spawning in place (with a
+loud shared-working-tree warning). Worktrees aren't auto-removed; clean up
+with `git worktree remove` when a feature is done.
+
+The bridge captures the console's window handle (via `Start-Process` pid →
+AHK window lookup — titles are useless because CC overwrites them) and binds
+it to the session that starts there, marking it `windowKind: "console"` with
+a `›_` badge on its key.
 
 Console sessions are fully targetable: double-tap surfaces *that* window, and
 commands go to *that* session even when it's in the background. The deck also

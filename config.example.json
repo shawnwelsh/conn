@@ -17,6 +17,7 @@
     "key13": { "label": "Commit", "text": "/save-work" }
   },
   "newSessionCommand": "claude",
+  "newSessionWorktrees": true,
   "suggestionAcceptText": "yes",
   "log": {
     "level": "info",
