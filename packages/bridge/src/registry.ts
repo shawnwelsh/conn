@@ -126,6 +126,12 @@ export class SessionRegistry extends EventEmitter {
   ensure(event: AnyHookEvent): SessionEntry {
     let entry = this.sessions.get(event.session_id);
     if (!entry) {
+      // A deck-spawned console already holds a provisional key for this cwd —
+      // adopt it in place rather than creating a duplicate.
+      const adopted = this.adoptProvisional(event);
+      if (adopted) return adopted;
+    }
+    if (!entry) {
       // Disambiguate duplicate feature names (e.g. two sessions in the same
       // worktree/branch): second one becomes "name 2", then "name 3", …
       const base = deriveLabel(event.cwd);
@@ -153,6 +159,57 @@ export class SessionRegistry extends EventEmitter {
    * binds to its window. */
   registerPendingLaunch(launch: PendingLaunch): void {
     this.pendingLaunches.push(launch);
+  }
+
+  /**
+   * Show a just-spawned console on the deck IMMEDIATELY. Claude Code fires no
+   * SessionStart at interactive launch (observed on 2.1.211: a session's
+   * first hook is its first prompt/tool event), so without this a fresh
+   * console is invisible until the user types something into it. The
+   * provisional entry is adopted in place — same slot, same label — when the
+   * real session's first hook arrives from that cwd.
+   */
+  addProvisional(launch: PendingLaunch): SessionEntry {
+    const entry: SessionEntry = {
+      sessionId: `launching:${launch.pid}`,
+      slot: -1,
+      label: this.dedupeLabel(deriveLabel(launch.cwd), `launching:${launch.pid}`),
+      labelBase: deriveLabel(launch.cwd),
+      cwd: launch.cwd,
+      status: "idle",
+      lastEventAt: Date.now(),
+      windowKind: "console",
+      hwnd: launch.hwnd ?? undefined,
+      pid: launch.pid,
+      events: new RingBuffer(this.eventHistorySize),
+    };
+    this.sessions.set(entry.sessionId, entry);
+    this.place(entry.sessionId);
+    // Pressing New means your attention is headed there — target it.
+    this.targeted = entry.sessionId;
+    this.emit("changed");
+    return entry;
+  }
+
+  /** Adopt a provisional entry for a real session id: keep its slot/order and
+   * window binding, swap the identity. Returns null if none matches. */
+  private adoptProvisional(event: AnyHookEvent): SessionEntry | null {
+    for (const entry of this.sessions.values()) {
+      if (!entry.sessionId.startsWith("launching:")) continue;
+      if (!samePath(entry.cwd, event.cwd ?? "")) continue;
+      const oldId = entry.sessionId;
+      this.sessions.delete(oldId);
+      entry.sessionId = event.session_id;
+      this.sessions.set(entry.sessionId, entry);
+      this.working = this.working.map((id) => (id === oldId ? entry.sessionId : id));
+      this.overflow = this.overflow.map((id) => (id === oldId ? entry.sessionId : id));
+      if (this.targeted === oldId) this.targeted = entry.sessionId;
+      // The matching pending launch is now consumed too.
+      this.pendingLaunches = this.pendingLaunches.filter((l) => !samePath(l.cwd, entry.cwd));
+      this.emit("changed");
+      return entry;
+    }
+    return null;
   }
 
   private dedupeLabel(base: string, forSessionId: string): string {

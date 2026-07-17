@@ -2,7 +2,7 @@ import { describe, expect, it, beforeAll, afterAll } from "vitest";
 import { mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { SessionRegistry, deriveLabel, prettifyBranch } from "../src/registry.js";
+import { SessionRegistry, deriveLabel, prettifyBranch, samePath } from "../src/registry.js";
 
 function start(registry: SessionRegistry, id: string, cwd = `C:\\dev\\${id}`) {
   return registry.ensure({ session_id: id, cwd, hook_event_name: "SessionStart" });
@@ -34,6 +34,43 @@ describe("duplicate label disambiguation", () => {
     expect(a.label).toBe("same-dir");
     expect(b.label).toBe("same-dir 2");
     expect(c.label).toBe("same-dir 3");
+  });
+});
+
+describe("provisional launch keys (no SessionStart at interactive launch)", () => {
+  const launch = { cwd: "C:\\dev\\repo\\.claude\\worktrees\\amber-wombat", pid: 4242, hwnd: 777, at: Date.now() };
+
+  it("claims a key immediately at spawn with the console binding", () => {
+    const r = new SessionRegistry(5);
+    const p = r.addProvisional(launch);
+    expect(p.sessionId).toBe("launching:4242");
+    expect(p.windowKind).toBe("console");
+    expect(p.hwnd).toBe(777);
+    expect(r.snapshot().working).toContain("launching:4242");
+    expect(r.targetedSession?.sessionId).toBe("launching:4242"); // first session auto-targets
+  });
+
+  it("is adopted in place when the real session's first hook arrives", () => {
+    const r = new SessionRegistry(5);
+    start(r, "existing");
+    r.registerPendingLaunch(launch);
+    r.addProvisional(launch);
+    const slotBefore = r.get("launching:4242")!.slot;
+
+    const real = r.ensure({ session_id: "real-abc", cwd: launch.cwd.replace(/\\/g, "/"), hook_event_name: "UserPromptSubmit" });
+    expect(real.slot).toBe(slotBefore); // same key, no jump
+    expect(real.hwnd).toBe(777);
+    expect(real.windowKind).toBe("console");
+    expect(r.get("launching:4242")).toBeUndefined(); // no duplicate
+    expect(r.all().filter((s) => samePath(s.cwd, launch.cwd)).length).toBe(1);
+  });
+
+  it("does not adopt for unrelated cwds", () => {
+    const r = new SessionRegistry(5);
+    r.addProvisional(launch);
+    const other = r.ensure({ session_id: "other", cwd: "C:\\dev\\elsewhere", hook_event_name: "SessionStart" });
+    expect(other.sessionId).toBe("other");
+    expect(r.get("launching:4242")).toBeDefined();
   });
 });
 

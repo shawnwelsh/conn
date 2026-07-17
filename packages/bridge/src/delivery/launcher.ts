@@ -236,8 +236,13 @@ export class ConsoleLauncher {
       if (!surfaced) this.log.warn({ hwnd }, "launcher: could not surface the new console");
     }
 
-    this.registry.registerPendingLaunch({ cwd: spawnDir, pid, hwnd, at: Date.now() });
-    this.log.info({ cwd: spawnDir, pid, hwnd }, "launcher: console spawned, awaiting SessionStart");
+    const launch = { cwd: spawnDir, pid, hwnd, at: Date.now() };
+    this.registry.registerPendingLaunch(launch);
+    // Claim a key NOW — CC fires no SessionStart at interactive launch, so
+    // without a provisional entry the console stays invisible until the
+    // user's first prompt. Adopted in place when the real session speaks.
+    this.registry.addProvisional(launch);
+    this.log.info({ cwd: spawnDir, pid, hwnd }, "launcher: console spawned, provisional key claimed");
     return true;
   }
 }
