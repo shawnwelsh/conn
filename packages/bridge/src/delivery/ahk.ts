@@ -109,10 +109,16 @@ export class AhkAdapter implements DeliveryAdapter {
     run: (query: string) => Promise<string>,
   ): Promise<boolean> {
     // A bound HWND (deck-launched console) is exact — use it regardless of
-    // windowMode. Fall through if the window has since closed.
+    // windowMode. If that window is GONE, refuse delivery entirely: an
+    // exact-target session must never degrade to typing into whatever
+    // conversation happens to be visible in the app.
     if (session.hwnd) {
       if ((await run(`ahk_id ${session.hwnd}`)) === "ok") return true;
-      this.log.warn({ session: session.label, hwnd: session.hwnd }, "bound window gone; falling back");
+      this.log.warn(
+        { session: session.label, hwnd: session.hwnd },
+        "delivery refused: bound window gone (session likely closed) — not falling back",
+      );
+      return false;
     }
     if (this.windowMode === "activeWindow") {
       return (await run(FALLBACK_QUERY)) === "ok";
