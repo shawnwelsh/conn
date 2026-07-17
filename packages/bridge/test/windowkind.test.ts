@@ -47,6 +47,7 @@ describe("per-kind command dialects", () => {
     async sendKey(_s: SessionRef, c: string): Promise<boolean> { this.calls.push(`key:${c}`); return true; }
     async sendSequence(_s: SessionRef, cs: string[]): Promise<boolean> { this.calls.push(`seq:${cs.join("+")}`); return true; }
     async findWindowByPid(): Promise<number | null> { return null; }
+    async checkWindow(): Promise<boolean | null> { return null; }
     async dispose(): Promise<void> {}
   }
 

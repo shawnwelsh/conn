@@ -169,6 +169,14 @@ export function renderTile(spec: TileSpec): Buffer {
     ctx.fillRect(0, 0, S, S);
   }
 
+  // Dead session: heavy darken + drawn skull-and-crossbones (vector, so it
+  // can never fall back to a missing-glyph box).
+  if (spec.dead) {
+    ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
+    ctx.fillRect(0, 0, S, S);
+    drawSkull(ctx, S / 2, S / 2 + 6, 34);
+  }
+
   const buf = canvas.toBuffer("image/png");
   cachePut(key, buf);
   return buf;
@@ -229,4 +237,65 @@ export function renderBanner(text: string, span: number, state: string): Buffer[
 
 export function toDataUri(png: Buffer): string {
   return `data:image/png;base64,${png.toString("base64")}`;
+}
+
+/** Vector skull-and-crossbones centered at (cx, cy); r ≈ skull radius. */
+function drawSkull(ctx: SKRSContext2D, cx: number, cy: number, r: number): void {
+  ctx.save();
+  ctx.strokeStyle = "#f8fafc";
+  ctx.fillStyle = "#f8fafc";
+  ctx.lineCap = "round";
+
+  // Crossed bones behind the skull.
+  ctx.lineWidth = r * 0.28;
+  const b = r * 1.55;
+  for (const [x1, y1, x2, y2] of [
+    [cx - b, cy - b * 0.55, cx + b, cy + b * 0.55],
+    [cx - b, cy + b * 0.55, cx + b, cy - b * 0.55],
+  ] as const) {
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x2, y2);
+    ctx.stroke();
+    // Bone knobs at each end.
+    for (const [ex, ey] of [[x1, y1], [x2, y2]] as const) {
+      ctx.beginPath();
+      ctx.arc(ex, ey - r * 0.14, r * 0.16, 0, Math.PI * 2);
+      ctx.arc(ex, ey + r * 0.14, r * 0.16, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  // Cranium + jaw.
+  ctx.beginPath();
+  ctx.arc(cx, cy - r * 0.15, r, Math.PI * 0.95, Math.PI * 2.05);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.ellipse(cx, cy + r * 0.35, r * 0.62, r * 0.55, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Eyes + nose (cut out of the skull).
+  ctx.fillStyle = "#0a0a0a";
+  for (const dx of [-0.42, 0.42]) {
+    ctx.beginPath();
+    ctx.ellipse(cx + dx * r, cy - r * 0.12, r * 0.22, r * 0.28, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.beginPath();
+  ctx.moveTo(cx, cy + r * 0.12);
+  ctx.lineTo(cx - r * 0.12, cy + r * 0.38);
+  ctx.lineTo(cx + r * 0.12, cy + r * 0.38);
+  ctx.closePath();
+  ctx.fill();
+
+  // Teeth lines.
+  ctx.strokeStyle = "#0a0a0a";
+  ctx.lineWidth = r * 0.07;
+  for (const dx of [-0.2, 0, 0.2]) {
+    ctx.beginPath();
+    ctx.moveTo(cx + dx * r, cy + r * 0.62);
+    ctx.lineTo(cx + dx * r, cy + r * 0.86);
+    ctx.stroke();
+  }
+  ctx.restore();
 }

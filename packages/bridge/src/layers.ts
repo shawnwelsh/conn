@@ -102,7 +102,13 @@ export function computeTiles(
       const e = entries[page * perPage + slot];
       tiles.push(
         e
-          ? { text: e.label, subtext: e.status, state: "answer", badge: String(page * perPage + slot + 1) }
+          ? {
+              text: e.label,
+              subtext: e.windowDead ? "window gone" : e.status,
+              state: "answer",
+              badge: String(page * perPage + slot + 1),
+              dead: e.windowDead,
+            }
           : { text: "", state: "blank" },
       );
     }
@@ -148,6 +154,7 @@ export function computeTiles(
         badge: session.windowKind === "console" ? "›_" : undefined,
         selected: isMorphOrigin ? flashPhase : session.sessionId === targeted?.sessionId,
         dim: stale,
+        dead: session.windowDead,
       });
     }
   }

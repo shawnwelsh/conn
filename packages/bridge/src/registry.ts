@@ -36,6 +36,10 @@ export interface SessionEntry {
   /** Trailing offer from the last finished turn ("Want me to X?"),
    * surfaced on the deck for console sessions. Cleared on new activity. */
   suggestion?: string;
+  /** The bound window died (no clean SessionEnd) — rendered with a skull,
+   * demoted to the end of the overflow line, swept after a TTL. */
+  windowDead?: boolean;
+  deadAt?: number;
   events: RingBuffer<{ at: number; event: string; detail?: string }>;
 }
 
@@ -265,6 +269,31 @@ export class SessionRegistry extends EventEmitter {
     }
   }
 
+  /** The session's window died: skull it, demote it to the END of the
+   * overflow line (dead sessions never re-promote), and retarget if needed. */
+  markWindowDead(sessionId: string): void {
+    const entry = this.sessions.get(sessionId);
+    if (!entry || entry.windowDead) return;
+    entry.windowDead = true;
+    entry.deadAt = Date.now();
+    this.working = this.working.filter((s) => s !== sessionId);
+    this.overflow = this.overflow.filter((s) => s !== sessionId);
+    this.overflow.push(sessionId); // end of the line
+    if (this.targeted === sessionId) this.targeted = this.working[0] ?? null;
+    this.rebalance();
+    this.emit("changed");
+  }
+
+  /** Dead sessions past their TTL are removed entirely. */
+  sweepDead(ttlMs: number): void {
+    const now = Date.now();
+    for (const entry of [...this.sessions.values()]) {
+      if (entry.windowDead && entry.deadAt && now - entry.deadAt > ttlMs) {
+        this.release(entry.sessionId);
+      }
+    }
+  }
+
   snapshot(): RegistrySnapshot {
     return {
       sessions: this.all().map((s) => ({ ...s, events: s.events.toArray() })),
@@ -310,7 +339,13 @@ export class SessionRegistry extends EventEmitter {
   private rebalance(): void {
     const cap = this.capacity();
     while (this.working.length > cap) this.overflow.unshift(this.working.pop()!);
-    while (this.working.length < cap && this.overflow.length > 0) this.working.push(this.overflow.shift()!);
+    // Fill freed slots from the overflow front — but dead sessions stay at
+    // the end of the line, never promoted back onto the deck.
+    while (this.working.length < cap) {
+      const next = this.overflow.findIndex((id) => !this.sessions.get(id)?.windowDead);
+      if (next === -1) break;
+      this.working.push(this.overflow.splice(next, 1)[0]!);
+    }
     // Cap total tracked sessions — drop the least-recently-used overflow tail.
     while (this.sessions.size > this.maxTracked && this.overflow.length > 0) {
       const victim = this.overflow.pop()!;

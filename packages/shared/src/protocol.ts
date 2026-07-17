@@ -40,6 +40,8 @@ export interface TileSpec {
   selected?: boolean;
   /** Render dimmed — used for stale agent slots (no events for a while). */
   dim?: boolean;
+  /** Session's bound window is gone (dead console) — skull-and-crossbones. */
+  dead?: boolean;
   /** Banner membership: this tile is slice `bannerIndex` of one string
    * rendered across `bannerSpan` adjacent keys (text carries the full
    * string on every slice). */

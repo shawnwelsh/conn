@@ -22,6 +22,7 @@ class RecordingAdapter implements DeliveryAdapter {
     return true;
   }
   async findWindowByPid(): Promise<number | null> { return null; }
+  async checkWindow(): Promise<boolean | null> { return null; }
   async dispose(): Promise<void> {}
 }
 

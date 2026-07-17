@@ -46,6 +46,7 @@ describe("suggestion layer gating + accept", () => {
     async sendKey(_s: SessionRef, c: string): Promise<boolean> { this.calls.push(`key:${c}`); return true; }
     async sendSequence(): Promise<boolean> { return true; }
     async findWindowByPid(): Promise<number | null> { return null; }
+    async checkWindow(): Promise<boolean | null> { return null; }
     async dispose(): Promise<void> {}
   }
 

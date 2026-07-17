@@ -14,6 +14,8 @@ export interface DeckConfig {
   /** Seconds a pending long-press move waits for a target before cancelling. */
   moveCancelSeconds: number;
   staleSessionMinutes: number;
+  /** Hours a dead-window (skulled) session lingers before being swept. */
+  deadSessionSweepHours: number;
   /** Where an "always allow" deck press writes its rule. Default "session"
    * (this run only, no disk write). */
   alwaysAllowDestination: "session" | "localSettings" | "projectSettings" | "userSettings";
@@ -69,6 +71,7 @@ export function loadConfig(): DeckConfig {
   if (cfg.maxSessions < cfg.slots) throw new Error("config: maxSessions must be >= slots");
   cfg.longPressMs ??= 500;
   cfg.moveCancelSeconds ??= 5;
+  cfg.deadSessionSweepHours ??= 3;
   cfg.newSessionCommand ??= "claude";
   cfg.newSessionWorktrees ??= true;
   cfg.suggestionAcceptText ??= "yes";

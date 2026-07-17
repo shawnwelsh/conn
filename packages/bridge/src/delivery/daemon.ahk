@@ -66,6 +66,10 @@ loop {
         found := WinExist("ahk_pid " . parts[2])
         DetectHiddenWindows false
         respond("hwnd|" . (found ? found : 0))
+      case "checkwin":
+        ; Liveness probe for a bound window handle (minimized counts as
+        ; alive; destroyed does not). Drives the dead-session skull.
+        respond("alive|" . (WinExist("ahk_id " . parts[2]) ? 1 : 0))
       case "text":
         if (!activate(parts[2])) {
           respond("err|window not found: " . parts[2])

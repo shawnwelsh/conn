@@ -92,6 +92,12 @@ export class AhkAdapter implements DeliveryAdapter {
     return hwnd > 0 ? hwnd : null;
   }
 
+  async checkWindow(hwnd: number): Promise<boolean | null> {
+    const reply = await this.command(`checkwin|${hwnd}`);
+    const m = reply.match(/^alive\|([01])$/);
+    return m ? m[1] === "1" : null; // daemon hiccup → unknown, not dead
+  }
+
   async dispose(): Promise<void> {
     this.proc?.kill();
     this.proc = null;

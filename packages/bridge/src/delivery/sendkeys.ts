@@ -94,5 +94,9 @@ export class SendKeysAdapter implements DeliveryAdapter {
     return null; // SendKeys fallback has no window enumeration
   }
 
+  async checkWindow(): Promise<boolean | null> {
+    return null; // no window enumeration → liveness unknown
+  }
+
   async dispose(): Promise<void> {}
 }

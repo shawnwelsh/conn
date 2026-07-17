@@ -30,6 +30,9 @@ export interface DeliveryAdapter {
   /** Resolve a process id to its top-level window handle, or null. Used by
    * the console launcher to bind spawned terminals to sessions. */
   findWindowByPid(pid: number): Promise<number | null>;
+  /** Is this bound window still alive? `null` = adapter can't tell (never
+   * treated as dead). Drives the dead-session skull. */
+  checkWindow(hwnd: number): Promise<boolean | null>;
   dispose(): Promise<void>;
 }
 
@@ -56,6 +59,9 @@ export class NoopAdapter implements DeliveryAdapter {
   async findWindowByPid(pid: number): Promise<number | null> {
     this.onCall("findWindowByPid", String(pid));
     return null;
+  }
+  async checkWindow(): Promise<boolean | null> {
+    return null; // can't tell — never marks sessions dead
   }
   async dispose(): Promise<void> {}
 }
