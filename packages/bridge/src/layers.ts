@@ -66,6 +66,9 @@ export interface DeckLayerState {
   /** A console launch (worktree + spawn) is in flight — New shows progress
    * and further presses are ignored. */
   launching?: boolean;
+  /** Push-to-talk sidecar state, mirrored from the STT adapter; drives the
+   * mic key face. Absent = offline (PTT not configured/available). */
+  ptt?: "offline" | "loading" | "ready" | "recording" | "transcribing";
   permission?: PermissionContext;
   question?: QuestionContext;
   controls: DeckControls;
@@ -104,6 +107,22 @@ export function commandTile(
   }
   const t = entry as Extract<CommandEntry, { kind: "text" }>;
   return { text: t.label, subtext: t.label === t.text ? undefined : t.text, state: "command" };
+}
+
+/** Mic-key face per PTT sidecar state (absent = offline). */
+export function pttTile(ptt: DeckLayerState["ptt"], flashPhase: boolean): TileSpec {
+  switch (ptt) {
+    case "recording":
+      return { text: "REC", subtext: "release → text", state: "error", icon: "mic", selected: flashPhase };
+    case "transcribing":
+      return { text: "PTT", subtext: "transcribing…", state: "waiting", icon: "mic", selected: flashPhase };
+    case "ready":
+      return { text: "PTT", subtext: "hold to talk", state: "command", icon: "mic" };
+    case "loading":
+      return { text: "PTT", subtext: "loading…", state: "blank", icon: "mic" };
+    default:
+      return { text: "PTT", subtext: "offline", state: "blank", icon: "mic" };
+  }
 }
 
 /** Options shown per question page: keys 5-8 are options, key 9 is the pager. */
@@ -290,7 +309,7 @@ export function computeTiles(
     );
   } else {
     tiles.push(
-      { text: "PTT", subtext: "reserved", state: "blank", icon: "mic" },
+      pttTile(layer.ptt, flashPhase),
       { text: "Send", subtext: "enter", state: "command", icon: "send" },
       { text: "Esc", subtext: "interrupt", state: "command", icon: "esc" },
       layer.launching

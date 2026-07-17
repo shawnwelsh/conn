@@ -85,9 +85,27 @@ aesthetics). Sessions you start yourself in terminals remain
   persists back to the file. Hand-edit `commands.json` any time; it
   hot-reloads. Morph layers (permission / question / suggestion) override
   this row automatically.
-- **Row 3** — PTT (reserved) · Send · Esc (interrupt) · New (worktree
-  console) · Page. Page flips to a second globals page (Mode picker menu,
-  room for more).
+- **Row 3** — PTT (hold-to-talk) · Send · Esc (interrupt) · New (worktree
+  console) · Page. Page flips to a second globals page (Mode picker menu —
+  desktop sessions only, room for more).
+
+## Push-to-talk
+
+Hold the mic key, speak, release — the transcription is typed into the
+targeted session's input **unsent** (review it, then press Send). Everything
+runs locally: a Python sidecar owns the microphone and a
+[faster-whisper](https://github.com/SYSTRAN/faster-whisper) model (CPU int8,
+`distil-small.en` by default — downloaded once on first start, ~170 MB).
+
+Setup: `python -m pip install faster-whisper sounddevice` (needs Python
+3.10+; cp314 wheels exist). No Python or missing deps? The key just shows
+"PTT offline" — press it to retry once you've installed them.
+
+Details: presses shorter than `ptt.minHoldMs` (300) are discarded as
+accidental; recording auto-stops at `ptt.maxSeconds` (60) and delivers what
+it has; silence transcribes to nothing (VAD) and nothing is typed. Configure
+in `config.json` → `ptt {enabled, python, model, language, minHoldMs,
+maxSeconds}`.
 
 ## Safety model (permission flow)
 

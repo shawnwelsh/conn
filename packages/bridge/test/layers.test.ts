@@ -22,6 +22,7 @@ const cfg: DeckConfig = {
   worktreeTimeoutSeconds: 90,
   suggestionAcceptText: "yes",
   desktopSubmitDelayMs: 250,
+  ptt: { enabled: false, python: "python", model: "distil-small.en", language: "en", minHoldMs: 300, maxSeconds: 60 },
   log: { level: "info", dir: "logs" },
 };
 

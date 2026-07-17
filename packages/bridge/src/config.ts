@@ -55,6 +55,21 @@ export interface DeckConfig {
    * sessions — the Electron app renders its input/slash-popup async and an
    * instant Enter is swallowed. Consoles never delay. */
   desktopSubmitDelayMs: number;
+  /** Push-to-talk: hold the mic key, speak, release — transcription lands in
+   * the targeted session's input (not auto-sent). Local faster-whisper via a
+   * Python sidecar; missing deps just leave the key "offline". */
+  ptt: {
+    enabled: boolean;
+    python: string;
+    model: string;
+    language: string;
+    /** sounddevice input device name/index; omit for the system default. */
+    device?: string;
+    /** Sub-hold presses this short are treated as accidental and discarded. */
+    minHoldMs: number;
+    /** Recording auto-stops (and transcribes) after this long. */
+    maxSeconds: number;
+  };
   log: { level: string; dir: string };
 }
 
@@ -94,6 +109,13 @@ export function loadConfig(): DeckConfig {
   cfg.worktreeTimeoutSeconds ??= 90;
   cfg.suggestionAcceptText ??= "yes";
   cfg.desktopSubmitDelayMs ??= 250;
+  cfg.ptt ??= {} as DeckConfig["ptt"];
+  cfg.ptt.enabled ??= true;
+  cfg.ptt.python ??= "python";
+  cfg.ptt.model ??= "distil-small.en";
+  cfg.ptt.language ??= "en";
+  cfg.ptt.minHoldMs ??= 300;
+  cfg.ptt.maxSeconds ??= 60;
   cfg.delivery.windowMode ??= "activeWindow";
   cfg.alwaysAllowDestination ??= "session";
   const validDest = ["session", "localSettings", "projectSettings", "userSettings"];

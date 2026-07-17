@@ -1,6 +1,10 @@
-# Phase 4 design stub — push-to-talk & deny-with-dictated-reason
+# Phase 4 design — push-to-talk & deny-with-dictated-reason
 
-Design only; no implementation yet. Key 10 (row 3, first key) is reserved.
+**Status:** PTT is IMPLEMENTED (2026-07-17) per the design below, with two
+deltas: the down/up protocol addition was already in place (raw down/up +
+bridge-side gesture recognition landed in Phase 3), and the mic key bypasses
+the gesture recognizer entirely while on globals page 1 so hold-to-record
+gets true press edges. Deny-with-dictated-reason remains future work.
 
 ## Push-to-talk (PTT)
 

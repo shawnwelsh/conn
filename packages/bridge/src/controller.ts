@@ -9,6 +9,10 @@ import { GestureRecognizer, type Gesture } from "./gestures.js";
 import type { ConsoleLauncher } from "./delivery/launcher.js";
 import { activeSuggestion } from "./suggestions.js";
 import type { CommandSource, CommandEntry } from "./commands.js";
+import type { SttEngine } from "./stt/sidecar.js";
+
+/** Physical key hosting PTT (row 3 key 1) on the globals' default page. */
+const PTT_SLOT = 10;
 
 /**
  * Routes recognized gestures (from any client) to actions. Clients report raw
@@ -53,11 +57,29 @@ export class DeckController {
     this.commands = store;
   }
 
-  /** Raw key events from clients — fed straight to the recognizer. */
+  private stt?: SttEngine;
+
+  setStt(stt: SttEngine): void {
+    this.stt = stt;
+  }
+
+  /** Raw key events from clients — fed straight to the recognizer, except
+   * PTT: hold-to-record needs the raw down/up edges, so the mic key bypasses
+   * gesture classification entirely while on the globals' default page. */
   down(slot: Slot): void {
+    if (slot === PTT_SLOT && this.stt && this.layer.row3Page === 0) {
+      this.pttHeld = true;
+      void this.pttDown();
+      return;
+    }
     this.gestures.down(slot);
   }
   up(slot: Slot): void {
+    if (this.pttHeld && slot === PTT_SLOT) {
+      this.pttHeld = false;
+      void this.pttUp();
+      return;
+    }
     this.gestures.up(slot);
   }
 
@@ -375,6 +397,70 @@ export class DeckController {
     }, this.cfg.cmdPagerRevertSeconds * 1000);
   }
 
+  // --- Push-to-talk (hold mic key → record → release → text lands unsent) ---
+
+  private pttHeld = false;
+  private pttStartAt = 0;
+  private pttTarget: SessionEntry | undefined;
+  private pttMaxTimer: ReturnType<typeof setTimeout> | null = null;
+
+  private async pttDown(): Promise<void> {
+    const stt = this.stt;
+    if (!stt) return;
+    if (stt.status === "offline") {
+      // Pressing the offline key is consent to retry the sidecar; a later
+      // press records once it's ready.
+      this.log.info("PTT pressed while offline — retrying sidecar spawn");
+      void stt.ensureStarted?.();
+      return;
+    }
+    if (stt.status !== "ready") return; // loading or mid-cycle — ignore
+    const target = this.registry.targetedSession;
+    if (!target) {
+      this.log.warn("PTT ignored: no targeted session");
+      return;
+    }
+    this.pttTarget = target;
+    this.pttStartAt = Date.now();
+    if (await stt.start()) {
+      // Cap runaway holds: stop and deliver what we have at maxSeconds.
+      this.pttMaxTimer = setTimeout(() => {
+        this.pttHeld = false;
+        void this.pttUp();
+      }, this.cfg.ptt.maxSeconds * 1000);
+    }
+  }
+
+  private async pttUp(): Promise<void> {
+    const stt = this.stt;
+    if (!stt || stt.status !== "recording") return;
+    if (this.pttMaxTimer) {
+      clearTimeout(this.pttMaxTimer);
+      this.pttMaxTimer = null;
+    }
+    const heldMs = Date.now() - this.pttStartAt;
+    if (heldMs < this.cfg.ptt.minHoldMs) {
+      await stt.cancel();
+      this.log.debug({ heldMs }, "PTT: sub-hold press discarded");
+      return;
+    }
+    const text = await stt.stop();
+    const target = this.pttTarget;
+    this.pttTarget = undefined;
+    if (!text) {
+      this.log.info("PTT: empty transcription");
+      return;
+    }
+    // Deliver WITHOUT Enter — the dictation lands in the input for review;
+    // Send is its own key. Target is the session from press time; skip if it
+    // vanished mid-utterance.
+    let ok = false;
+    if (target && this.registry.get(target.sessionId)) {
+      ok = await this.delivery.sendText(target, text);
+    }
+    this.log.info({ chars: text.length, session: target?.sessionId, ok }, "PTT: delivered");
+  }
+
   /** Row 3: PTT / interrupt / globals; the Page key flips global pages. */
   private async row3(index: number): Promise<void> {
     const target = this.registry.targetedSession;
@@ -395,8 +481,8 @@ export class DeckController {
       return; // remaining page-2 slots reserved for future globals
     }
     switch (index) {
-      case 0: // PTT — reserved (Phase 4)
-        return;
+      case 0: // PTT — handled at the raw down/up layer (hold-to-record);
+        return; // a stray classified gesture here is a no-op.
       case 1:
         if (target) await this.delivery.sendKey(target, "enter");
         return;

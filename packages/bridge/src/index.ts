@@ -14,6 +14,7 @@ import { NoopAdapter, type DeliveryAdapter } from "./delivery/adapter.js";
 import { AhkAdapter } from "./delivery/ahk.js";
 import { SendKeysAdapter } from "./delivery/sendkeys.js";
 import { ConsoleLauncher } from "./delivery/launcher.js";
+import { SttSidecar } from "./stt/sidecar.js";
 import { registerHookRoutes } from "./http/hooks.js";
 import { registerApiRoutes } from "./http/api.js";
 import { livenessSweep } from "./liveness.js";
@@ -106,7 +107,9 @@ function flashNeeded(): boolean {
     decisions.current !== undefined ||
     layer.row2 === "question" ||
     registry.pagerFlashing() ||
-    layer.launching === true
+    layer.launching === true ||
+    layer.ptt === "recording" ||
+    layer.ptt === "transcribing"
   );
 }
 
@@ -187,6 +190,25 @@ controller.setLauncher(
   ),
 );
 controller.setCommands(commands);
+
+// Push-to-talk sidecar: model load (and first-run download) happens in the
+// background; the mic key tracks its status and stays "offline" gracefully
+// when deps are missing.
+let stt: SttSidecar | null = null;
+if (cfg.ptt.enabled) {
+  stt = new SttSidecar(
+    { python: cfg.ptt.python, model: cfg.ptt.model, language: cfg.ptt.language, device: cfg.ptt.device },
+    log,
+    (status) => {
+      layer.ptt = status;
+      syncFlash(flashNeeded());
+      pushRender();
+    },
+  );
+  controller.setStt(stt);
+  void stt.ensureStarted();
+}
+
 controller.setHooks({
   onPermissionKey: (index) => {
     const action = (["allow", "always-allow", "deny", "deny-reason", "show-on-screen"] as const)[index];
@@ -271,6 +293,7 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
   process.on(signal, () => {
     log.info({ signal }, "shutting down");
     commands.dispose();
+    stt?.dispose();
     void delivery.dispose().finally(() => process.exit(0));
   });
 }
