@@ -24,6 +24,18 @@ export type AlwaysAllowDestination =
   | "projectSettings"
   | "userSettings";
 
+/**
+ * Tools whose PermissionRequest is not a decision the deck should make.
+ *
+ * AskUserQuestion fires BOTH a PermissionRequest (may I show a picker?) and
+ * the PreToolUse question hook. Holding the permission is doubly wrong: the
+ * Allow/Deny morph replaces the actual options with buttons that answer
+ * nothing, and the hold delays the on-screen question by up to
+ * decisionTimeoutSeconds. Let it straight through — the question layer is
+ * the deck's surface for these.
+ */
+const PASS_THROUGH_TOOLS = new Set(["AskUserQuestion"]);
+
 export interface PendingPermission {
   id: number;
   sessionId: string;
@@ -58,6 +70,13 @@ export class DecisionStore {
   /** Park a PermissionRequest until decision/timeout. Resolves with the hook
    * response body. */
   hold(event: AnyHookEvent): Promise<unknown> {
+    if (PASS_THROUGH_TOOLS.has(String(event.tool_name ?? ""))) {
+      this.log.info(
+        { session: event.session_id, tool: event.tool_name },
+        "permission: pass-through tool — the question layer answers this one",
+      );
+      return Promise.resolve({});
+    }
     if (!this.hasClients()) {
       // No deck connected — never delay the on-screen dialog.
       this.log.info({ session: event.session_id }, "permission: no deck clients, deferring to dialog");

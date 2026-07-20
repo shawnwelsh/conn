@@ -37,6 +37,17 @@ describe("CommandStore", () => {
     expect(store.all().length).toBe(MAX_COMMANDS);
   });
 
+  it("round-trips extraEnter for commands that open a confirm", () => {
+    writeFileSync(file, JSON.stringify([{ label: "Remote", text: "/remote-control", extraEnter: true }, "/status"]));
+    const store = new CommandStore(file, noopLog, () => {});
+    store.load();
+    expect(store.all()[0]).toEqual({ kind: "text", label: "Remote", text: "/remote-control", extraEnter: true });
+
+    store.move(1, 0); // any persist must not drop the flag
+    const onDisk = JSON.parse(readFileSync(file, "utf8"));
+    expect(onDisk).toContainEqual({ label: "Remote", text: "/remote-control", extraEnter: true });
+  });
+
   it("move persists the new order back to the file (insert-before)", () => {
     writeFileSync(file, JSON.stringify(["mode", "model", "/a", "/b"]));
     const store = new CommandStore(file, noopLog, () => {});

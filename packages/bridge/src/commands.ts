@@ -12,6 +12,8 @@ import type { Logger } from "./log.js";
  *                                  (`/rename <name>`, console sessions only)
  *   - "/compact"                 → text command, label = the text itself
  *   - { "label": "Commit", "text": "/save-work" } → text command, custom face
+ *   - { …, "extraEnter": true }  → follow with a second Enter, for commands
+ *                                  that open a confirm (e.g. /remote-control)
  *
  * Text commands are delivered as focus → type → Enter to the TARGETED
  * session. The first 4 entries are the visible keys; the rest live behind
@@ -23,7 +25,7 @@ export const MAX_COMMANDS = 15;
 
 export type CommandEntry =
   | { kind: "builtin"; id: "mode" | "model" | "modemenu" | "rename" | "sendname" }
-  | { kind: "text"; label: string; text: string };
+  | { kind: "text"; label: string; text: string; extraEnter?: boolean };
 
 const BUILTIN_IDS = ["mode", "model", "modemenu", "rename", "sendname"] as const;
 
@@ -57,11 +59,11 @@ function parseEntry(raw: unknown): CommandEntry | null {
     return { kind: "text", label: s, text: s };
   }
   if (raw && typeof raw === "object") {
-    const o = raw as { label?: unknown; text?: unknown };
+    const o = raw as { label?: unknown; text?: unknown; extraEnter?: unknown };
     if (typeof o.text === "string" && o.text.trim()) {
       const text = o.text.trim();
       const label = typeof o.label === "string" && o.label.trim() ? o.label.trim() : text;
-      return { kind: "text", label, text };
+      return o.extraEnter === true ? { kind: "text", label, text, extraEnter: true } : { kind: "text", label, text };
     }
   }
   return null;
@@ -69,6 +71,7 @@ function parseEntry(raw: unknown): CommandEntry | null {
 
 function serializeEntry(e: CommandEntry): unknown {
   if (e.kind === "builtin") return e.id;
+  if (e.extraEnter) return { label: e.label, text: e.text, extraEnter: true };
   return e.label === e.text ? e.text : { label: e.label, text: e.text };
 }
 

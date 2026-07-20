@@ -9,5 +9,6 @@
   "/usage",
   "rename",
   "sendname",
-  "modemenu"
+  "modemenu",
+  { "label": "Remote", "text": "/remote-control", "extraEnter": true }
 ]

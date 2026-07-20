@@ -369,6 +369,12 @@ export class DeckController {
       }
     } else if (entry.kind === "text") {
       ok = await this.typeSubmit(target, entry.text);
+      if (ok && entry.extraEnter) {
+        // The command opens a confirm/prompt (e.g. /remote-control asks for a
+        // name); give it a beat to render, then accept the default.
+        await new Promise((r) => setTimeout(r, this.cfg.desktopSubmitDelayMs ?? 250));
+        ok = await this.delivery.sendKey(target, "enter");
+      }
     }
     this.log.info({ key: name, session: target.sessionId, kind: target.windowKind, ok }, "row2 command");
   }

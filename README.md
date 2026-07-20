@@ -128,7 +128,11 @@ unless launched via the deck.
   the pager **executes**, long-press starts an insert-before move that
   persists back to the file. Entries are slash-command strings,
   `{label, text}` pairs, or the builtins `mode` / `model` / `modemenu` /
-  `rename` / `sendname`. Hand-edit `commands.json` any time; it hot-reloads.
+  `rename` / `sendname`. Add `"extraEnter": true` for commands that open a
+  confirm and need a second Return —
+  `{"label": "Remote", "text": "/remote-control", "extraEnter": true}` turns
+  on phone/web control in one press. Hand-edit `commands.json` any time; it
+  hot-reloads.
   Morph layers (permission / question / suggestion) override this row
   automatically.
 - **Row 3** — Mic (tap to dictate) · Send · Esc (interrupt) · New (worktree
@@ -277,4 +281,7 @@ focus/keystrokes; prefer Task Scheduler here.
 - **Question-layer keystrokes** (digit + Enter) assume the AskUserQuestion
   UI accepts numeric selection — verify against your app version before
   trusting it (permission decisions never use keystrokes and are unaffected).
+  Note that `AskUserQuestion` also raises a PermissionRequest; the deck lets
+  that one through untouched so the options — not an Allow/Deny morph — reach
+  the keys.
 - Multi-select questions defer to the screen in v1.

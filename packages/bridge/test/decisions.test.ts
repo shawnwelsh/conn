@@ -26,6 +26,33 @@ function makeStore(opts: { clients?: boolean; timeoutMs?: number; dest?: "sessio
 
 afterEach(() => vi.useRealTimers());
 
+describe("AskUserQuestion is never held", () => {
+  it("passes straight through so the question layer — not Allow/Deny — answers it", async () => {
+    const changes: string[] = [];
+    const store = new DecisionStore(30_000, noopLog, () => true, () => changes.push("changed"), "session");
+    const body = await store.hold({
+      session_id: "s1",
+      cwd: "C:\\dev\\x",
+      hook_event_name: "PermissionRequest",
+      tool_name: "AskUserQuestion",
+      tool_input: { questions: [{ question: "Which one?", options: [{ label: "A" }, { label: "B" }] }] },
+    } as AnyHookEvent);
+    // Resolved at once, nothing queued, no permission morph raised.
+    expect(body).toEqual({});
+    expect(store.current).toBeUndefined();
+    expect(changes).toEqual([]);
+  });
+
+  it("still holds ordinary tools", async () => {
+    const store = makeStore();
+    let settled = false;
+    void store.hold(permEvent()).then(() => (settled = true));
+    await new Promise((r) => setTimeout(r, 10));
+    expect(settled).toBe(false);
+    expect(store.current?.toolName).toBe("Bash");
+  });
+});
+
 describe("DecisionStore safety invariants", () => {
   it("defers immediately (empty body) when no deck clients are connected", async () => {
     const store = makeStore({ clients: false });

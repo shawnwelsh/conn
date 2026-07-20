@@ -155,6 +155,18 @@ describe("row 3 globals", () => {
     expect(launches).toEqual(["C:\\dev\\mainrepo"]);
   });
 
+  it("extraEnter follows the submit with a second Enter (e.g. /remote-control)", async () => {
+    controller.setCommands(fakeCommands([
+      { kind: "text", label: "Remote", text: "/remote-control", extraEnter: true },
+    ]));
+    (controller as any).row2(0);
+    await new Promise((r) => setTimeout(r, 400)); // the confirm beat
+    expect(delivery.calls.map((c) => c.m)).toEqual(["sendText", "sendKey", "sendKey"]);
+    expect(delivery.calls[0]!.chords).toEqual(["/remote-control"]);
+    expect(delivery.calls[1]!.chords).toEqual(["enter"]);
+    expect(delivery.calls[2]!.chords).toEqual(["enter"]);
+  });
+
   it("desktop text commands wait desktopSubmitDelayMs before Enter; consoles don't", async () => {
     vi.useFakeTimers();
     const cfgDelay = { ...(cfg as object), desktopSubmitDelayMs: 250 } as DeckConfig;
