@@ -100,9 +100,9 @@ export function initialRow2Cmd(): Row2CmdState {
 /** Visible command keys per row-2 view (key 10 is the pager/control key). */
 export const COMMANDS_PER_PAGE = 4;
 
-/** Globals-row page 2 is empty since Mode and Rename moved to the session
- * row; the Page key hides itself until something lives here again. */
-export const HAS_GLOBALS_PAGE2 = false;
+/** Globals-row page 2 holds the session-creation verbs that aren't the
+ * everyday New: Resume, Fork, Branch. */
+export const HAS_GLOBALS_PAGE2 = true;
 
 /** The tile for one command entry, speaking the targeted session's dialect. */
 export function commandTile(
@@ -114,7 +114,8 @@ export function commandTile(
   flashPhase = false,
 ): TileSpec {
   if (entry.kind === "builtin" && entry.id === "mode") {
-    if (targeted?.windowKind === "console") return { text: "Mode", subtext: "⇥ cycle", state: "command" };
+    // Plain ASCII: a ⇥ glyph tofus in the web deck's font.
+    if (targeted?.windowKind === "console") return { text: "Mode", subtext: "tab cycle", state: "command" };
     const next = controls.planNext;
     return { text: next === "plan" ? "Plan" : "Auto", subtext: "mode", state: "command" };
   }
@@ -125,10 +126,11 @@ export function commandTile(
   }
   if (entry.kind === "builtin" && entry.id === "modemenu") {
     // The full picker chord — desktop dialect only; the console TUI has no
-    // such menu (its mode cycling is the "mode" builtin, Shift+Tab).
+    // such menu (its mode cycling is the "mode" builtin, Tab). Still says its
+    // name when unavailable: a numbered but empty key reads as a bug.
     return targeted?.windowKind === "desktop"
       ? { text: "Mode", subtext: "menu", state: "command", icon: "menu" }
-      : { text: "", state: "blank" };
+      : { text: "Mode", subtext: "desktop only", state: "blank" };
   }
   if (entry.kind === "builtin" && entry.id === "rename") {
     if (renameRec && targeted && renameRec.sessionId === targeted.sessionId) {
@@ -153,6 +155,10 @@ export function commandTile(
   }
   if (entry.kind === "keys") {
     return { text: entry.label, subtext: entry.keys.join(" · "), state: "command" };
+  }
+  if (entry.kind === "text" && entry.dictate) {
+    // The mic opens on press — say the argument, then Send.
+    return { text: entry.label, subtext: "say it", state: "command", icon: "mic" };
   }
   const t = entry as Extract<CommandEntry, { kind: "text" }>;
   return { text: t.label, subtext: t.label === t.text ? undefined : t.text, state: "command" };
@@ -386,10 +392,14 @@ export function computeTiles(
   // live in the session row, configurable in commands.json like everything
   // else that acts on the targeted session.
   if (HAS_GLOBALS_PAGE2 && layer.row3Page === 1) {
+    // The other ways to start a session: pick up an old one, copy this one
+    // aside, or split it here.
     tiles.push(
-      { text: "", state: "blank" },
-      { text: "", state: "blank" },
-      { text: "", state: "blank" },
+      layer.launching
+        ? { text: "Resume", subtext: "spawning…", state: "waiting", icon: "resume", selected: flashPhase }
+        : { text: "Resume", subtext: "pick session", state: "command", icon: "resume" },
+      { text: "Fork", subtext: "copy aside", state: "command", icon: "fork" },
+      { text: "Branch", subtext: "split here", state: "command", icon: "branch" },
       { text: "", state: "blank" },
       { text: "Page", subtext: "back", state: "command", icon: "page" },
     );
@@ -407,9 +417,7 @@ export function computeTiles(
         : { text: "New", subtext: "worktree", state: "command", icon: "new" },
       HAS_GLOBALS_PAGE2
         ? { text: "Page", subtext: "more", state: "command", icon: "page" }
-        : layer.launching
-          ? { text: "Resume", subtext: "spawning…", state: "waiting", icon: "resume", selected: flashPhase }
-          : { text: "Resume", subtext: "pick session", state: "command", icon: "resume" },
+        : { text: "", state: "blank" },
     );
   }
 

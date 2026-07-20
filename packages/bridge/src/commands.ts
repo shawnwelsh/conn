@@ -14,6 +14,10 @@ import type { Logger } from "./log.js";
  *   - { "label": "Commit", "text": "/save-work" } → text command, custom face
  *   - { …, "extraEnter": true }  → follow with a second Enter, for commands
  *                                  that open a confirm (e.g. /remote-control)
+ *   - { …, "dictate": true }     → type the text, then open the mic instead
+ *                                  of submitting: for commands whose whole
+ *                                  point is the argument (/subtask, /btw,
+ *                                  /goal). Send ships prefix + speech.
  *   - { "label": "Accept Next", "keys": ["tab", "enter"] } → a chord
  *                                  sequence, spaced so each lands separately
  *                                  (Tab accepts Claude Code's suggested next
@@ -25,11 +29,16 @@ import type { Logger } from "./log.js";
  * back here, and hand edits hot-reload.
  */
 
-export const MAX_COMMANDS = 15;
+/**
+ * Sanity bound, not a UI limit. This was 15 — one per physical key — but the
+ * row-2 pager makes the key count irrelevant, so the only job left is to stop
+ * a runaway file from producing an endless pager.
+ */
+export const MAX_COMMANDS = 60;
 
 export type CommandEntry =
   | { kind: "builtin"; id: "mode" | "model" | "modemenu" | "rename" | "sendname" }
-  | { kind: "text"; label: string; text: string; extraEnter?: boolean }
+  | { kind: "text"; label: string; text: string; extraEnter?: boolean; dictate?: boolean }
   | { kind: "keys"; label: string; keys: string[] };
 
 const BUILTIN_IDS = ["mode", "model", "modemenu", "rename", "sendname"] as const;
@@ -64,7 +73,7 @@ function parseEntry(raw: unknown): CommandEntry | null {
     return { kind: "text", label: s, text: s };
   }
   if (raw && typeof raw === "object") {
-    const o = raw as { label?: unknown; text?: unknown; extraEnter?: unknown; keys?: unknown };
+    const o = raw as { label?: unknown; text?: unknown; extraEnter?: unknown; keys?: unknown; dictate?: unknown };
     if (Array.isArray(o.keys)) {
       const keys = o.keys.filter((k): k is string => typeof k === "string" && k.trim() !== "").map((k) => k.trim());
       if (keys.length) {
@@ -75,6 +84,7 @@ function parseEntry(raw: unknown): CommandEntry | null {
     if (typeof o.text === "string" && o.text.trim()) {
       const text = o.text.trim();
       const label = typeof o.label === "string" && o.label.trim() ? o.label.trim() : text;
+      if (o.dictate === true) return { kind: "text", label, text, dictate: true };
       return o.extraEnter === true ? { kind: "text", label, text, extraEnter: true } : { kind: "text", label, text };
     }
   }
@@ -84,6 +94,7 @@ function parseEntry(raw: unknown): CommandEntry | null {
 function serializeEntry(e: CommandEntry): unknown {
   if (e.kind === "builtin") return e.id;
   if (e.kind === "keys") return { label: e.label, keys: e.keys };
+  if (e.dictate) return { label: e.label, text: e.text, dictate: true };
   if (e.extraEnter) return { label: e.label, text: e.text, extraEnter: true };
   return e.label === e.text ? e.text : { label: e.label, text: e.text };
 }

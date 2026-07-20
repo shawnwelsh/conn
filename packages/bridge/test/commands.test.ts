@@ -26,8 +26,8 @@ describe("CommandStore", () => {
     expect(entries.some((e) => e.kind === "text" && e.label === "Commit" && e.text === "/save-work")).toBe(true);
   });
 
-  it("caps at 15 entries and survives a broken file", () => {
-    writeFileSync(file, JSON.stringify(Array.from({ length: 20 }, (_, i) => `/cmd${i}`)));
+  it("caps a runaway file and survives a broken one", () => {
+    writeFileSync(file, JSON.stringify(Array.from({ length: MAX_COMMANDS + 20 }, (_, i) => `/cmd${i}`)));
     const store = new CommandStore(file, noopLog, () => {});
     store.load();
     expect(store.all().length).toBe(MAX_COMMANDS);

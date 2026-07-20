@@ -111,17 +111,72 @@ describe("row 3 globals", () => {
     expect(delivery.calls.map((c) => c.chords[0])).toEqual(["enter", "escape"]);
   });
 
-  it("Resume runs `claude --resume` in place — no worktree, no paging", async () => {
-    // Mode(menu) and Rename moved to the session row, so globals page 2 is
-    // empty and that key is Resume instead. Resuming picks up work that
-    // already exists, so a fresh worktree would be the wrong place to land.
+  it("a dictate command types the prefix and opens the mic instead of sending", async () => {
+    const stt = {
+      status: "ready" as const,
+      calls: [] as string[],
+      async start() { this.calls.push("start"); this.status = "recording" as never; return true; },
+      async stop() { this.calls.push("stop"); this.status = "ready" as never; return "check the leap year path"; },
+      async cancel() { this.calls.push("cancel"); },
+    };
+    const cfgPtt = { ...(cfg as object), ptt: { maxSeconds: 60 } } as DeckConfig;
+    const c = new DeckController(registry, layer, delivery, cfgPtt, noopLog, () => {});
+    c.setStt(stt as never);
+    c.setCommands(fakeCommands([{ kind: "text", label: "Subtask", text: "/subtask ", dictate: true }]));
+
+    (c as any).row2(0);
+    await flush();
+    // Prefix typed, NO Enter — the argument is still to come.
+    expect(delivery.calls).toEqual([{ m: "sendText", chords: ["/subtask "] }]);
+    expect(stt.calls).toEqual(["start"]);
+
+    // Send then ships prefix + speech in one press.
+    await (c as any).row3(1);
+    await flush();
+    expect(stt.calls).toEqual(["start", "stop"]);
+    expect(delivery.calls.map((x) => x.m)).toEqual(["sendText", "sendText", "sendKey"]);
+    expect(delivery.calls[1]!.chords).toEqual(["check the leap year path"]);
+  });
+
+  it("globals page 2 holds Resume, Fork and Branch", async () => {
+    const c = new DeckController(registry, layer, delivery, cfg, noopLog, () => {});
+    await (c as any).row3(4); // Page → page 2
+    expect(layer.row3Page).toBe(1);
+
+    await (c as any).row3(1); // Fork
+    await flush();
+    expect(delivery.calls.map((x) => x.chords[0])).toEqual(["/fork", "enter"]);
+
+    delivery.calls = [];
+    await (c as any).row3(2); // Branch
+    await flush();
+    expect(delivery.calls.map((x) => x.chords[0])).toEqual(["/branch", "enter"]);
+
+    await (c as any).row3(4); // Page → back
+    expect(layer.row3Page).toBe(0);
+  });
+
+  it("Fork and Branch refuse to type at a prompt", async () => {
+    const c = new DeckController(registry, layer, delivery, cfg, noopLog, () => {});
+    c.setPromptProbe(() => true);
+    layer.row3Page = 1;
+    await (c as any).row3(1);
+    await (c as any).row3(2);
+    await flush();
+    expect(delivery.calls).toEqual([]);
+    layer.row3Page = 0;
+  });
+
+  it("Resume runs `claude --resume` in place — no worktree", async () => {
+    // Resuming picks up work that already exists, so a fresh worktree would
+    // be the wrong place to land it.
     const cfgResume = { ...(cfg as object), newSessionCommand: "claude" } as DeckConfig;
     const c = new DeckController(registry, layer, delivery, cfgResume, noopLog, () => {});
     const calls: Array<{ cwd: string; opts?: unknown }> = [];
     c.setLauncher({ launch: async (cwd: string, opts?: unknown) => { calls.push({ cwd, opts }); return true; } } as never);
-    await (c as any).row3(4);
+    layer.row3Page = 1; // Resume lives on globals page 2
+    await (c as any).row3(0);
     expect(calls).toEqual([{ cwd: "C:\\dev\\x", opts: { command: "claude --resume", worktree: false } }]);
-    expect(layer.row3Page).toBe(0); // never pages
   });
 
   it("Resume respects the in-flight guard, like New", async () => {
@@ -133,9 +188,10 @@ describe("row 3 globals", () => {
         return new Promise<boolean>((r) => (release = r));
       },
     } as never);
-    const first = (controller as any).row3(4);
+    layer.row3Page = 1;
+    const first = (controller as any).row3(0);
     expect(layer.launching).toBe(true);
-    await (controller as any).row3(3); // New while Resume is spawning → ignored
+    await (controller as any).row3(0); // second press while spawning → ignored
     expect(launches).toHaveLength(1);
     release(true);
     await first;

@@ -410,6 +410,16 @@ export class DeckController {
       }
     } else if (entry.kind === "keys") {
       ok = await this.sendChordsSpaced(target, entry.keys);
+    } else if (entry.kind === "text" && entry.dictate) {
+      // The argument IS the command here (/subtask, /btw, /goal): type the
+      // prefix, leave the input open, and start listening. Send then ships
+      // prefix + speech in one press.
+      if (this.pttActive) {
+        this.log.info({ key: name }, "dictate command ignored: already recording");
+      } else {
+        ok = await this.delivery.sendText(target, entry.text);
+        if (ok) await this.pttToggle();
+      }
     } else if (entry.kind === "text") {
       ok = await this.typeSubmit(target, entry.text);
       if (ok && entry.extraEnter) {
@@ -460,6 +470,22 @@ export class DeckController {
    * the Tab's effect has rendered — the Enter then submits an input the Tab
    * hadn't filled yet. Each keystroke here lands on its own.
    */
+  /** A slash command fired from a globals key. Same prompt guard as the
+   * row-2 commands — typing at a picker answers it. */
+  private async globalSlash(key: string, text: string): Promise<void> {
+    const target = this.registry.targetedSession;
+    if (!target) {
+      this.log.warn({ key }, "row3 command ignored: no targeted session");
+      return;
+    }
+    if (this.promptProbe(target.sessionId) === true) {
+      this.log.warn({ key, session: target.sessionId }, "row3 command refused: session is at a prompt");
+      return;
+    }
+    const ok = await this.typeSubmit(target, text);
+    this.log.info({ key, session: target.sessionId, ok }, "row3 command");
+  }
+
   private async sendChordsSpaced(target: SessionEntry, chords: string[]): Promise<boolean> {
     const gap =
       target.windowKind === "desktop" ? (this.cfg.desktopSubmitDelayMs ?? 250) : CONSOLE_SUBMIT_GAP_MS;
@@ -715,7 +741,13 @@ export class DeckController {
       this.onLayerChanged();
       return;
     }
-    if (this.layer.row3Page === 1) return; // page 2 is empty for now
+    if (this.layer.row3Page === 1) {
+      // Page 2 — the session-creation verbs that aren't the everyday New.
+      if (index === 0) return void (await this.resumeSession());
+      if (index === 1) return void (await this.globalSlash("Fork", "/fork"));
+      if (index === 2) return void (await this.globalSlash("Branch", "/branch"));
+      return;
+    }
     switch (index) {
       case 0: // Mic — handled at the raw down/up layer (toggle);
         return; // a stray classified gesture here is a no-op.
@@ -753,35 +785,37 @@ export class DeckController {
         }
         return;
       }
-      case 4: {
-        // Resume — `claude --resume` in a console, which opens Claude Code's
-        // own session picker. Deliberately NO worktree: you're picking up work
-        // that already exists, and a fresh empty branch is the wrong place to
-        // land it. Same global-key rules as New.
-        const dir = target?.cwd ?? this.cfg.newSessionDir;
-        if (!dir) {
-          this.log.warn("Resume ignored: no targeted session and no newSessionDir configured");
-          return;
-        }
-        if (this.layer.launching) {
-          this.log.info("Resume ignored: launch already in flight");
-          return;
-        }
-        this.layer.launching = true;
-        this.onLayerChanged();
-        try {
-          const ok =
-            (await this.launcher?.launch(dir, {
-              command: `${this.cfg.newSessionCommand} --resume`,
-              worktree: false,
-            })) ?? false;
-          this.log.info({ key: "Resume", cwd: dir, ok }, "row3 command");
-        } finally {
-          this.layer.launching = false;
-          this.onLayerChanged();
-        }
-        return;
-      }
+    }
+  }
+
+  /**
+   * Resume — `claude --resume` in a console, which opens Claude Code's own
+   * session picker. Deliberately NO worktree: you're picking up work that
+   * already exists, and a fresh empty branch is the wrong place to land it.
+   * Same global-key rules as New (works untargeted, one launch at a time).
+   */
+  private async resumeSession(): Promise<void> {
+    const dir = this.registry.targetedSession?.cwd ?? this.cfg.newSessionDir;
+    if (!dir) {
+      this.log.warn("Resume ignored: no targeted session and no newSessionDir configured");
+      return;
+    }
+    if (this.layer.launching) {
+      this.log.info("Resume ignored: launch already in flight");
+      return;
+    }
+    this.layer.launching = true;
+    this.onLayerChanged();
+    try {
+      const ok =
+        (await this.launcher?.launch(dir, {
+          command: `${this.cfg.newSessionCommand} --resume`,
+          worktree: false,
+        })) ?? false;
+      this.log.info({ key: "Resume", cwd: dir, ok }, "row3 command");
+    } finally {
+      this.layer.launching = false;
+      this.onLayerChanged();
     }
   }
 }

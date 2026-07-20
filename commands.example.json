@@ -1,15 +1,20 @@
 [
+  { "label": "Accept Next", "keys": ["tab", "enter"] },
+  { "label": "Subtask", "text": "/subtask ", "dictate": true },
   "mode",
   "model",
-  "/compact",
+  "/diff",
+  "/recap",
+  "/tasks",
   "/review",
+  "/compact",
   { "label": "Commit", "text": "/save-work" },
+  "/focus",
   "/status",
   "/context",
+  { "label": "Remote", "text": "/remote-control", "extraEnter": true },
   "/usage",
   "rename",
   "sendname",
-  "modemenu",
-  { "label": "Remote", "text": "/remote-control", "extraEnter": true },
-  { "label": "Accept Next", "keys": ["tab", "enter"] }
+  "modemenu"
 ]

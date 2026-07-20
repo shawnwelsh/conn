@@ -353,6 +353,50 @@ function drawIcon(
       ctx.fill();
       break;
     }
+    case "fork": {
+      // Two paths diverging from one — the conversation continues here AND
+      // over there. Read against "branch" below: no nodes, symmetric split.
+      ctx.lineWidth = r * 0.24;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy + r);
+      ctx.lineTo(cx, cy);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.lineTo(cx - r * 0.85, cy - r * 0.9);
+      ctx.moveTo(cx, cy);
+      ctx.lineTo(cx + r * 0.85, cy - r * 0.9);
+      ctx.stroke();
+      for (const dx of [-0.85, 0.85]) {
+        ctx.beginPath();
+        ctx.arc(cx + dx * r, cy - r * 0.9, r * 0.26, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      break;
+    }
+    case "branch": {
+      // Git-style: a trunk with one offshoot curving away — asymmetric, so
+      // it can't be mistaken for the fork's even split.
+      ctx.lineWidth = r * 0.24;
+      ctx.beginPath();
+      ctx.moveTo(cx - r * 0.55, cy - r);
+      ctx.lineTo(cx - r * 0.55, cy + r);
+      ctx.stroke();
+      ctx.beginPath(); // offshoot leaving the trunk and levelling off
+      ctx.moveTo(cx - r * 0.55, cy + r * 0.15);
+      ctx.quadraticCurveTo(cx + r * 0.55, cy + r * 0.15, cx + r * 0.55, cy - r * 0.45);
+      ctx.stroke();
+      for (const [px, py] of [
+        [cx - r * 0.55, cy - r],
+        [cx - r * 0.55, cy + r],
+        [cx + r * 0.55, cy - r * 0.55],
+      ] as const) {
+        ctx.beginPath();
+        ctx.arc(px, py, r * 0.26, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      break;
+    }
     case "menu": {
       // Three bars.
       ctx.lineWidth = r * 0.26;

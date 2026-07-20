@@ -135,8 +135,9 @@ surfacing the wrong one is worse than surfacing nothing.
 - **Row 1** — agent slots (feature-name labels, status colors, targeting,
   long-press move, Pager at ≥6 sessions).
 - **Row 2** — actions for the *targeted* session: the command lineup from
-  `commands.json` (up to 15 entries; `"mode"`/`"model"` builtins plus slash
-  commands sent as type+Enter). First 4 show; key 10 pages the rest — tap in
+  `commands.json` (`"mode"`/`"model"` builtins plus slash commands sent as
+  type+Enter; as many as you like — the pager, not the key count, is the
+  limit). First 4 show; key 10 pages the rest — tap in
   the pager **executes**, long-press starts an insert-before move that
   persists back to the file. Entries are slash-command strings,
   `{label, text}` pairs, or the builtins `mode` / `model` / `modemenu` /
@@ -152,11 +153,27 @@ surfacing the wrong one is worse than surfacing nothing.
   Morph layers (permission / question / suggestion) override this row
   automatically.
 - **Row 3** — Mic (tap to dictate) · Send · Esc (interrupt) · New (worktree
-  console) · Resume. **Resume** runs `claude --resume` in a console so you
-  can pick up an earlier session from Claude Code's own picker — in place,
-  with no worktree, since the work already exists. Globals only: anything
-  that acts on the *targeted* session lives in row 2, where you can order it
-  yourself.
+  console) · Page. Page 2 holds the other ways to start a session:
+  **Resume** (`claude --resume` in a console — Claude Code's own picker, in
+  place with no worktree since the work already exists), **Fork** (copy this
+  conversation into a background session and keep working here), and
+  **Branch** (split it at this point). Globals only: anything that acts on
+  the *targeted* session lives in row 2, where you can order it yourself.
+
+### Saying the argument
+
+Some commands are nothing without their argument. Mark those `"dictate": true`
+and the key types the prefix, leaves the input open, and starts listening:
+
+```json
+{ "label": "Subtask", "text": "/subtask ", "dictate": true }
+```
+
+Press it, say *"check whether the renewal batch handles leap years"*, press
+**Send** — and a subagent goes off with your full context, its result coming
+back to that session. `/btw` (a side question that doesn't interrupt the main
+thread) and `/goal` (something Claude checks before stopping) work the same
+way.
 
 ## Dictation (mic key)
 
