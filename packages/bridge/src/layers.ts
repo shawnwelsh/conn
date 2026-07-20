@@ -151,6 +151,9 @@ export function commandTile(
       ? { text: "Send name", subtext: targeted.labelBase, state: "command" }
       : { text: "Send name", subtext: "console only", state: "blank" };
   }
+  if (entry.kind === "keys") {
+    return { text: entry.label, subtext: entry.keys.join(" · "), state: "command" };
+  }
   const t = entry as Extract<CommandEntry, { kind: "text" }>;
   return { text: t.label, subtext: t.label === t.text ? undefined : t.text, state: "command" };
 }

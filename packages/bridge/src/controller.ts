@@ -408,6 +408,8 @@ export class DeckController {
       } else {
         this.log.warn({ session: target.sessionId }, "sendname ignored: desktop session isn't targeted exactly");
       }
+    } else if (entry.kind === "keys") {
+      ok = await this.sendChordsSpaced(target, entry.keys);
     } else if (entry.kind === "text") {
       ok = await this.typeSubmit(target, entry.text);
       if (ok && entry.extraEnter) {
@@ -448,6 +450,24 @@ export class DeckController {
         : CONSOLE_SUBMIT_GAP_MS;
     if (gap > 0) await new Promise((r) => setTimeout(r, gap));
     return this.delivery.sendKey(target, "enter");
+  }
+
+  /**
+   * Send chords one at a time with a settle gap between them.
+   *
+   * Deliberately NOT delivery.sendSequence: that joins console chords into a
+   * single write, and a Tab immediately followed by an Enter arrives before
+   * the Tab's effect has rendered — the Enter then submits an input the Tab
+   * hadn't filled yet. Each keystroke here lands on its own.
+   */
+  private async sendChordsSpaced(target: SessionEntry, chords: string[]): Promise<boolean> {
+    const gap =
+      target.windowKind === "desktop" ? (this.cfg.desktopSubmitDelayMs ?? 250) : CONSOLE_SUBMIT_GAP_MS;
+    for (const [i, chord] of chords.entries()) {
+      if (i > 0 && gap > 0) await new Promise((r) => setTimeout(r, gap));
+      if (!(await this.delivery.sendKey(target, chord))) return false;
+    }
+    return true;
   }
 
   private async cycleModel(target: SessionEntry): Promise<boolean> {

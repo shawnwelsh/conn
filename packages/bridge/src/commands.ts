@@ -14,6 +14,10 @@ import type { Logger } from "./log.js";
  *   - { "label": "Commit", "text": "/save-work" } → text command, custom face
  *   - { …, "extraEnter": true }  → follow with a second Enter, for commands
  *                                  that open a confirm (e.g. /remote-control)
+ *   - { "label": "Accept Next", "keys": ["tab", "enter"] } → a chord
+ *                                  sequence, spaced so each lands separately
+ *                                  (Tab accepts Claude Code's suggested next
+ *                                  prompt, Enter sends it)
  *
  * Text commands are delivered as focus → type → Enter to the TARGETED
  * session. The first 4 entries are the visible keys; the rest live behind
@@ -25,7 +29,8 @@ export const MAX_COMMANDS = 15;
 
 export type CommandEntry =
   | { kind: "builtin"; id: "mode" | "model" | "modemenu" | "rename" | "sendname" }
-  | { kind: "text"; label: string; text: string; extraEnter?: boolean };
+  | { kind: "text"; label: string; text: string; extraEnter?: boolean }
+  | { kind: "keys"; label: string; keys: string[] };
 
 const BUILTIN_IDS = ["mode", "model", "modemenu", "rename", "sendname"] as const;
 
@@ -59,7 +64,14 @@ function parseEntry(raw: unknown): CommandEntry | null {
     return { kind: "text", label: s, text: s };
   }
   if (raw && typeof raw === "object") {
-    const o = raw as { label?: unknown; text?: unknown; extraEnter?: unknown };
+    const o = raw as { label?: unknown; text?: unknown; extraEnter?: unknown; keys?: unknown };
+    if (Array.isArray(o.keys)) {
+      const keys = o.keys.filter((k): k is string => typeof k === "string" && k.trim() !== "").map((k) => k.trim());
+      if (keys.length) {
+        const label = typeof o.label === "string" && o.label.trim() ? o.label.trim() : keys.join(" ");
+        return { kind: "keys", label, keys };
+      }
+    }
     if (typeof o.text === "string" && o.text.trim()) {
       const text = o.text.trim();
       const label = typeof o.label === "string" && o.label.trim() ? o.label.trim() : text;
@@ -71,6 +83,7 @@ function parseEntry(raw: unknown): CommandEntry | null {
 
 function serializeEntry(e: CommandEntry): unknown {
   if (e.kind === "builtin") return e.id;
+  if (e.kind === "keys") return { label: e.label, keys: e.keys };
   if (e.extraEnter) return { label: e.label, text: e.text, extraEnter: true };
   return e.label === e.text ? e.text : { label: e.label, text: e.text };
 }

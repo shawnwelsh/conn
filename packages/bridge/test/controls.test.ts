@@ -155,6 +155,21 @@ describe("row 3 globals", () => {
     expect(launches).toEqual(["C:\\dev\\mainrepo"]);
   });
 
+  it("a key-sequence command spaces its chords (Accept Next = tab, then enter)", async () => {
+    // Tab accepts Claude Code's suggested next prompt; the Enter must land
+    // AFTER that has rendered, or it submits an input the Tab hadn't filled.
+    vi.useFakeTimers();
+    const cfgDelay = { ...(cfg as object), desktopSubmitDelayMs: 250 } as DeckConfig;
+    const c = new DeckController(registry, layer, delivery, cfgDelay, noopLog, () => {});
+    c.setCommands(fakeCommands([{ kind: "keys", label: "Accept Next", keys: ["tab", "enter"] }]));
+    (c as any).row2(0);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(delivery.calls.map((c2) => c2.chords[0])).toEqual(["tab"]); // enter still pending
+    await vi.advanceTimersByTimeAsync(250);
+    expect(delivery.calls.map((c2) => c2.chords[0])).toEqual(["tab", "enter"]);
+    vi.useRealTimers();
+  });
+
   it("extraEnter confirms a prompt it can SEE (e.g. /remote-control)", async () => {
     controller.setCommands(fakeCommands([
       { kind: "text", label: "Remote", text: "/remote-control", extraEnter: true },

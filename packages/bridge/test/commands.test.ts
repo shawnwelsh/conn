@@ -48,6 +48,17 @@ describe("CommandStore", () => {
     expect(onDisk).toContainEqual({ label: "Remote", text: "/remote-control", extraEnter: true });
   });
 
+  it("parses and round-trips a key-sequence entry", () => {
+    writeFileSync(file, JSON.stringify([{ label: "Accept Next", keys: ["tab", "enter"] }, "/status"]));
+    const store = new CommandStore(file, noopLog, () => {});
+    store.load();
+    expect(store.all()[0]).toEqual({ kind: "keys", label: "Accept Next", keys: ["tab", "enter"] });
+
+    store.move(1, 0);
+    const onDisk = JSON.parse(readFileSync(file, "utf8"));
+    expect(onDisk).toContainEqual({ label: "Accept Next", keys: ["tab", "enter"] });
+  });
+
   it("move persists the new order back to the file (insert-before)", () => {
     writeFileSync(file, JSON.stringify(["mode", "model", "/a", "/b"]));
     const store = new CommandStore(file, noopLog, () => {});
@@ -139,7 +150,7 @@ describe("row-2 command pager + move", () => {
     controller.up(7);
     vi.advanceTimersByTime(350); // resolve the tap (double-tap window)
     expect(layer.row2Cmd.mode).toBe("default");
-    expect(store.all().map((e) => (e.kind === "text" ? e.text : e.id))).toEqual(["/b", "/c", "/a", "/d", "/e"]);
+    expect(store.all().map((e) => (e.kind === "builtin" ? e.id : e.label))).toEqual(["/b", "/c", "/a", "/d", "/e"]);
     const onDisk = JSON.parse(readFileSync(file, "utf8"));
     expect(onDisk).toEqual(["/b", "/c", "/a", "/d", "/e"]);
     vi.useRealTimers();

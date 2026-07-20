@@ -10,5 +10,6 @@
   "rename",
   "sendname",
   "modemenu",
-  { "label": "Remote", "text": "/remote-control", "extraEnter": true }
+  { "label": "Remote", "text": "/remote-control", "extraEnter": true },
+  { "label": "Accept Next", "keys": ["tab", "enter"] }
 ]

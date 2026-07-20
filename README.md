@@ -131,9 +131,12 @@ unless launched via the deck.
   `rename` / `sendname`. Add `"extraEnter": true` for commands that open a
   confirm and need a second Return —
   `{"label": "Remote", "text": "/remote-control", "extraEnter": true}` turns
-  on phone/web control in one press. Hand-edit `commands.json` any time; it
-  hot-reloads. **Commands never fire at a session that's sitting at a
-  prompt** (see below).
+  on phone/web control in one press. Or bind a chord sequence with `keys` —
+  `{"label": "Accept Next", "keys": ["tab", "enter"]}` accepts Claude Code's
+  suggested next prompt and sends it, the same Tab-then-Enter you'd type.
+  Sequences are spaced so each keystroke lands after the previous one has
+  rendered. Hand-edit `commands.json` any time; it hot-reloads. **Commands
+  never fire at a session that's sitting at a prompt** (see below).
   Morph layers (permission / question / suggestion) override this row
   automatically.
 - **Row 3** — Mic (tap to dictate) · Send · Esc (interrupt) · New (worktree
