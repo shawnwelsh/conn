@@ -87,6 +87,9 @@ export interface CliSession {
   name?: string;
   /** Claude Code's own status: idle | busy | waiting | needs_trust. */
   status?: string;
+  /** When Claude Code last touched this record — the only way to tell a
+   * session in use from a process that has simply never exited. */
+  updatedAt: number;
 }
 
 export function readCliSessions(dir: string = CC_SESSIONS_DIR, log?: Logger): CliSession[] {
@@ -107,6 +110,7 @@ export function readCliSessions(dir: string = CC_SESSIONS_DIR, log?: Logger): Cl
         cwd: typeof meta.cwd === "string" ? meta.cwd : undefined,
         name: meta.nameSource === "derived" || typeof meta.name !== "string" ? undefined : meta.name.trim(),
         status: typeof meta.status === "string" ? meta.status : undefined,
+        updatedAt: at,
       },
     });
   }

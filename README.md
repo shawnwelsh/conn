@@ -121,8 +121,11 @@ launched them. Claude Code publishes `entrypoint: "cli"` and its own pid in
 requirement — the deck adopts those and they become full console sessions.
 It also **surfaces terminals it has never heard from**: an interactive
 session fires no `SessionStart`, so one sitting idle would otherwise have no
-key until someone typed in it. Records whose process is gone are ignored,
-since they outlive their sessions. `entrypoint: "claude-desktop"` tabs are never adopted: the app owns
+key until someone typed in it. Two rules keep that from becoming clutter — a
+record has to be **in use** (touched within `staleSessionMinutes`; a `claude`
+process can linger for days after the work stopped), and there's **one key
+per working tree**, because a terminal accumulates several sessions over its
+life through restarts and dispatched jobs, all sharing one console. `entrypoint: "claude-desktop"` tabs are never adopted: the app owns
 no console to inject into. The one thing an adopted terminal can't do is
 double-tap focus — we know its process but never learned its window, and
 surfacing the wrong one is worse than surfacing nothing.

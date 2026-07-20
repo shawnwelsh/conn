@@ -2,7 +2,7 @@ import Fastify from "fastify";
 import { join } from "node:path";
 import { loadConfig } from "./config.js";
 import { createLogger } from "./log.js";
-import { SessionRegistry, type SessionEntry } from "./registry.js";
+import { SessionRegistry, pathWithin, type SessionEntry } from "./registry.js";
 import type { SessionStatus } from "@belay/shared";
 import { BindingStore, restoreConsoleBindings } from "./bindings.js";
 import { DenyReasonFlow } from "./denyReason.js";
@@ -307,6 +307,17 @@ function adoptTerminals(only?: SessionEntry): void {
       continue;
     }
     if (only) continue; // arrival pass only enriches the session that arrived
+    // Only surface sessions actually in use. A claude process can outlive the
+    // work by days without exiting, and a key for something abandoned last
+    // Tuesday is noise — reuse the same staleness threshold that dims a key.
+    if (Date.now() - meta.updatedAt > cfg.staleSessionMinutes * 60_000) continue;
+    // One key per working tree. A terminal accumulates several Claude Code
+    // sessions over its life — restarts, dispatched jobs — all sharing one
+    // console. The deck should show the console, not its history.
+    const covered = registry
+      .all()
+      .some((s) => pathWithin(meta.cwd ?? "", s.cwd) || pathWithin(s.cwd, meta.cwd ?? ""));
+    if (covered) continue;
     const added = registry.addKnownTerminal({ ...meta, status: ccStatusToDeck(meta.status) });
     if (added) {
       log.info({ session: meta.sessionId, label: added.label, pid: meta.pid }, "surfaced terminal session from Claude Code metadata");

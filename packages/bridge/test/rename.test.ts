@@ -161,6 +161,9 @@ describe("readCcSessionNames (Claude Code's own /rename)", () => {
     expect(ids).not.toContain("dead"); // records outlive their processes
     expect(found.find((s) => s.sessionId === "term")).toMatchObject({ pid: live, cwd: "C:\\dev\\x", name: "renewal fix" });
     expect(found.find((s) => s.sessionId === "filler")?.name).toBeUndefined(); // derived filler isn't a name
+    // updatedAt comes back so callers can tell a session in use from a
+    // process that simply never exited.
+    expect(found.every((s) => typeof s.updatedAt === "number")).toBe(true);
   });
 
   it("survives junk files and a missing directory", () => {
