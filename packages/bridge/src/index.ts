@@ -3,9 +3,10 @@ import { join } from "node:path";
 import { loadConfig } from "./config.js";
 import { createLogger } from "./log.js";
 import { SessionRegistry, type SessionEntry } from "./registry.js";
+import type { SessionStatus } from "@belay/shared";
 import { BindingStore, restoreConsoleBindings } from "./bindings.js";
 import { DenyReasonFlow } from "./denyReason.js";
-import { readCcSessionNames, readCliSessionPids, CC_SESSIONS_DIR } from "./sessionMeta.js";
+import { readCcSessionNames, readCliSessions, CC_SESSIONS_DIR } from "./sessionMeta.js";
 import { DecisionStore } from "./decisions.js";
 import { computeTiles, initialControls, initialRow1, initialRow2Cmd, type DeckLayerState } from "./layers.js";
 import { CommandStore } from "./commands.js";
@@ -280,19 +281,40 @@ registry.on("changed", () => {
   pushRender();
 });
 
-/** Bind any terminal session to its process, so sessions the deck didn't
- * launch are controllable too. Runs on arrival AND on the sweep, because
- * Claude Code may write its metadata a moment after the first hook. */
+/** Claude Code's status vocabulary → the deck's. */
+function ccStatusToDeck(status: string | undefined): SessionStatus | undefined {
+  if (status === "busy") return "thinking";
+  if (status === "waiting" || status === "needs_trust") return "waiting";
+  if (status === "idle") return "idle";
+  return undefined;
+}
+
+/**
+ * Reconcile the deck against every live terminal Claude Code knows about:
+ * bind ones we've heard from, and SURFACE ones we haven't. An interactive
+ * session fires no SessionStart, so an idle terminal never announces itself —
+ * without this it has no key until someone types in it.
+ */
 function adoptTerminals(only?: SessionEntry): void {
-  const pids = readCliSessionPids(CC_SESSIONS_DIR, log);
-  for (const session of only ? [only] : registry.all()) {
-    const pid = pids.get(session.sessionId);
-    if (pid && registry.adoptTerminal(session.sessionId, pid)) {
-      log.info({ session: session.sessionId, label: session.label, pid }, "adopted terminal session by pid");
+  const cli = readCliSessions(CC_SESSIONS_DIR, log);
+  for (const meta of cli) {
+    const known = registry.get(meta.sessionId);
+    if (known) {
+      if (only && known.sessionId !== only.sessionId) continue;
+      if (registry.adoptTerminal(meta.sessionId, meta.pid)) {
+        log.info({ session: meta.sessionId, label: known.label, pid: meta.pid }, "adopted terminal session by pid");
+      }
+      continue;
+    }
+    if (only) continue; // arrival pass only enriches the session that arrived
+    const added = registry.addKnownTerminal({ ...meta, status: ccStatusToDeck(meta.status) });
+    if (added) {
+      log.info({ session: meta.sessionId, label: added.label, pid: meta.pid }, "surfaced terminal session from Claude Code metadata");
     }
   }
 }
 registry.on("session-added", (entry: SessionEntry) => adoptTerminals(entry));
+adoptTerminals(); // catch everything already running at boot
 
 registerHookRoutes(app, registry, log, {
   onPermissionRequest: (event) => decisions.hold(event),

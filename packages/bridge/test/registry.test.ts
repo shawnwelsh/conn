@@ -109,6 +109,39 @@ describe("adopting terminal sessions the deck didn't launch", () => {
     const r = new SessionRegistry(5);
     expect(r.adoptTerminal("nobody", 123)).toBe(false);
   });
+
+  it("surfaces a terminal the deck has never heard from", () => {
+    // Interactive sessions fire no SessionStart, so an idle one never
+    // announces itself — Claude Code's metadata is the only evidence.
+    const r = new SessionRegistry(5);
+    const e = r.addKnownTerminal({
+      sessionId: "ec2906db",
+      pid: 36588,
+      cwd: "C:\\dev\\repo\\.claude\\worktrees\\nimble-otter",
+      name: "renewal fix",
+      status: "waiting",
+    })!;
+    expect(e.windowKind).toBe("console");
+    expect(e.pid).toBe(36588);
+    expect(e.label).toBe("renewal fix");
+    expect(e.status).toBe("waiting");
+    expect(r.snapshot().working).toContain("ec2906db"); // it has a key
+  });
+
+  it("never displaces a session we've actually heard from", () => {
+    const r = new SessionRegistry(5);
+    const live = start(r, "s1");
+    live.status = "thinking";
+    expect(r.addKnownTerminal({ sessionId: "s1", pid: 999 })).toBeNull();
+    expect(r.get("s1")?.status).toBe("thinking"); // hook-driven state untouched
+    expect(r.all()).toHaveLength(1);
+  });
+
+  it("falls back to the cwd-derived label when Claude Code has no real name", () => {
+    const r = new SessionRegistry(5);
+    const e = r.addKnownTerminal({ sessionId: "x", pid: 1, cwd: "C:\\nope\\some-worktree" })!;
+    expect(e.label).toBe("some-worktree");
+  });
 });
 
 describe("duplicate label disambiguation", () => {

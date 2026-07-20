@@ -7,7 +7,7 @@ import { DeckController } from "../src/controller.js";
 import { SessionRegistry } from "../src/registry.js";
 import { initialControls, initialRow1, initialRow2Cmd, computeTiles, type DeckLayerState } from "../src/layers.js";
 import { slugifyName, isDeckBranch, renameDeckBranch } from "../src/rename.js";
-import { readCcSessionNames, isAwaitingInput, readCliSessionPids } from "../src/sessionMeta.js";
+import { readCcSessionNames, isAwaitingInput, readCliSessions } from "../src/sessionMeta.js";
 import type { CommandSource } from "../src/commands.js";
 import type { DeckConfig } from "../src/config.js";
 import { NoopAdapter } from "../src/delivery/adapter.js";
@@ -145,14 +145,22 @@ describe("readCcSessionNames (Claude Code's own /rename)", () => {
     expect(isAwaitingInput("nobody", dir)).toBeNull(); // unknown stays unknown
   });
 
-  it("reads terminal pids for cli sessions only — never desktop-app tabs", () => {
-    write("36588.json", { pid: 36588, sessionId: "term", entrypoint: "cli", kind: "interactive" });
-    write("79256.json", { pid: 79256, sessionId: "dispatched", entrypoint: "cli", kind: "bg" });
-    write("3816.json", { pid: 3816, sessionId: "apptab", entrypoint: "claude-desktop", kind: "interactive" });
-    const pids = readCliSessionPids(dir);
-    expect(pids.get("term")).toBe(36588);
-    expect(pids.get("dispatched")).toBe(79256); // FleetView-dispatched is still a terminal
-    expect(pids.has("apptab")).toBe(false); // the app owns no console to inject into
+  it("reads live cli sessions only — no app tabs, no dead processes", () => {
+    const live = process.pid; // certainly running
+    write("a.json", { pid: live, sessionId: "term", entrypoint: "cli", kind: "interactive", cwd: "C:\\dev\\x", name: "renewal fix" });
+    write("b.json", { pid: live, sessionId: "dispatched", entrypoint: "cli", kind: "bg" });
+    write("c.json", { pid: live, sessionId: "apptab", entrypoint: "claude-desktop", kind: "interactive" });
+    write("d.json", { pid: 2_000_000_000, sessionId: "dead", entrypoint: "cli", kind: "interactive" });
+    write("e.json", { pid: live, sessionId: "filler", entrypoint: "cli", name: "some-dir-4f", nameSource: "derived" });
+
+    const found = readCliSessions(dir);
+    const ids = found.map((s) => s.sessionId);
+    expect(ids).toContain("term");
+    expect(ids).toContain("dispatched"); // FleetView-dispatched is still a terminal
+    expect(ids).not.toContain("apptab"); // the app owns no console to inject into
+    expect(ids).not.toContain("dead"); // records outlive their processes
+    expect(found.find((s) => s.sessionId === "term")).toMatchObject({ pid: live, cwd: "C:\\dev\\x", name: "renewal fix" });
+    expect(found.find((s) => s.sessionId === "filler")?.name).toBeUndefined(); // derived filler isn't a name
   });
 
   it("survives junk files and a missing directory", () => {

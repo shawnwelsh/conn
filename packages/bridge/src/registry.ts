@@ -293,6 +293,48 @@ export class SessionRegistry extends EventEmitter {
     return true;
   }
 
+  /**
+   * Surface a terminal session Claude Code knows about but the deck has never
+   * heard from.
+   *
+   * Interactive sessions fire no SessionStart — a session's first hook is its
+   * first prompt or tool call — so one sitting idle is invisible to the deck
+   * no matter how long it's been open. Claude Code's metadata is the only
+   * evidence it exists, and a pid is all delivery needs.
+   *
+   * Returns the entry, or null if it was already known (hooks win: a session
+   * we've heard from has richer, live state than a file on disk).
+   */
+  addKnownTerminal(meta: {
+    sessionId: string;
+    pid: number;
+    cwd?: string;
+    name?: string;
+    status?: SessionStatus;
+  }): SessionEntry | null {
+    if (this.sessions.has(meta.sessionId)) return null;
+    const cwd = meta.cwd ?? "";
+    const base = meta.name ?? deriveLabel(cwd);
+    const entry: SessionEntry = {
+      sessionId: meta.sessionId,
+      slot: -1,
+      label: this.dedupeLabel(base, meta.sessionId),
+      labelBase: base,
+      ccName: meta.name,
+      cwd,
+      status: meta.status ?? "idle",
+      lastEventAt: Date.now(),
+      windowKind: "console",
+      pid: meta.pid,
+      events: new RingBuffer(this.eventHistorySize),
+    };
+    this.sessions.set(entry.sessionId, entry);
+    this.place(entry.sessionId);
+    if (!this.targeted) this.targeted = entry.sessionId;
+    this.emit("changed");
+    return entry;
+  }
+
   /** Name a session by hand (deck Rename key) — sticks through refreshes. */
   setLabelOverride(sessionId: string, name: string): void {
     const entry = this.sessions.get(sessionId);

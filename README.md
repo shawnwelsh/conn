@@ -118,8 +118,11 @@ The deck also speaks each kind's dialect automatically:
 Sessions you started yourself get the same treatment, without the deck having
 launched them. Claude Code publishes `entrypoint: "cli"` and its own pid in
 `~/.claude/sessions/`, and since delivery injects by pid, that's the entire
-requirement — the deck adopts those on arrival and they become full console
-sessions. `entrypoint: "claude-desktop"` tabs are never adopted: the app owns
+requirement — the deck adopts those and they become full console sessions.
+It also **surfaces terminals it has never heard from**: an interactive
+session fires no `SessionStart`, so one sitting idle would otherwise have no
+key until someone typed in it. Records whose process is gone are ignored,
+since they outlive their sessions. `entrypoint: "claude-desktop"` tabs are never adopted: the app owns
 no console to inject into. The one thing an adopted terminal can't do is
 double-tap focus — we know its process but never learned its window, and
 surfacing the wrong one is worse than surfacing nothing.

@@ -62,6 +62,7 @@ interface CcRecord {
   nameSource?: unknown;
   status?: unknown;
   pid?: unknown;
+  cwd?: unknown;
   entrypoint?: unknown;
   updatedAt?: number;
   statusUpdatedAt?: number;
@@ -79,19 +80,48 @@ interface CcRecord {
  * `kind` is deliberately ignored: a FleetView-dispatched session is "bg" but
  * still a terminal you type in.
  */
-export function readCliSessionPids(dir: string = CC_SESSIONS_DIR, log?: Logger): Map<string, number> {
-  const pids = new Map<string, number>();
-  const seenAt = new Map<string, number>();
+export interface CliSession {
+  sessionId: string;
+  pid: number;
+  cwd?: string;
+  name?: string;
+  /** Claude Code's own status: idle | busy | waiting | needs_trust. */
+  status?: string;
+}
+
+export function readCliSessions(dir: string = CC_SESSIONS_DIR, log?: Logger): CliSession[] {
+  const byId = new Map<string, { at: number; session: CliSession }>();
   for (const meta of readRecords(dir, log)) {
     if (typeof meta.sessionId !== "string") continue;
     if (meta.entrypoint !== "cli") continue;
     if (typeof meta.pid !== "number" || !Number.isInteger(meta.pid) || meta.pid <= 0) continue;
+    if (!isRunning(meta.pid)) continue; // records outlive their processes
     const at = meta.updatedAt ?? 0;
-    if (seenAt.has(meta.sessionId) && at < seenAt.get(meta.sessionId)!) continue;
-    seenAt.set(meta.sessionId, at);
-    pids.set(meta.sessionId, meta.pid);
+    const prev = byId.get(meta.sessionId);
+    if (prev && at < prev.at) continue;
+    byId.set(meta.sessionId, {
+      at,
+      session: {
+        sessionId: meta.sessionId,
+        pid: meta.pid,
+        cwd: typeof meta.cwd === "string" ? meta.cwd : undefined,
+        name: meta.nameSource === "derived" || typeof meta.name !== "string" ? undefined : meta.name.trim(),
+        status: typeof meta.status === "string" ? meta.status : undefined,
+      },
+    });
   }
-  return pids;
+  return [...byId.values()].map((v) => v.session);
+}
+
+/** Cheap liveness check — signal 0 tests existence without touching the
+ * process. EPERM means it exists but belongs to someone else. */
+function isRunning(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err) {
+    return (err as NodeJS.ErrnoException).code === "EPERM";
+  }
 }
 
 /** Every readable record in the directory. Malformed files are skipped, not
