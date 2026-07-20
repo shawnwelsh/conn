@@ -2,7 +2,7 @@ import { describe, expect, it, beforeAll, afterAll } from "vitest";
 import { mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { SessionRegistry, deriveLabel, prettifyBranch, samePath } from "../src/registry.js";
+import { SessionRegistry, deriveLabel, prettifyBranch, samePath, pathWithin } from "../src/registry.js";
 
 function start(registry: SessionRegistry, id: string, cwd = `C:\\dev\\${id}`) {
   return registry.ensure({ session_id: id, cwd, hook_event_name: "SessionStart" });
@@ -22,6 +22,54 @@ describe("deriveLabel", () => {
     // These temp-ish paths aren't git repos, so we get the leaf directory.
     expect(deriveLabel("C:\\nope\\not-a-repo-xyz")).toBe("not-a-repo-xyz");
     expect(deriveLabel(undefined)).toBe("session");
+  });
+});
+
+describe("pathWithin (a session that wandered into a subdirectory)", () => {
+  it("matches the dir itself and anything under it, case/separator-insensitively", () => {
+    const root = "C:\\dev\\repo\\.claude\\worktrees\\brisk-wombat";
+    expect(pathWithin(root, root)).toBe(true);
+    expect(pathWithin(`${root}\\scratch\\renewal-cap-validation`, root)).toBe(true);
+    expect(pathWithin(root.toUpperCase().replace(/\\/g, "/") + "/scratch", root)).toBe(true);
+  });
+
+  it("does not match siblings or prefix look-alikes", () => {
+    const root = "C:\\dev\\repo\\worktrees\\brisk";
+    expect(pathWithin("C:\\dev\\repo\\worktrees\\brisk-wombat", root)).toBe(false);
+    expect(pathWithin("C:\\dev\\repo\\worktrees", root)).toBe(false);
+  });
+});
+
+describe("provisional adoption from a subdirectory", () => {
+  it("adopts a session whose cwd drifted below the launch dir (no phantom twin)", () => {
+    // The live bug: the console launched in <worktree>, then reported hooks
+    // from <worktree>\scratch\… — it registered as a SECOND, desktop-kind
+    // session beside its own console key, labelled "<name> 2".
+    const r = new SessionRegistry(5);
+    const root = "C:\\dev\\repo\\.claude\\worktrees\\brisk-wombat";
+    const provisionalId = r.addProvisionalAt(root).sessionId; // adoption mutates in place
+    r.bindProvisional(root, { pid: 44980, hwnd: 15013890 });
+
+    const adopted = r.ensure({
+      session_id: "1b299bf2",
+      cwd: `${root}\\scratch\\renewal-cap-validation`,
+      hook_event_name: "UserPromptSubmit",
+    });
+
+    expect(r.all()).toHaveLength(1); // adopted in place, not duplicated
+    expect(adopted.sessionId).toBe("1b299bf2");
+    expect(adopted.windowKind).toBe("console"); // kept its console identity
+    expect(adopted.hwnd).toBe(15013890);
+    expect(adopted.pid).toBe(44980);
+    expect(r.get(provisionalId)).toBeUndefined();
+    expect(adopted.label).not.toMatch(/ 2$/);
+  });
+
+  it("still refuses to adopt an unrelated cwd", () => {
+    const r = new SessionRegistry(5);
+    r.addProvisionalAt("C:\\dev\\repo\\worktrees\\brisk-wombat");
+    r.ensure({ session_id: "other", cwd: "C:\\dev\\elsewhere", hook_event_name: "SessionStart" });
+    expect(r.all()).toHaveLength(2);
   });
 });
 

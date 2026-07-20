@@ -238,7 +238,8 @@ export class SessionRegistry extends EventEmitter {
   private adoptProvisional(event: AnyHookEvent): SessionEntry | null {
     for (const entry of this.sessions.values()) {
       if (!entry.sessionId.startsWith("launching:")) continue;
-      if (!samePath(entry.cwd, event.cwd ?? "")) continue;
+      // The session may have moved into a subdirectory of where it launched.
+      if (!pathWithin(event.cwd ?? "", entry.cwd)) continue;
       const oldId = entry.sessionId;
       this.sessions.delete(oldId);
       entry.sessionId = event.session_id;
@@ -306,7 +307,7 @@ export class SessionRegistry extends EventEmitter {
     const MAX_AGE_MS = 90_000;
     const now = Date.now();
     this.pendingLaunches = this.pendingLaunches.filter((l) => now - l.at < MAX_AGE_MS);
-    const i = this.pendingLaunches.findIndex((l) => samePath(l.cwd, entry.cwd));
+    const i = this.pendingLaunches.findIndex((l) => pathWithin(entry.cwd, l.cwd));
     if (i === -1) return;
     const launch = this.pendingLaunches.splice(i, 1)[0]!;
     entry.windowKind = "console";
@@ -485,6 +486,22 @@ export class SessionRegistry extends EventEmitter {
 export function samePath(a: string, b: string): boolean {
   const norm = (p: string) => p.replace(/[\\/]+/g, "\\").replace(/\\+$/, "").toLowerCase();
   return norm(a) === norm(b);
+}
+
+/**
+ * Is `child` the same directory as `root`, or inside it?
+ *
+ * Sessions report the cwd they're CURRENTLY in, which drifts below the
+ * directory we launched them in (a session working in
+ * `<worktree>\scratch\foo` still belongs to `<worktree>`). Matching a launch
+ * on equality alone let that session register as a brand-new desktop entry
+ * beside its own console key — the phantom duplicate with a " 2" suffix.
+ */
+export function pathWithin(child: string, root: string): boolean {
+  const norm = (p: string) => p.replace(/[\\/]+/g, "\\").replace(/\\+$/, "").toLowerCase();
+  const c = norm(child);
+  const r = norm(root);
+  return c === r || c.startsWith(r + "\\");
 }
 
 /**

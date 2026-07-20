@@ -72,9 +72,9 @@ export interface DeckLayerState {
   /** A deny-reason dictation is live for the CURRENT held permission — the
    * "Deny + reason" key renders as a recording indicator with countdown. */
   permissionRec?: { deadline: number };
-  /** A rename dictation is live — the Rename key counts down, showing the
-   * name being replaced. */
-  renameRec?: { deadline: number; label: string };
+  /** A rename dictation is live — both the Rename key and the session's OWN
+   * row-1 key count down, and either one stops it. */
+  renameRec?: { deadline: number; label: string; sessionId: string };
   permission?: PermissionContext;
   question?: QuestionContext;
   controls: DeckControls;
@@ -211,6 +211,17 @@ export function computeTiles(
       const session = slot < cfg.slots ? registry.bySlot(slot) : undefined;
       if (!session) {
         tiles.push({ text: "", state: "blank" });
+        continue;
+      }
+      if (layer.renameRec?.sessionId === session.sessionId) {
+        // Listening for this session's new name — the key it was started on
+        // becomes the countdown, and stops it when pressed.
+        tiles.push({
+          text: `${Math.max(0, Math.ceil((layer.renameRec.deadline - now) / 1000))}s`,
+          subtext: "name it · tap to stop",
+          state: "error",
+          selected: flashPhase,
+        });
         continue;
       }
       const isMorphOrigin = session.sessionId === morphSessionId;

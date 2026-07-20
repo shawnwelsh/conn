@@ -118,6 +118,11 @@ export class DeckController {
           if (gesture !== "long") this.openPager();
           return;
         }
+        // A rename is listening on this very key (it counts down there) —
+        // any press stops it, which is where the hand already is.
+        if (this.layer.renameRec && this.layer.renameRec.sessionId === this.registry.bySlot(slot)?.sessionId) {
+          return void this.renameFinish();
+        }
         if (gesture === "long") return this.beginMove(this.registry.bySlot(slot)?.sessionId);
         if (gesture === "triple") return void this.row1TripleTap(slot);
         if (gesture === "double") return void this.row1DoubleTap(slot);
@@ -525,7 +530,11 @@ export class DeckController {
     this.renameActive = true;
     if (await stt.start()) {
       const seconds = this.cfg.ptt.renameMaxSeconds;
-      this.layer.renameRec = { deadline: Date.now() + seconds * 1000, label: target.label };
+      this.layer.renameRec = {
+        deadline: Date.now() + seconds * 1000,
+        label: target.label,
+        sessionId: target.sessionId,
+      };
       this.renameMaxTimer = setTimeout(() => void this.renameFinish(), seconds * 1000);
       this.log.info({ session: target.sessionId, seconds }, "rename: recording");
       this.onLayerChanged();

@@ -19,11 +19,16 @@ import type { Logger } from "../log.js";
  * Console host (config consoleHost):
  *  - "wt" (default): Windows Terminal windows — full copy/paste, proper
  *    rendering. All WT windows belong to one WindowsTerminal.exe process, so
- *    the window is grabbed once at spawn via a unique --title token, locked
- *    in place with --suppressApplicationTitle (CC can't retitle it away);
- *    the cmd pid is resolved by embedding the same token in its command
- *    line. ControlSend can't reach WT windows — irrelevant, delivery is
- *    input-buffer injection by PID.
+ *    the window is grabbed at spawn by its --title (the codename), while the
+ *    cmd pid is resolved from a token embedded in its command line.
+ *    Deliberately NOT --suppressApplicationTitle: Claude Code retitles the
+ *    terminal when the conversation is renamed (its
+ *    `terminalTitleFromRename` setting, on by default), so leaving it free
+ *    means the WT tab tracks the session name — the same name the deck key
+ *    and the branch carry. The cost is a race (once CC boots, our launch
+ *    title is gone), so the window hunt runs CONCURRENTLY with pid
+ *    resolution rather than after it. ControlSend can't reach WT windows —
+ *    irrelevant, delivery is input-buffer injection by PID.
  *  - "conhost": classic console windows (owned by the cmd child; resolved
  *    via findpid). No WT dependency; poorer fonts, Mark-mode-only copy.
  *
@@ -216,12 +221,16 @@ export class ConsoleLauncher {
     // input buffer delivery injects into.
     const psq = (s: string) => "'" + s.replace(/'/g, "''") + "'";
     const token = `deck-${basename(spawnDir)}-${Date.now() % 100_000}`;
+    // The tab opens under the codename (meaningful on sight, and unique —
+    // codenames are collision-checked against existing worktrees) and is left
+    // free for Claude Code to retitle on /rename.
+    const title = basename(spawnDir);
     const script =
       this.consoleHost === "wt"
-        ? // Windows Terminal: fresh window, title locked to our token; the
+        ? // Windows Terminal: fresh window titled with the codename; the
           // token inside the cmd line makes the child pid findable by CIM.
-          `$null = Start-Process wt.exe -ArgumentList '-w','new','--title',${psq(token)},` +
-          `'--suppressApplicationTitle','-d',${psq(spawnDir)},'cmd','/k',` +
+          `$null = Start-Process wt.exe -ArgumentList '-w','new','--title',${psq(title)},` +
+          `'-d',${psq(spawnDir)},'cmd','/k',` +
           `${psq(`set DECK_LAUNCH=${token}& ${this.command}`)}; ` +
           `$child = $null; ` +
           `for ($i = 0; $i -lt 24 -and -not $child; $i++) { ` +
@@ -236,7 +245,7 @@ export class ConsoleLauncher {
           `Start-Sleep -Milliseconds 250; ` +
           `$child = (Get-CimInstance Win32_Process -Filter "ParentProcessId=$($p.Id) and Name='cmd.exe'" | Select-Object -First 1).ProcessId }; ` +
           `if ($child) { $child } else { 0 }`;
-    const pid = await new Promise<number | null>((resolve) => {
+    const pidPromise = new Promise<number | null>((resolve) => {
       const ps = spawn("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", script], {
         stdio: ["ignore", "pipe", "ignore"],
         windowsHide: true,
@@ -253,21 +262,43 @@ export class ConsoleLauncher {
         resolve(Number.isInteger(n) && n > 0 ? n : null);
       });
     });
+
+    // Start hunting the WT window NOW, not after the pid resolves: the launch
+    // title only survives until Claude Code boots and renames the terminal.
+    const titleHunt =
+      this.consoleHost === "wt"
+        ? (async () => {
+            for (let i = 0; i < 25; i++) {
+              const found = await this.delivery.findWindowByTitle?.(title);
+              if (found) return found;
+              await new Promise((r) => setTimeout(r, 200));
+            }
+            return null;
+          })()
+        : Promise.resolve(null);
+
+    const pid = await pidPromise;
     if (!pid) {
       this.log.warn({ cwd: spawnDir, host: this.consoleHost }, "launcher: spawn failed (no pid)");
+      void titleHunt; // let it fall out on its own
       this.registry.dropProvisional(spawnDir); // take the key back
       return false;
     }
 
-    // The window can take a beat to exist; poll for the HWND — by locked
-    // title token for WT (the window isn't the cmd's), by pid for conhost.
+    // WT: whatever the concurrent title hunt caught (the window isn't the
+    // cmd's, so it can only be found by title). conhost: the window belongs
+    // to the cmd child, so the pid resolves it and can't go stale.
     let hwnd: number | null = null;
-    for (let i = 0; i < 15 && !hwnd; i++) {
-      await new Promise((r) => setTimeout(r, 400));
-      hwnd =
-        this.consoleHost === "wt"
-          ? ((await this.delivery.findWindowByTitle?.(token)) ?? null)
-          : await this.delivery.findWindowByPid(pid);
+    if (this.consoleHost === "wt") {
+      hwnd = await titleHunt;
+      if (!hwnd) {
+        this.log.warn({ cwd: spawnDir }, "launcher: window not caught before Claude Code retitled it — no focus target");
+      }
+    } else {
+      for (let i = 0; i < 15 && !hwnd; i++) {
+        await new Promise((r) => setTimeout(r, 400));
+        hwnd = await this.delivery.findWindowByPid(pid);
+      }
     }
 
     // Surface the new console — windows spawned by a background process open

@@ -366,6 +366,32 @@ describe("Rename key (globals page 2)", () => {
     expect(registry.get("s1")?.label).toBe("stream deck push to talk");
   });
 
+  it("tapping the session's own key stops the recording (no waiting for the timeout)", async () => {
+    layer.row3Page = 0;
+    const tap = () => { controller.down(0); controller.up(0); };
+    tap(); tap(); tap(); // triple → start
+    await vi.advanceTimersByTimeAsync(10);
+    expect(layer.renameRec?.sessionId).toBe("s1");
+
+    // A single tap on that same key ends it — the countdown is rendered there.
+    controller.down(0);
+    controller.up(0);
+    await vi.advanceTimersByTimeAsync(cfg.doubleTapMs + 20);
+    expect(stt.calls).toEqual(["start", "stop"]);
+    expect(layer.renameRec).toBeUndefined();
+    expect(registry.get("s1")?.label).toBe("stream deck push to talk");
+  });
+
+  it("the session's row-1 key becomes the countdown while listening", async () => {
+    layer.row3Page = 0;
+    const tap = () => { controller.down(0); controller.up(0); };
+    tap(); tap(); tap();
+    await vi.advanceTimersByTimeAsync(10);
+    const tiles = computeTiles(registry, layer, cfg, [], true);
+    expect(tiles[0]).toMatchObject({ text: "10s", state: "error", selected: true });
+    expect(String(tiles[0]!.subtext)).toContain("tap to stop");
+  });
+
   it("renders the key with the current name, then a countdown while listening", async () => {
     const before = computeTiles(registry, layer, cfg, [], false);
     expect(before[11]).toMatchObject({ text: "Rename", subtext: registry.get("s1")!.label });
