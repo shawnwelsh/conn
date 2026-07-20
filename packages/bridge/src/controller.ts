@@ -12,7 +12,7 @@ import { activeSuggestion, isChoiceQuestion } from "./suggestions.js";
 import type { CommandSource, CommandEntry } from "./commands.js";
 import type { SttEngine } from "./stt/sidecar.js";
 
-/** Physical key hosting PTT (row 3 key 1) on the globals' default page. */
+/** Physical key hosting the mic (row 3 key 1). */
 const PTT_SLOT = 10;
 
 /**
@@ -472,7 +472,7 @@ export class DeckController {
     if (stt.status === "offline") {
       // Pressing the offline key is consent to retry the sidecar; a later
       // press records once it's ready.
-      this.log.info("PTT pressed while offline — retrying sidecar spawn");
+      this.log.info("dictation: pressed while offline — retrying sidecar spawn");
       void stt.ensureStarted?.();
       return;
     }
@@ -480,7 +480,7 @@ export class DeckController {
     if (stt.status !== "ready") return;
     const target = this.registry.targetedSession;
     if (!target) {
-      this.log.warn("PTT ignored: no targeted session");
+      this.log.warn("dictation ignored: no targeted session");
       return;
     }
     this.pttTarget = target;
@@ -619,7 +619,7 @@ export class DeckController {
     }
   }
 
-  /** Row 3: PTT / interrupt / globals; the Page key flips global pages. */
+  /** Row 3: mic / interrupt / globals; the Page key flips global pages. */
   private async row3(index: number): Promise<void> {
     const target = this.registry.targetedSession;
     if (index === 4) {
@@ -631,7 +631,7 @@ export class DeckController {
     }
     if (this.layer.row3Page === 1) return; // page 2 is empty for now
     switch (index) {
-      case 0: // PTT — handled at the raw down/up layer (hold-to-record);
+      case 0: // Mic — handled at the raw down/up layer (toggle);
         return; // a stray classified gesture here is a no-op.
       case 1:
         // Send: mid-dictation → stop, type, AND submit in one press; while

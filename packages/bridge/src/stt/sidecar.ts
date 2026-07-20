@@ -9,10 +9,10 @@ import type { Logger } from "../log.js";
  * owning the microphone and a local faster-whisper model. JSON lines over
  * stdio, one response per command, mirroring the AHK daemon pattern.
  *
- * Status drives the PTT key face:
+ * Status drives the mic key face:
  *  - "offline": not running (deps missing, crash, disabled) — key grayed.
  *  - "loading": spawned, model loading (first run downloads it).
- *  - "ready" / "recording" / "transcribing": the live PTT cycle.
+ *  - "ready" / "recording" / "transcribing": the live dictation cycle.
  * Failure posture per the design doc: sidecar down → offline key; audio is
  * never queued silently.
  */
@@ -34,7 +34,7 @@ export interface SttConfig {
 /** Interface the controller depends on — tests stub this. */
 export interface SttEngine {
   readonly status: SttStatus;
-  /** Optional respawn hook: a PTT press while offline retries the sidecar. */
+  /** Optional respawn hook: a mic press while offline retries the sidecar. */
   ensureStarted?(): Promise<void>;
   start(): Promise<boolean>;
   stop(): Promise<string>;
@@ -64,7 +64,7 @@ export class SttSidecar implements SttEngine {
   }
 
   /** Spawn the sidecar; resolves once ready (or offline on failure). Safe to
-   * call repeatedly — a PTT press while offline retries the spawn. */
+   * call repeatedly — a mic press while offline retries the spawn. */
   async ensureStarted(): Promise<void> {
     if (this.proc || this.spawning) return;
     this.spawning = true;

@@ -67,8 +67,8 @@ export interface DeckLayerState {
   /** A console launch (worktree + spawn) is in flight — New shows progress
    * and further presses are ignored. */
   launching?: boolean;
-  /** Push-to-talk sidecar state, mirrored from the STT adapter; drives the
-   * mic key face. Absent = offline (PTT not configured/available). */
+  /** Dictation sidecar state, mirrored from the STT adapter; drives the mic
+   * key face. Absent = offline (dictation not configured/available). */
   ptt?: "offline" | "loading" | "ready" | "recording" | "transcribing";
   /** A deny-reason dictation is live for the CURRENT held permission — the
    * "Deny + reason" key renders as a recording indicator with countdown. */
@@ -151,20 +151,21 @@ export function commandTile(
   return { text: t.label, subtext: t.label === t.text ? undefined : t.text, state: "command" };
 }
 
-/** Mic-key face per PTT sidecar state (absent = offline). Toggle model:
- * tap to record, tap to stop; Send mid-recording stops AND submits. */
+/** Mic-key face per sidecar state (absent = offline). It's a toggle, not
+ * push-to-talk: tap to start, tap to stop; Send mid-recording stops AND
+ * submits. Hence "Talk", not "PTT". */
 export function pttTile(ptt: DeckLayerState["ptt"], flashPhase: boolean): TileSpec {
   switch (ptt) {
     case "recording":
       return { text: "REC", subtext: "tap to stop", state: "error", icon: "mic", selected: flashPhase };
     case "transcribing":
-      return { text: "PTT", subtext: "transcribing…", state: "waiting", icon: "mic", selected: flashPhase };
+      return { text: "Talk", subtext: "transcribing…", state: "waiting", icon: "mic", selected: flashPhase };
     case "ready":
-      return { text: "PTT", subtext: "tap to talk", state: "command", icon: "mic" };
+      return { text: "Talk", subtext: "tap to start", state: "command", icon: "mic" };
     case "loading":
-      return { text: "PTT", subtext: "loading…", state: "blank", icon: "mic" };
+      return { text: "Talk", subtext: "loading…", state: "blank", icon: "mic" };
     default:
-      return { text: "PTT", subtext: "offline", state: "blank", icon: "mic" };
+      return { text: "Talk", subtext: "offline", state: "blank", icon: "mic" };
   }
 }
 

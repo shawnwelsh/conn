@@ -201,7 +201,7 @@ describe("pttTile faces", () => {
   it("maps each sidecar state to a distinct key face", () => {
     expect(pttTile(undefined, false)).toMatchObject({ subtext: "offline", state: "blank" });
     expect(pttTile("loading", false)).toMatchObject({ subtext: "loading…" });
-    expect(pttTile("ready", false)).toMatchObject({ subtext: "tap to talk", state: "command" });
+    expect(pttTile("ready", false)).toMatchObject({ text: "Talk", subtext: "tap to start", state: "command" });
     expect(pttTile("recording", true)).toMatchObject({ text: "REC", subtext: "tap to stop", state: "error", selected: true });
     expect(pttTile("transcribing", false)).toMatchObject({ subtext: "transcribing…", state: "waiting" });
   });

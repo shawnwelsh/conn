@@ -13,8 +13,13 @@ transcription that finishes late.
 
 ## Push-to-talk (PTT)
 
-**Goal:** hold the PTT key, speak, release; the transcription lands in the
-targeted session's input box (not auto-sent — Send is its own key).
+> **Superseded:** hold-to-talk became a **toggle** in practice — tap to start,
+> tap to stop, and Send mid-recording stops/types/submits in one motion. The
+> key is labelled **Talk**, not PTT. The pipeline below is otherwise as built.
+
+**Goal (as designed):** hold the PTT key, speak, release; the transcription
+lands in the targeted session's input box (not auto-sent — Send is its own
+key).
 
 **Pipeline**
 

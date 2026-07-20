@@ -148,7 +148,7 @@ Everything runs locally: a Python sidecar owns the microphone and a
 
 Setup: `python -m pip install faster-whisper sounddevice` (needs Python
 3.10+; cp314 wheels exist). No Python or missing deps? The key just shows
-"PTT offline" — press it to retry once you've installed them.
+"Talk — offline" — press it to retry once you've installed them.
 
 Details: a forgotten recording auto-stops at `ptt.maxSeconds` (60) and types
 what it has — it never auto-sends; silence transcribes to nothing (VAD) and
