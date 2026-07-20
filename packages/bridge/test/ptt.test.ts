@@ -1,7 +1,7 @@
 import { describe, expect, it, beforeEach, vi, afterEach } from "vitest";
 import { DeckController } from "../src/controller.js";
 import { SessionRegistry } from "../src/registry.js";
-import { initialControls, initialRow1, initialRow2Cmd, pttTile, type DeckLayerState } from "../src/layers.js";
+import { initialControls, initialRow1, initialRow2Cmd, pttTile, computeTiles, type DeckLayerState } from "../src/layers.js";
 import type { DeckConfig } from "../src/config.js";
 import type { DeliveryAdapter, SessionRef } from "../src/delivery/adapter.js";
 import type { SttEngine, SttStatus } from "../src/stt/sidecar.js";
@@ -103,6 +103,29 @@ describe("dictation toggle (tap → record, tap → stop & type)", () => {
       { m: "sendText", arg: "fix the failing registry test" },
       { m: "sendKey", arg: "enter" },
     ]);
+  });
+
+  it("the Send key advertises the shortcut only while WE hold the mic", async () => {
+    const tiles = () => computeTiles(registry, layer, cfg, [], false);
+    expect(tiles()[11]).toMatchObject({ text: "Send", subtext: "enter", state: "command" });
+
+    tapMic(controller);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(layer.talkActive).toBe(true);
+    expect(tiles()[11]).toMatchObject({ text: "Send", subtext: "stop + send", state: "answer", icon: "send" });
+
+    await tapKey(controller, 11);
+    expect(layer.talkActive).toBeUndefined();
+    expect(tiles()[11]).toMatchObject({ subtext: "enter", state: "command" });
+  });
+
+  it("a rename or deny-reason recording leaves Send looking like plain Enter", async () => {
+    // Send really is a plain Enter during those — the key must not lie.
+    layer.ptt = "recording";
+    layer.permissionRec = { deadline: Date.now() + 10_000 };
+    expect(computeTiles(registry, layer, cfg, [], false)[11]).toMatchObject({ subtext: "enter" });
+    layer.permissionRec = undefined;
+    layer.ptt = undefined;
   });
 
   it("Send while idle is a plain Enter", async () => {

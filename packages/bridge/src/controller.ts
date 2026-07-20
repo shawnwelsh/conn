@@ -486,6 +486,9 @@ export class DeckController {
     this.pttTarget = target;
     this.pttActive = true; // claim before the await so a double-tap can't double-start
     if (await stt.start()) {
+      // Send now means "stop, type, submit" — tell the key to say so.
+      this.layer.talkActive = true;
+      this.onLayerChanged();
       // Cap forgotten recordings: stop and type what we have at maxSeconds
       // (never auto-SENDS — submitting is always an explicit Send press).
       this.pttMaxTimer = setTimeout(() => void this.pttFinish(false), this.cfg.ptt.maxSeconds * 1000);
@@ -501,6 +504,8 @@ export class DeckController {
     const stt = this.stt;
     if (!stt || !this.pttActive) return;
     this.pttActive = false;
+    this.layer.talkActive = undefined; // Send goes back to a plain Enter
+    this.onLayerChanged();
     if (this.pttMaxTimer) {
       clearTimeout(this.pttMaxTimer);
       this.pttMaxTimer = null;

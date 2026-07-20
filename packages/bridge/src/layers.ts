@@ -70,6 +70,10 @@ export interface DeckLayerState {
   /** Dictation sidecar state, mirrored from the STT adapter; drives the mic
    * key face. Absent = offline (dictation not configured/available). */
   ptt?: "offline" | "loading" | "ready" | "recording" | "transcribing";
+  /** A dictation-into-the-input is live and OURS — so Send currently means
+   * "stop, type, submit". False during a rename or deny-reason recording,
+   * where Send is still a plain Enter and must not promise otherwise. */
+  talkActive?: boolean;
   /** A deny-reason dictation is live for the CURRENT held permission — the
    * "Deny + reason" key renders as a recording indicator with countdown. */
   permissionRec?: { deadline: number };
@@ -389,7 +393,11 @@ export function computeTiles(
   } else {
     tiles.push(
       pttTile(layer.ptt, flashPhase),
-      { text: "Send", subtext: "enter", state: "command", icon: "send" },
+      // Mid-dictation Send is a compound: stop, type, submit. Keep the plane
+      // (that's how the key is found by shape) but light it up and say so.
+      layer.talkActive
+        ? { text: "Send", subtext: "stop + send", state: "answer", icon: "send" }
+        : { text: "Send", subtext: "enter", state: "command", icon: "send" },
       { text: "Esc", subtext: "interrupt", state: "command", icon: "esc" },
       layer.launching
         ? { text: "New", subtext: "spawning…", state: "waiting", icon: "new", selected: flashPhase }
