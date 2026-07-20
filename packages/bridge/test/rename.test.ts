@@ -348,6 +348,7 @@ describe('"rename" command (session row)', () => {
     const tap = async () => { c.down(5); c.up(5); await vi.advanceTimersByTimeAsync(cfg.doubleTapMs + 10); };
     await tap();
     await tap();
+    await vi.advanceTimersByTimeAsync(300); // past the console submit gap
     expect(sent).toEqual(["text:/rename stream deck push to talk", "key:enter"]);
     expect(r.get("con")?.label).toBe("stream deck push to talk");
   });

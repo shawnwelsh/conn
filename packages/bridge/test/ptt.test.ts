@@ -94,11 +94,15 @@ describe("dictation toggle (tap → record, tap → stop & type)", () => {
     expect(delivery.calls).toEqual([{ m: "sendText", arg: "fix the failing registry test" }]);
   });
 
-  it("Send mid-recording stops, types, AND submits", async () => {
+  it("Send mid-recording stops, types, AND submits — with a settle gap", async () => {
     tapMic(controller);
     await vi.advanceTimersByTimeAsync(0);
     await tapKey(controller, 11); // Send
     expect(stt.calls).toEqual(["start", "stop"]);
+    // The Enter must NOT be instant: it lands as a newline if it arrives
+    // while the typed text is still draining into the input.
+    expect(delivery.calls).toEqual([{ m: "sendText", arg: "fix the failing registry test" }]);
+    await vi.advanceTimersByTimeAsync(300);
     expect(delivery.calls).toEqual([
       { m: "sendText", arg: "fix the failing registry test" },
       { m: "sendKey", arg: "enter" },

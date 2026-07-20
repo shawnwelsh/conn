@@ -80,7 +80,7 @@ describe("row-2 command pager + move", () => {
     return { store, layer, controller, calls };
   }
 
-  const flush = () => new Promise((r) => setTimeout(r, 10));
+  const flush = () => new Promise((r) => setTimeout(r, 300)); // past the console submit gap
 
   it("key 10 opens the pager straight to page two (default row already shows page one)", async () => {
     const { layer, controller, calls } = setup(["/a", "/b", "/c", "/d", "/e", "/f"]);

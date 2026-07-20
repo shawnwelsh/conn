@@ -6,7 +6,7 @@ import type { DeckConfig } from "../src/config.js";
 import type { DeliveryAdapter, SessionRef } from "../src/delivery/adapter.js";
 
 const noopLog = { info: () => {}, warn: () => {}, debug: () => {} } as never;
-const flush = () => new Promise((r) => setTimeout(r, 10));
+const flush = () => new Promise((r) => setTimeout(r, 300)); // past the console submit gap
 
 describe("pending-launch binding (windowKind)", () => {
   it("binds a session starting in a launched cwd to console + hwnd", () => {

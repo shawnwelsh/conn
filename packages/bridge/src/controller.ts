@@ -16,6 +16,9 @@ import type { SttEngine } from "./stt/sidecar.js";
 /** Physical key hosting the mic (row 3 key 1). */
 const PTT_SLOT = 10;
 
+/** Gap between typed text and its submitting Enter on console sessions. */
+const CONSOLE_SUBMIT_GAP_MS = 150;
+
 /**
  * Routes recognized gestures (from any client) to actions. Clients report raw
  * key down/up only; the GestureRecognizer classifies tap/double/long here.
@@ -434,9 +437,16 @@ export class DeckController {
    */
   private async typeSubmit(target: SessionEntry, text: string): Promise<boolean> {
     if (!(await this.delivery.sendText(target, text))) return false;
-    if (target.windowKind === "desktop" && this.cfg.desktopSubmitDelayMs > 0) {
-      await new Promise((r) => setTimeout(r, this.cfg.desktopSubmitDelayMs));
-    }
+    // Let the input settle before the Enter. Desktop needs the most (its
+    // slash popup renders async). Consoles need a beat too once the text is
+    // long: a 255-char dictation is 510 input records still draining when an
+    // instant Enter lands behind them, and it gets absorbed as a newline
+    // instead of submitting.
+    const gap =
+      target.windowKind === "desktop"
+        ? (this.cfg.desktopSubmitDelayMs ?? 250)
+        : CONSOLE_SUBMIT_GAP_MS;
+    if (gap > 0) await new Promise((r) => setTimeout(r, gap));
     return this.delivery.sendKey(target, "enter");
   }
 
@@ -564,12 +574,16 @@ export class DeckController {
       // Target from recording-start time; skip if it vanished mid-utterance.
       const live = target && this.registry.get(target.sessionId) ? target : undefined;
       let ok = false;
-      if (text && live) ok = await this.delivery.sendText(live, text);
+      // Route the submitting case through typeSubmit so dictation gets the
+      // same settle gap every other typed command does — going straight to
+      // sendText+sendKey left no gap at all and the Enter landed as a
+      // newline instead of submitting.
+      if (text && live) ok = send ? await this.typeSubmit(live, text) : await this.delivery.sendText(live, text);
       if (!text) this.log.info("dictation: empty transcription");
-      else this.log.info({ chars: text.length, session: live?.sessionId, ok }, "dictation: typed");
+      else this.log.info({ chars: text.length, session: live?.sessionId, send, ok }, "dictation: typed");
       // Send-while-recording submits even when the transcription came back
       // empty — the press meant "ship what's in the input".
-      if (send && live) await this.delivery.sendKey(live, "enter");
+      if (send && live && !text) await this.delivery.sendKey(live, "enter");
     })();
     this.pttFlight = flight.finally(() => {
       if (this.pttFlight === flight) this.pttFlight = null;

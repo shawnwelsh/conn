@@ -8,7 +8,7 @@ import type { CommandEntry, CommandSource } from "../src/commands.js";
 
 const cfg = { slots: 5, doubleTapMs: 300, longPressMs: 500, moveCancelSeconds: 5 } as unknown as DeckConfig;
 const noopLog = { info: () => {}, warn: () => {}, debug: () => {} } as never;
-const flush = () => new Promise((r) => setTimeout(r, 10));
+const flush = () => new Promise((r) => setTimeout(r, 300)); // past the console submit gap
 
 class RecordingAdapter implements DeliveryAdapter {
   calls: Array<{ m: string; chords: string[] }> = [];
@@ -218,7 +218,8 @@ describe("row 3 globals", () => {
     await vi.advanceTimersByTimeAsync(250);
     expect(delivery.calls.map((c) => c.m)).toEqual(["sendText", "sendKey"]);
 
-    // Console session: raw byte stream, no delay.
+    // Console session: a shorter gap, but never zero — a long dictation is
+    // still draining when an instant Enter lands, and gets absorbed.
     delivery.calls = [];
     const r2 = new SessionRegistry(5);
     r2.registerPendingLaunch({ cwd: "C:\\dev\\con", pid: 9, hwnd: 77, at: Date.now() });
@@ -227,6 +228,8 @@ describe("row 3 globals", () => {
     c2.setCommands(lineup);
     (c2 as any).row2(0);
     await vi.advanceTimersByTimeAsync(0);
+    expect(delivery.calls.map((c) => c.m)).toEqual(["sendText"]); // Enter still pending
+    await vi.advanceTimersByTimeAsync(200);
     expect(delivery.calls.map((c) => c.m)).toEqual(["sendText", "sendKey"]);
     vi.useRealTimers();
   });
