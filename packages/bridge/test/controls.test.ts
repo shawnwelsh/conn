@@ -111,13 +111,29 @@ describe("row 3 globals", () => {
     expect(delivery.calls.map((c) => c.chords[0])).toEqual(["enter", "escape"]);
   });
 
-  it("Page toggles to the globals page where Mode(menu) lives", async () => {
-    await (controller as any).row3(4);
-    expect(layer.row3Page).toBe(1);
-    await (controller as any).row3(0); // Mode menu on page 1
-    expect(delivery.calls.at(-1)).toEqual({ m: "sendKey", chords: ["ctrl+shift+m"] });
+  it("Page does nothing while globals page 2 is empty", async () => {
+    // Mode(menu) and Rename moved to the session row, so there's nowhere to
+    // page to — the key renders blank and the press is inert.
     await (controller as any).row3(4);
     expect(layer.row3Page).toBe(0);
+  });
+
+  it("modemenu is a session-row command, desktop dialect only", async () => {
+    controller.setCommands(fakeCommands([{ kind: "builtin", id: "modemenu" }]));
+    (controller as any).row2(0);
+    await flush();
+    expect(delivery.calls.at(-1)).toEqual({ m: "sendKey", chords: ["ctrl+shift+m"] });
+
+    // A console session has no picker chord — the press is a no-op.
+    const r2 = new SessionRegistry(5);
+    r2.registerPendingLaunch({ cwd: "C:\\dev\\con", pid: 1, hwnd: 5, at: Date.now() });
+    r2.ensure({ session_id: "con", cwd: "C:\\dev\\con", hook_event_name: "SessionStart" });
+    const c2 = new DeckController(r2, layer, delivery, cfg, noopLog, () => {});
+    c2.setCommands(fakeCommands([{ kind: "builtin", id: "modemenu" }]));
+    delivery.calls = [];
+    (c2 as any).row2(0);
+    await flush();
+    expect(delivery.calls).toEqual([]);
   });
 
   it("Mode(menu) no-ops for console sessions — the TUI has no picker chord", async () => {

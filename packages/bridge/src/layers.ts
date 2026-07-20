@@ -61,7 +61,8 @@ export interface DeckLayerState {
   row1: Row1State;
   row2: Row2Layer;
   row2Cmd: Row2CmdState;
-  /** Row-3 globals page: 0 = PTT/Send/Esc/New, 1 = Mode-menu + future. */
+  /** Row-3 globals page. Page 2 is currently empty (see HAS_GLOBALS_PAGE2) —
+   * the paging stays wired for whenever a global earns a key. */
   row3Page: number;
   /** A console launch (worktree + spawn) is in flight — New shows progress
    * and further presses are ignored. */
@@ -95,11 +96,18 @@ export function initialRow2Cmd(): Row2CmdState {
 /** Visible command keys per row-2 view (key 10 is the pager/control key). */
 export const COMMANDS_PER_PAGE = 4;
 
+/** Globals-row page 2 is empty since Mode and Rename moved to the session
+ * row; the Page key hides itself until something lives here again. */
+export const HAS_GLOBALS_PAGE2 = false;
+
 /** The tile for one command entry, speaking the targeted session's dialect. */
 export function commandTile(
   entry: CommandEntry,
   targeted: SessionEntry | undefined,
   controls: DeckControls,
+  /** Live rename dictation, so the key can show its own countdown. */
+  renameRec?: DeckLayerState["renameRec"],
+  flashPhase = false,
 ): TileSpec {
   if (entry.kind === "builtin" && entry.id === "mode") {
     if (targeted?.windowKind === "console") return { text: "Mode", subtext: "⇥ cycle", state: "command" };
@@ -110,6 +118,28 @@ export function commandTile(
     return targeted?.windowKind === "console"
       ? { text: "Model", subtext: "/model", state: "command" }
       : { text: "Model", subtext: "cycle", state: "command", badge: String(controls.modelNext) };
+  }
+  if (entry.kind === "builtin" && entry.id === "modemenu") {
+    // The full picker chord — desktop dialect only; the console TUI has no
+    // such menu (its mode cycling is the "mode" builtin, Shift+Tab).
+    return targeted?.windowKind === "desktop"
+      ? { text: "Mode", subtext: "menu", state: "command", icon: "menu" }
+      : { text: "", state: "blank" };
+  }
+  if (entry.kind === "builtin" && entry.id === "rename") {
+    if (renameRec && targeted && renameRec.sessionId === targeted.sessionId) {
+      return {
+        text: `${Math.max(0, Math.ceil((renameRec.deadline - Date.now()) / 1000))}s`,
+        subtext: "name it · tap to stop",
+        state: "error",
+        selected: flashPhase,
+      };
+    }
+    // Says which rename you're getting: a console session's name propagates to
+    // its branch and its conversation, a desktop session's is deck-local.
+    return targeted?.windowKind === "console"
+      ? { text: "Rename", subtext: "name + branch", state: "command", icon: "mic" }
+      : { text: "Rename", subtext: "button only", state: "command", icon: "mic" };
   }
   if (entry.kind === "builtin" && entry.id === "sendname") {
     // Shows what it would send, so the sync is never a guess.
@@ -303,7 +333,7 @@ export function computeTiles(
       const entry = commands[page * COMMANDS_PER_PAGE + i];
       tiles.push(
         entry
-          ? { ...commandTile(entry, targeted, layer.controls), badge: String(page * COMMANDS_PER_PAGE + i + 1) }
+          ? { ...commandTile(entry, targeted, layer.controls, layer.renameRec, flashPhase), badge: String(page * COMMANDS_PER_PAGE + i + 1) }
           : { text: "", state: "blank" },
       );
     }
@@ -326,7 +356,7 @@ export function computeTiles(
     // Default: first 4 lineup entries + the command pager key.
     for (let i = 0; i < COMMANDS_PER_PAGE; i++) {
       const entry = commands[i];
-      tiles.push(entry ? commandTile(entry, targeted, layer.controls) : { text: "", state: "blank" });
+      tiles.push(entry ? commandTile(entry, targeted, layer.controls, layer.renameRec, flashPhase) : { text: "", state: "blank" });
     }
     const hidden = Math.max(0, commands.length - COMMANDS_PER_PAGE);
     tiles.push(
@@ -336,27 +366,13 @@ export function computeTiles(
     );
   }
 
-  // Row 3 — PTT / interrupt / globals, paged behind the Page key.
-  if (layer.row3Page === 1) {
-    // Mode (menu) speaks the desktop picker chord (Ctrl+Shift+M); the console
-    // TUI has no such menu — hide the key there (console mode cycling is the
-    // row-2 "mode" builtin, Shift+Tab).
-    const rec = layer.renameRec;
+  // Row 3 — true globals only. Session-specific keys (Mode picker, Rename)
+  // live in the session row, configurable in commands.json like everything
+  // else that acts on the targeted session.
+  if (HAS_GLOBALS_PAGE2 && layer.row3Page === 1) {
     tiles.push(
-      targeted?.windowKind === "desktop"
-        ? { text: "Mode", subtext: "menu", state: "command", icon: "menu" }
-        : { text: "", state: "blank" },
-      rec
-        ? {
-            // Countdown IS the face while listening for the new name.
-            text: `${Math.max(0, Math.ceil((rec.deadline - now) / 1000))}s`,
-            subtext: `renaming ${rec.label}`,
-            state: "error",
-            selected: flashPhase,
-          }
-        : targeted
-          ? { text: "Rename", subtext: targeted.label, state: "command", icon: "mic" }
-          : { text: "", state: "blank" },
+      { text: "", state: "blank" },
+      { text: "", state: "blank" },
       { text: "", state: "blank" },
       { text: "", state: "blank" },
       { text: "Page", subtext: "back", state: "command", icon: "page" },
@@ -369,7 +385,9 @@ export function computeTiles(
       layer.launching
         ? { text: "New", subtext: "spawning…", state: "waiting", icon: "new", selected: flashPhase }
         : { text: "New", subtext: "worktree", state: "command", icon: "new" },
-      { text: "Page", subtext: "more", state: "command", icon: "page" },
+      HAS_GLOBALS_PAGE2
+        ? { text: "Page", subtext: "more", state: "command", icon: "page" }
+        : { text: "", state: "blank" }, // nothing to page to — don't offer it
     );
   }
 

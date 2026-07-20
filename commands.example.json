@@ -7,5 +7,7 @@
   "/status",
   "/context",
   "/usage",
-  "sendname"
+  "rename",
+  "sendname",
+  "modemenu"
 ]

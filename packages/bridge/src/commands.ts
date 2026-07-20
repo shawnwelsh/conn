@@ -6,6 +6,8 @@ import type { Logger } from "./log.js";
  *
  * File format: a JSON array, up to 15 entries, in deck order:
  *   - "mode"  / "model"          → the builtin cycle keys
+ *   - "modemenu"                 → open the full mode picker (desktop only)
+ *   - "rename"                   → dictate this session's name
  *   - "sendname"                 → push the button's name into the session
  *                                  (`/rename <name>`, console sessions only)
  *   - "/compact"                 → text command, label = the text itself
@@ -20,10 +22,10 @@ import type { Logger } from "./log.js";
 export const MAX_COMMANDS = 15;
 
 export type CommandEntry =
-  | { kind: "builtin"; id: "mode" | "model" | "sendname" }
+  | { kind: "builtin"; id: "mode" | "model" | "modemenu" | "rename" | "sendname" }
   | { kind: "text"; label: string; text: string };
 
-const BUILTIN_IDS = ["mode", "model", "sendname"] as const;
+const BUILTIN_IDS = ["mode", "model", "modemenu", "rename", "sendname"] as const;
 
 /** What the controller needs from a command lineup (CommandStore implements
  * this; tests can pass a plain object). */
@@ -41,6 +43,7 @@ export const DEFAULT_COMMANDS_JSON: unknown[] = [
   "/status",
   "/context",
   "/usage",
+  "rename",
   "sendname",
 ];
 

@@ -2,7 +2,7 @@ import type { Slot } from "@belay/shared";
 import { gitBranch, type SessionRegistry, type SessionEntry } from "./registry.js";
 import { slugifyName, isDeckBranch, renameDeckBranch } from "./rename.js";
 import type { DeckLayerState } from "./layers.js";
-import { COMMANDS_PER_PAGE, QUESTION_OPTIONS_PER_PAGE } from "./layers.js";
+import { COMMANDS_PER_PAGE, QUESTION_OPTIONS_PER_PAGE, HAS_GLOBALS_PAGE2 } from "./layers.js";
 import type { DeliveryAdapter } from "./delivery/adapter.js";
 import type { DeckConfig } from "./config.js";
 import type { Logger } from "./log.js";
@@ -342,6 +342,15 @@ export class DeckController {
       }
     } else if (entry.kind === "builtin" && entry.id === "model") {
       ok = await this.cycleModel(target);
+    } else if (entry.kind === "builtin" && entry.id === "modemenu") {
+      // Full picker on screen — desktop dialect only (the key renders blank
+      // for consoles, but a stale press shouldn't fire a meaningless chord).
+      if (target.windowKind === "desktop") {
+        ok = await this.delivery.sendKey(target, "ctrl+shift+m");
+      }
+    } else if (entry.kind === "builtin" && entry.id === "rename") {
+      await this.renameToggle(target); // second press stops the dictation
+      ok = true;
     } else if (entry.kind === "builtin" && entry.id === "sendname") {
       // Push the button's name into Claude Code — the manual half of the
       // rename sync, for when the deck and the conversation drifted apart.
@@ -608,22 +617,13 @@ export class DeckController {
   private async row3(index: number): Promise<void> {
     const target = this.registry.targetedSession;
     if (index === 4) {
-      // Page — toggle between the two global pages.
+      // Page — only offer it when page 2 actually holds something.
+      if (!HAS_GLOBALS_PAGE2) return;
       this.layer.row3Page = this.layer.row3Page === 0 ? 1 : 0;
       this.onLayerChanged();
       return;
     }
-    if (this.layer.row3Page === 1) {
-      if (index === 0 && target && target.windowKind === "desktop") {
-        // Mode (menu): open the full Ctrl+Shift+M picker on screen. Desktop
-        // dialect only — the console TUI has no picker chord, and the key
-        // renders blank there.
-        const ok = await this.delivery.sendKey(target, "ctrl+shift+m");
-        this.log.info({ key: "ModeMenu", session: target.sessionId, ok }, "row3 command");
-      }
-      if (index === 1) await this.renameToggle();
-      return; // remaining page-2 slots reserved for future globals
-    }
+    if (this.layer.row3Page === 1) return; // page 2 is empty for now
     switch (index) {
       case 0: // PTT — handled at the raw down/up layer (hold-to-record);
         return; // a stray classified gesture here is a no-op.

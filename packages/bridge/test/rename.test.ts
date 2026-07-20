@@ -8,11 +8,18 @@ import { SessionRegistry } from "../src/registry.js";
 import { initialControls, initialRow1, initialRow2Cmd, computeTiles, type DeckLayerState } from "../src/layers.js";
 import { slugifyName, isDeckBranch, renameDeckBranch } from "../src/rename.js";
 import { readCcSessionNames } from "../src/sessionMeta.js";
+import type { CommandSource } from "../src/commands.js";
 import type { DeckConfig } from "../src/config.js";
 import { NoopAdapter } from "../src/delivery/adapter.js";
 import type { SttEngine, SttStatus } from "../src/stt/sidecar.js";
 
 const noopLog = { info: () => {}, warn: () => {}, debug: () => {} } as never;
+
+/** A one-entry lineup so row-2 slot 5 IS the Rename key. */
+const RENAME_LINEUP: CommandSource = {
+  all: () => [{ kind: "builtin", id: "rename" }],
+  move: () => {},
+};
 const cfg = {
   slots: 5,
   doubleTapMs: 300,
@@ -191,7 +198,7 @@ describe('"sendname" command (manual name sync)', () => {
   });
 });
 
-describe("Rename key (globals page 2)", () => {
+describe('"rename" command (session row)', () => {
   let registry: SessionRegistry;
   let layer: DeckLayerState;
   let stt: StubStt;
@@ -202,19 +209,20 @@ describe("Rename key (globals page 2)", () => {
     vi.useFakeTimers();
     registry = new SessionRegistry(5);
     registry.ensure({ session_id: "s1", cwd: "C:\\dev\\not-a-repo", hook_event_name: "SessionStart" });
-    layer = { row1: initialRow1(), row2: "idle", row2Cmd: initialRow2Cmd(), row3Page: 1, controls: initialControls() };
+    layer = { row1: initialRow1(), row2: "idle", row2Cmd: initialRow2Cmd(), row3Page: 0, controls: initialControls() };
     stt = new StubStt();
     controller = new DeckController(registry, layer, new NoopAdapter(() => {}), cfg, noopLog, () => {});
     controller.setStt(stt);
+    controller.setCommands(RENAME_LINEUP);
     renamed = [];
     controller.setOnSessionRenamed((s) => renamed.push(s.label));
   });
   afterEach(() => vi.useRealTimers());
 
-  /** Tap the Rename key (row 3, index 1 → slot 11) on globals page 2. */
+  /** Tap the Rename command (row 2, first entry → slot 5). */
   async function tapRename() {
-    controller.down(11);
-    controller.up(11);
+    controller.down(5);
+    controller.up(5);
     await vi.advanceTimersByTimeAsync(cfg.doubleTapMs + 10);
   }
 
@@ -259,8 +267,9 @@ describe("Rename key (globals page 2)", () => {
     const empty = new SessionRegistry(5);
     const c = new DeckController(empty, layer, new NoopAdapter(() => {}), cfg, noopLog, () => {});
     c.setStt(stt);
-    c.down(11);
-    c.up(11);
+    c.setCommands(RENAME_LINEUP);
+    c.down(5);
+    c.up(5);
     await vi.advanceTimersByTimeAsync(cfg.doubleTapMs + 10);
     expect(stt.calls).toEqual([]);
   });
@@ -299,12 +308,13 @@ describe("Rename key (globals page 2)", () => {
 
     const c = new DeckController(r, layer, new NoopAdapter(() => {}), cfg, noopLog, () => {});
     c.setStt(stt);
+    c.setCommands(RENAME_LINEUP);
     const seen: string[] = [];
     c.setOnSessionRenamed((s) => seen.push(s.label));
 
     const tap = async () => {
-      c.down(11);
-      c.up(11);
+      c.down(5);
+      c.up(5);
       await sleep(cfg.doubleTapMs + 40); // let the recognizer resolve the tap
     };
     await tap(); // start listening
@@ -333,8 +343,9 @@ describe("Rename key (globals page 2)", () => {
     adapter.sendKey = async (_s, k) => { sent.push(`key:${k}`); return true; };
     const c = new DeckController(r, layer, adapter, cfg, noopLog, () => {});
     c.setStt(stt);
+    c.setCommands(RENAME_LINEUP);
 
-    const tap = async () => { c.down(11); c.up(11); await vi.advanceTimersByTimeAsync(cfg.doubleTapMs + 10); };
+    const tap = async () => { c.down(5); c.up(5); await vi.advanceTimersByTimeAsync(cfg.doubleTapMs + 10); };
     await tap();
     await tap();
     expect(sent).toEqual(["text:/rename stream deck push to talk", "key:enter"]);
@@ -347,7 +358,8 @@ describe("Rename key (globals page 2)", () => {
     adapter.sendText = async (_s, t) => { sent.push(t); return true; };
     const c = new DeckController(registry, layer, adapter, cfg, noopLog, () => {});
     c.setStt(stt);
-    const tap = async () => { c.down(11); c.up(11); await vi.advanceTimersByTimeAsync(cfg.doubleTapMs + 10); };
+    c.setCommands(RENAME_LINEUP);
+    const tap = async () => { c.down(5); c.up(5); await vi.advanceTimersByTimeAsync(cfg.doubleTapMs + 10); };
     await tap();
     await tap();
     expect(sent).toEqual([]); // registry's s1 is a desktop session
@@ -413,13 +425,23 @@ describe("Rename key (globals page 2)", () => {
     expect(String(tiles[0]!.subtext)).toContain("tap to stop");
   });
 
-  it("renders the key with the current name, then a countdown while listening", async () => {
-    const before = computeTiles(registry, layer, cfg, [], false);
-    expect(before[11]).toMatchObject({ text: "Rename", subtext: registry.get("s1")!.label });
+  it("says which rename you get, then counts down while listening", async () => {
+    const lineup = RENAME_LINEUP.all();
+    // Desktop session: deck-local only, and the key says so.
+    const before = computeTiles(registry, layer, cfg, lineup, false);
+    expect(before[5]).toMatchObject({ text: "Rename", subtext: "button only" });
 
     await tapRename();
-    const during = computeTiles(registry, layer, cfg, [], true);
-    expect(during[11]).toMatchObject({ text: "10s", state: "error", selected: true });
-    expect(String(during[11]!.subtext)).toContain("renaming");
+    const during = computeTiles(registry, layer, cfg, lineup, true);
+    expect(during[5]).toMatchObject({ text: "10s", state: "error", selected: true });
+    expect(String(during[5]!.subtext)).toContain("tap to stop");
+  });
+
+  it("a console session's key promises the full sync instead", () => {
+    const r = new SessionRegistry(5);
+    r.registerPendingLaunch({ cwd: "C:\\dev\\con", pid: 9, hwnd: 7, at: Date.now() });
+    r.ensure({ session_id: "con", cwd: "C:\\dev\\con", hook_event_name: "SessionStart" });
+    const tiles = computeTiles(r, layer, cfg, RENAME_LINEUP.all(), false);
+    expect(tiles[5]).toMatchObject({ text: "Rename", subtext: "name + branch" });
   });
 });

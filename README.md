@@ -127,12 +127,13 @@ unless launched via the deck.
   commands sent as type+Enter). First 4 show; key 10 pages the rest — tap in
   the pager **executes**, long-press starts an insert-before move that
   persists back to the file. Entries are slash-command strings,
-  `{label, text}` pairs, or the builtins `mode` / `model` / `sendname`.
-  Hand-edit `commands.json` any time; it hot-reloads. Morph layers (permission / question / suggestion) override
-  this row automatically.
+  `{label, text}` pairs, or the builtins `mode` / `model` / `modemenu` /
+  `rename` / `sendname`. Hand-edit `commands.json` any time; it hot-reloads.
+  Morph layers (permission / question / suggestion) override this row
+  automatically.
 - **Row 3** — Mic (tap to dictate) · Send · Esc (interrupt) · New (worktree
-  console) · Page. Page flips to a second globals page (Rename, and the Mode
-  picker menu for desktop sessions).
+  console). Globals only: anything that acts on the *targeted* session lives
+  in row 2, where you can order it yourself.
 
 ## Dictation (mic key)
 
@@ -160,8 +161,13 @@ reasonMaxSeconds}`.
 
 New spawns a session under a random codename (`brisk-wombat`) because the
 feature rarely has a name yet. Once it does, name it by voice two ways:
-**triple-tap its key** on row 1, or target it and tap **Rename** on globals
-page 2. Either counts down while you speak; tap again to stop early.
+**triple-tap its key** on row 1, or tap the **`rename`** command in row 2.
+Either counts down while you speak; tap again (or tap the mic) to stop early.
+
+The key tells you which rename you're getting. A **console** session says
+"name + branch" — the name propagates to its git branch and its Claude Code
+conversation. A **desktop** session says "button only": there's no way to
+target its conversation safely, so the rename stays deck-local.
 
 Saying "stream deck push to talk" then aligns everything at once:
 
