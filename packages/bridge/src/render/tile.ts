@@ -332,6 +332,27 @@ function drawIcon(
       ctx.fill();
       break;
     }
+    case "resume": {
+      // Counter-clockwise restore arc with an arrowhead — "pick up where you
+      // left off". Deliberately not a play triangle, which would read as a
+      // sibling of the Send plane two keys away.
+      const rr = r * 0.82;
+      const start = Math.PI * 0.45; // gap at the lower right, where the head sits
+      ctx.lineWidth = r * 0.26;
+      ctx.beginPath();
+      ctx.arc(cx, cy, rr, start, Math.PI * 2.1);
+      ctx.stroke();
+      const hx = cx + Math.cos(start) * rr;
+      const hy = cy + Math.sin(start) * rr;
+      const h = r * 0.4;
+      ctx.beginPath(); // head pointing along the arc's travel
+      ctx.moveTo(hx - h, hy - h * 0.25);
+      ctx.lineTo(hx + h * 0.35, hy - h * 0.55);
+      ctx.lineTo(hx + h * 0.1, hy + h * 0.75);
+      ctx.closePath();
+      ctx.fill();
+      break;
+    }
     case "menu": {
       // Three bars.
       ctx.lineWidth = r * 0.26;

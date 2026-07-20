@@ -152,8 +152,11 @@ surfacing the wrong one is worse than surfacing nothing.
   Morph layers (permission / question / suggestion) override this row
   automatically.
 - **Row 3** — Mic (tap to dictate) · Send · Esc (interrupt) · New (worktree
-  console). Globals only: anything that acts on the *targeted* session lives
-  in row 2, where you can order it yourself.
+  console) · Resume. **Resume** runs `claude --resume` in a console so you
+  can pick up an earlier session from Claude Code's own picker — in place,
+  with no worktree, since the work already exists. Globals only: anything
+  that acts on the *targeted* session lives in row 2, where you can order it
+  yourself.
 
 ## Dictation (mic key)
 

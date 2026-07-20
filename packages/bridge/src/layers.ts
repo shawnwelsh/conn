@@ -407,7 +407,9 @@ export function computeTiles(
         : { text: "New", subtext: "worktree", state: "command", icon: "new" },
       HAS_GLOBALS_PAGE2
         ? { text: "Page", subtext: "more", state: "command", icon: "page" }
-        : { text: "", state: "blank" }, // nothing to page to — don't offer it
+        : layer.launching
+          ? { text: "Resume", subtext: "spawning…", state: "waiting", icon: "resume", selected: flashPhase }
+          : { text: "Resume", subtext: "pick session", state: "command", icon: "resume" },
     );
   }
 

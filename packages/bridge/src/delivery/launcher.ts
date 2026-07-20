@@ -175,7 +175,18 @@ export class ConsoleLauncher {
    * worktrees enabled, the session gets its own fresh working tree on
    * branch deck/<codename>; otherwise (or on any git failure) it spawns
    * directly in `cwd`. Resolves once the pending launch is registered. */
-  async launch(cwd: string): Promise<boolean> {
+  async launch(
+    cwd: string,
+    opts: {
+      /** Override the command (e.g. `claude --resume`). */
+      command?: string;
+      /** Resuming belongs to work that already exists — a fresh worktree
+       * would be the wrong place to pick up an old session. */
+      worktree?: boolean;
+    } = {},
+  ): Promise<boolean> {
+    const command = opts.command ?? this.command;
+    const useWorktrees = opts.worktree ?? this.useWorktrees;
     if (!existsSync(cwd)) {
       this.log.warn({ cwd }, "launcher: cwd does not exist");
       return false;
@@ -185,8 +196,8 @@ export class ConsoleLauncher {
     // computable in microseconds; everything slow (OneDrive git, spawn,
     // window polling) happens after the user already sees the key.
     let spawnDir = cwd;
-    const root = this.useWorktrees ? findRepoRoot(cwd) : null;
-    if (this.useWorktrees && !root) this.log.warn({ cwd }, "launcher: not a git repo — spawning in place");
+    const root = useWorktrees ? findRepoRoot(cwd) : null;
+    if (useWorktrees && !root) this.log.warn({ cwd }, "launcher: not a git repo — spawning in place");
     if (root) {
       const name = this.codename(root);
       const dir = join(root, ".claude", "worktrees", name);
@@ -231,7 +242,7 @@ export class ConsoleLauncher {
           // token inside the cmd line makes the child pid findable by CIM.
           `$null = Start-Process wt.exe -ArgumentList '-w','new','--title',${psq(title)},` +
           `'-d',${psq(spawnDir)},'cmd','/k',` +
-          `${psq(`set DECK_LAUNCH=${token}& ${this.command}`)}; ` +
+          `${psq(`set DECK_LAUNCH=${token}& ${command}`)}; ` +
           `$child = $null; ` +
           `for ($i = 0; $i -lt 24 -and -not $child; $i++) { ` +
           `Start-Sleep -Milliseconds 250; ` +

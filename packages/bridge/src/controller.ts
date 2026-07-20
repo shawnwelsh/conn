@@ -708,9 +708,9 @@ export class DeckController {
   /** Row 3: mic / interrupt / globals; the Page key flips global pages. */
   private async row3(index: number): Promise<void> {
     const target = this.registry.targetedSession;
-    if (index === 4) {
-      // Page — only offer it when page 2 actually holds something.
-      if (!HAS_GLOBALS_PAGE2) return;
+    if (index === 4 && HAS_GLOBALS_PAGE2) {
+      // Page — only while page 2 holds something; otherwise this key is
+      // Resume (see the switch below).
       this.layer.row3Page = this.layer.row3Page === 0 ? 1 : 0;
       this.onLayerChanged();
       return;
@@ -747,6 +747,35 @@ export class DeckController {
         try {
           const ok = (await this.launcher?.launch(dir)) ?? false;
           this.log.info({ key: "New", cwd: dir, ok }, "row3 command");
+        } finally {
+          this.layer.launching = false;
+          this.onLayerChanged();
+        }
+        return;
+      }
+      case 4: {
+        // Resume — `claude --resume` in a console, which opens Claude Code's
+        // own session picker. Deliberately NO worktree: you're picking up work
+        // that already exists, and a fresh empty branch is the wrong place to
+        // land it. Same global-key rules as New.
+        const dir = target?.cwd ?? this.cfg.newSessionDir;
+        if (!dir) {
+          this.log.warn("Resume ignored: no targeted session and no newSessionDir configured");
+          return;
+        }
+        if (this.layer.launching) {
+          this.log.info("Resume ignored: launch already in flight");
+          return;
+        }
+        this.layer.launching = true;
+        this.onLayerChanged();
+        try {
+          const ok =
+            (await this.launcher?.launch(dir, {
+              command: `${this.cfg.newSessionCommand} --resume`,
+              worktree: false,
+            })) ?? false;
+          this.log.info({ key: "Resume", cwd: dir, ok }, "row3 command");
         } finally {
           this.layer.launching = false;
           this.onLayerChanged();
