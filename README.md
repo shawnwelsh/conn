@@ -132,7 +132,8 @@ unless launched via the deck.
   confirm and need a second Return —
   `{"label": "Remote", "text": "/remote-control", "extraEnter": true}` turns
   on phone/web control in one press. Hand-edit `commands.json` any time; it
-  hot-reloads.
+  hot-reloads. **Commands never fire at a session that's sitting at a
+  prompt** (see below).
   Morph layers (permission / question / suggestion) override this row
   automatically.
 - **Row 3** — Mic (tap to dictate) · Send · Esc (interrupt) · New (worktree
@@ -223,6 +224,22 @@ transcription, or a mic failure all degrade to the plain canned deny. The
 overall decision timeout keeps running while you speak: if it expires
 mid-dictation the request falls through to the on-screen dialog, exactly as
 if the deck had stayed silent.
+
+## Never type into a prompt
+
+A command fired at a session that's waiting on a question is not a command —
+it's a blind answer. The text lands in the picker and the Enter behind it
+**accepts whatever was highlighted**. That happened once here: a stray Return
+approved an unread plan and started the build.
+
+So before any row-2 command, the deck checks whether that session is at a
+prompt and refuses if it is (`Esc` still works — it's how you dismiss one).
+The signal is Claude Code's own `status: "waiting"`, read fresh from
+`~/.claude/sessions/`, which means it catches prompts the deck never saw —
+including ones raised *before the bridge started*, which is exactly how the
+incident got through. `"extraEnter"` goes further and only ever fires at a
+confirm it can positively see; if none appears, or the state is unknown, it
+presses nothing.
 
 ## Safety model (permission flow)
 

@@ -155,16 +155,52 @@ describe("row 3 globals", () => {
     expect(launches).toEqual(["C:\\dev\\mainrepo"]);
   });
 
-  it("extraEnter follows the submit with a second Enter (e.g. /remote-control)", async () => {
+  it("extraEnter confirms a prompt it can SEE (e.g. /remote-control)", async () => {
     controller.setCommands(fakeCommands([
       { kind: "text", label: "Remote", text: "/remote-control", extraEnter: true },
     ]));
+    let prompted = false; // the confirm appears shortly after the submit
+    controller.setPromptProbe(() => prompted);
+    setTimeout(() => (prompted = true), 100);
     (controller as any).row2(0);
-    await new Promise((r) => setTimeout(r, 400)); // the confirm beat
+    await new Promise((r) => setTimeout(r, 600));
     expect(delivery.calls.map((c) => c.m)).toEqual(["sendText", "sendKey", "sendKey"]);
     expect(delivery.calls[0]!.chords).toEqual(["/remote-control"]);
-    expect(delivery.calls[1]!.chords).toEqual(["enter"]);
     expect(delivery.calls[2]!.chords).toEqual(["enter"]);
+  });
+
+  it("extraEnter presses NOTHING when no prompt appears", async () => {
+    controller.setCommands(fakeCommands([
+      { kind: "text", label: "Remote", text: "/remote-control", extraEnter: true },
+    ]));
+    controller.setPromptProbe(() => false); // nothing to confirm
+    (controller as any).row2(0);
+    await new Promise((r) => setTimeout(r, 2400));
+    expect(delivery.calls.map((c) => c.m)).toEqual(["sendText", "sendKey"]); // submit only
+  });
+
+  it("extraEnter presses NOTHING when the session state is unknown", async () => {
+    controller.setCommands(fakeCommands([
+      { kind: "text", label: "Remote", text: "/remote-control", extraEnter: true },
+    ]));
+    controller.setPromptProbe(() => null); // can't tell → never press blind
+    (controller as any).row2(0);
+    await new Promise((r) => setTimeout(r, 2400));
+    expect(delivery.calls.map((c) => c.m)).toEqual(["sendText", "sendKey"]);
+  });
+
+  it("refuses ANY command while the session sits at a prompt", async () => {
+    // The incident: a pending plan-mode question meant the command's Enter
+    // accepted it, exiting plan mode and starting an unread build.
+    controller.setPromptProbe(() => true);
+    controller.setCommands(fakeCommands([
+      { kind: "text", label: "Remote", text: "/remote-control", extraEnter: true },
+      { kind: "builtin", id: "mode" },
+    ]));
+    (controller as any).row2(0);
+    (controller as any).row2(1);
+    await flush();
+    expect(delivery.calls).toEqual([]); // not one keystroke
   });
 
   it("desktop text commands wait desktopSubmitDelayMs before Enter; consoles don't", async () => {

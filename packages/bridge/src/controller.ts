@@ -9,6 +9,7 @@ import type { Logger } from "./log.js";
 import { GestureRecognizer, type Gesture } from "./gestures.js";
 import type { ConsoleLauncher } from "./delivery/launcher.js";
 import { activeSuggestion, isChoiceQuestion } from "./suggestions.js";
+import { isAwaitingInput, CC_SESSIONS_DIR } from "./sessionMeta.js";
 import type { CommandSource, CommandEntry } from "./commands.js";
 import type { SttEngine } from "./stt/sidecar.js";
 
@@ -62,6 +63,29 @@ export class DeckController {
 
   setStt(stt: SttEngine): void {
     this.stt = stt;
+  }
+
+  /**
+   * "Is this session sitting at a prompt?" — Claude Code's own published
+   * status, read fresh from disk. Injectable so tests don't depend on
+   * ~/.claude/sessions. Returns null when it can't tell.
+   */
+  private promptProbe: (sessionId: string) => boolean | null = (id) =>
+    isAwaitingInput(id, CC_SESSIONS_DIR, this.log);
+
+  setPromptProbe(probe: (sessionId: string) => boolean | null): void {
+    this.promptProbe = probe;
+  }
+
+  /** Poll briefly for a prompt to appear (a confirm renders asynchronously).
+   * False when none shows up, or when we simply can't tell. */
+  private async waitForPrompt(sessionId: string, timeoutMs = 2000): Promise<boolean> {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 150));
+      if (this.promptProbe(sessionId) === true) return true;
+    }
+    return false;
   }
 
   /** Notified when a session gets a hand-typed name, so console bindings can
@@ -335,8 +359,22 @@ export class DeckController {
       );
       return;
     }
-    let ok = false;
     const name = entry.kind === "builtin" ? entry.id : entry.label;
+    // A prompt on screen turns every command into a blind answer: the text
+    // lands in a picker, and the Enter that follows ACCEPTS whatever was
+    // highlighted. Claude Code publishes "waiting" while it blocks on input,
+    // and we read it fresh from disk — so this catches prompts the deck never
+    // saw, including ones raised before the bridge started. Unknown is not
+    // safe, but refusing on unknown would break every provisional session, so
+    // only an explicit "waiting" blocks.
+    if (this.promptProbe(target.sessionId) === true) {
+      this.log.warn(
+        { key: name, session: target.sessionId },
+        "row2 command refused: session is at a prompt — answer it first (Esc dismisses)",
+      );
+      return;
+    }
+    let ok = false;
     if (entry.kind === "builtin" && entry.id === "mode") {
       if (target.windowKind === "console") {
         ok = await this.delivery.sendKey(target, "shift+tab");
@@ -370,10 +408,13 @@ export class DeckController {
     } else if (entry.kind === "text") {
       ok = await this.typeSubmit(target, entry.text);
       if (ok && entry.extraEnter) {
-        // The command opens a confirm/prompt (e.g. /remote-control asks for a
-        // name); give it a beat to render, then accept the default.
-        await new Promise((r) => setTimeout(r, this.cfg.desktopSubmitDelayMs ?? 250));
-        ok = await this.delivery.sendKey(target, "enter");
+        // This Enter is unaimed, so it only ever fires at a prompt we can
+        // actually SEE. Wait for the confirm to appear; if it never does — or
+        // we can't tell — press nothing. Firing blind is what accepted an
+        // unread plan once already.
+        const prompted = await this.waitForPrompt(target.sessionId);
+        if (prompted) ok = await this.delivery.sendKey(target, "enter");
+        else this.log.warn({ key: name, session: target.sessionId }, "extraEnter skipped: no prompt to confirm");
       }
     }
     this.log.info({ key: name, session: target.sessionId, kind: target.windowKind, ok }, "row2 command");
