@@ -194,6 +194,19 @@ To re-sync at any time — after a branch rename, or when the two drifted —
 put **`"sendname"`** in `commands.json`: the key shows the name it would
 send and types `/rename <name>` into the targeted console session.
 
+### Answering a trailing question
+
+When a session finishes on an offer, the deck surfaces it on row 2 — the
+question bannered across the keys, so you can read it without switching
+windows.
+
+A **yes/no** offer ("Want me to also wire the tests?") gets an **Accept** key:
+one press sends `yes`. An **either/or** question ("…as a separate cleanup, or
+leave it?") gets no Accept key, because "yes" answers neither branch —
+instead the question takes **all five keys** and any of them starts dictation.
+Tap, say which one you want, and press **Send** to stop-type-and-submit in a
+single motion.
+
 ### Deny with a dictated reason
 
 On the permission layer, **Deny + reason** records up to

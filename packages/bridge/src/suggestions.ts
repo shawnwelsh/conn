@@ -6,6 +6,10 @@ import type { DeckLayerState } from "./layers.js";
  * hook carries last_assistant_message. If that message ends with a concrete
  * offer/question ("Want me to also wire the tests?"), the deck surfaces it —
  * the text bannered across row-2 keys 7-10, Accept on key 6.
+ *
+ * Either/or questions ("…, or leave it?") can't be answered by a button, so
+ * they take the whole row as a reading surface and you speak the answer —
+ * see isChoiceQuestion.
  */
 
 const MAX_SUGGESTION_CHARS = 220;
@@ -32,6 +36,24 @@ export function extractSuggestion(message: string | undefined): string | null {
   return suggestion.length > MAX_SUGGESTION_CHARS
     ? suggestion.slice(0, MAX_SUGGESTION_CHARS - 1) + "…"
     : suggestion;
+}
+
+/**
+ * Is this an either/or question rather than a yes/no offer?
+ *
+ * "Want me to also wire the tests?" has an Accept key: one press sends "yes".
+ * "Run that as a separate cleanup, or leave it?" does not — "yes" answers
+ * neither branch, so offering an Accept key there invites a meaningless
+ * reply. Those get the whole row as a reading surface and are answered by
+ * voice instead.
+ *
+ * "…or not?" stays a yes/no despite the "or".
+ */
+export function isChoiceQuestion(text: string): boolean {
+  const t = text.toLowerCase();
+  if (!t.includes("?")) return false;
+  if (/\bor not\b/.test(t)) return false;
+  return /\bor\b/.test(t);
 }
 
 /**

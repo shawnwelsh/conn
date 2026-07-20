@@ -1,7 +1,7 @@
 import type { TileSpec, Row2Layer } from "@belay/shared";
 import type { SessionRegistry, SessionEntry } from "./registry.js";
 import type { DeckConfig } from "./config.js";
-import { activeSuggestion } from "./suggestions.js";
+import { activeSuggestion, isChoiceQuestion } from "./suggestions.js";
 import type { CommandEntry } from "./commands.js";
 
 /**
@@ -321,9 +321,17 @@ export function computeTiles(
     // Suggestion layer: the targeted console session finished with a
     // "pre-produced option" — Accept on key 6, the text bannered across 7-10.
     const s = activeSuggestion(registry, layer)!;
-    tiles.push({ text: "Accept", subtext: `sends "${cfg.suggestionAcceptText}"`, state: "answer" });
-    for (let i = 0; i < 4; i++) {
-      tiles.push({ text: s.text, state: "command", bannerSpan: 4, bannerIndex: i });
+    if (isChoiceQuestion(s.text)) {
+      // Either/or: there's no button that answers it, so spend the whole row
+      // on reading it. Any key starts dictation (see the controller).
+      for (let i = 0; i < 5; i++) {
+        tiles.push({ text: s.text, state: "command", bannerSpan: 5, bannerIndex: i });
+      }
+    } else {
+      tiles.push({ text: "Accept", subtext: `sends "${cfg.suggestionAcceptText}"`, state: "answer" });
+      for (let i = 0; i < 4; i++) {
+        tiles.push({ text: s.text, state: "command", bannerSpan: 4, bannerIndex: i });
+      }
     }
   } else if (layer.row2Cmd.mode === "pager") {
     // Browse the whole lineup, 4/page; tap EXECUTES, long-press moves.
