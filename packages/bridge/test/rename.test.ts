@@ -7,7 +7,7 @@ import { DeckController } from "../src/controller.js";
 import { SessionRegistry } from "../src/registry.js";
 import { initialControls, initialRow1, initialRow2Cmd, computeTiles, type DeckLayerState } from "../src/layers.js";
 import { slugifyName, isDeckBranch, renameDeckBranch } from "../src/rename.js";
-import { readCcSessionNames } from "../src/sessionMeta.js";
+import { readCcSessionNames, isAwaitingInput } from "../src/sessionMeta.js";
 import type { CommandSource } from "../src/commands.js";
 import type { DeckConfig } from "../src/config.js";
 import { NoopAdapter } from "../src/delivery/adapter.js";
@@ -122,6 +122,27 @@ describe("readCcSessionNames (Claude Code's own /rename)", () => {
     const names = readCcSessionNames(dir);
     expect(names.get("s-named")).toBe("Renewal Fix");
     expect(names.has("s-derived")).toBe(false);
+  });
+
+  it("resolves duplicate records for one session to the freshest", () => {
+    // Claude Code can hold several records per session under different pids
+    // (a dispatched job alongside its interactive peer). Filesystem order is
+    // not a tiebreak — recency is.
+    write("100.json", { pid: 100, sessionId: "s1", name: "old name", updatedAt: 1000 });
+    write("200.json", { pid: 200, sessionId: "s1", name: "current name", updatedAt: 2000 });
+    expect(readCcSessionNames(dir).get("s1")).toBe("current name");
+  });
+
+  it("reads the freshest record when deciding if a session is at a prompt", () => {
+    write("100.json", { pid: 100, sessionId: "s1", status: "idle", statusUpdatedAt: 1000 });
+    write("200.json", { pid: 200, sessionId: "s1", status: "waiting", statusUpdatedAt: 2000 });
+    expect(isAwaitingInput("s1", dir)).toBe(true);
+
+    // …and the other way round, so a stale "waiting" can't block forever.
+    rmSync(join(dir, "200.json"));
+    write("200.json", { pid: 200, sessionId: "s1", status: "idle", statusUpdatedAt: 3000 });
+    expect(isAwaitingInput("s1", dir)).toBe(false);
+    expect(isAwaitingInput("nobody", dir)).toBeNull(); // unknown stays unknown
   });
 
   it("survives junk files and a missing directory", () => {

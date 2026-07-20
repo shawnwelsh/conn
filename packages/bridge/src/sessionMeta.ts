@@ -43,52 +43,64 @@ export function isAwaitingInput(
   dir: string = CC_SESSIONS_DIR,
   log?: Logger,
 ): boolean | null {
-  let files: string[];
-  try {
-    files = readdirSync(dir);
-  } catch {
-    return null;
+  // One session can have SEVERAL records under different pids — Claude Code's
+  // own lookup checks for `sessionId === e && pid !== process.pid && kind !==
+  // "interactive"`, so a dispatched job and its interactive peer can coexist.
+  // Taking the first file found would be a coin flip; take the freshest.
+  let newest: { at: number; waiting: boolean } | null = null;
+  for (const meta of readRecords(dir, log)) {
+    if (meta.sessionId !== sessionId) continue;
+    const at = typeof meta.statusUpdatedAt === "number" ? meta.statusUpdatedAt : (meta.updatedAt ?? 0);
+    if (!newest || at >= newest.at) newest = { at, waiting: meta.status === "waiting" };
   }
-  for (const file of files) {
-    if (!file.endsWith(".json")) continue;
-    try {
-      const meta = JSON.parse(readFileSync(join(dir, file), "utf8")) as {
-        sessionId?: unknown;
-        status?: unknown;
-      };
-      if (meta.sessionId !== sessionId) continue;
-      return meta.status === "waiting";
-    } catch (err) {
-      log?.debug({ file, err: String(err) }, "session meta: unreadable, skipped");
-    }
-  }
-  return null;
+  return newest ? newest.waiting : null;
 }
 
-/** sessionId → the human name a user (or Claude) gave the conversation. */
-export function readCcSessionNames(dir: string = CC_SESSIONS_DIR, log?: Logger): Map<string, string> {
-  const names = new Map<string, string>();
+interface CcRecord {
+  sessionId?: unknown;
+  name?: unknown;
+  nameSource?: unknown;
+  status?: unknown;
+  updatedAt?: number;
+  statusUpdatedAt?: number;
+}
+
+/** Every readable record in the directory. Malformed files are skipped, not
+ * fatal — this is Claude Code's file, and its shape is not our contract. */
+function readRecords(dir: string, log?: Logger): CcRecord[] {
   let files: string[];
   try {
     files = readdirSync(dir);
   } catch {
-    return names; // no such dir (fresh install / different CC layout)
+    return [];
   }
+  const out: CcRecord[] = [];
   for (const file of files) {
     if (!file.endsWith(".json")) continue;
     try {
-      const meta = JSON.parse(readFileSync(join(dir, file), "utf8")) as {
-        sessionId?: unknown;
-        name?: unknown;
-        nameSource?: unknown;
-      };
-      if (typeof meta.sessionId !== "string" || typeof meta.name !== "string") continue;
-      if (meta.nameSource === "derived") continue; // cwd-derived filler, not a name
-      const name = meta.name.trim();
-      if (name) names.set(meta.sessionId, name);
+      out.push(JSON.parse(readFileSync(join(dir, file), "utf8")) as CcRecord);
     } catch (err) {
       log?.debug({ file, err: String(err) }, "session meta: unreadable, skipped");
     }
+  }
+  return out;
+}
+
+/** sessionId → the human name a user (or Claude) gave the conversation.
+ * Duplicate records for one session resolve to the freshest, so a stale peer
+ * can't flip the label back and forth on the 30s sweep. */
+export function readCcSessionNames(dir: string = CC_SESSIONS_DIR, log?: Logger): Map<string, string> {
+  const names = new Map<string, string>();
+  const seenAt = new Map<string, number>();
+  for (const meta of readRecords(dir, log)) {
+    if (typeof meta.sessionId !== "string" || typeof meta.name !== "string") continue;
+    if (meta.nameSource === "derived") continue; // cwd-derived filler, not a name
+    const name = meta.name.trim();
+    if (!name) continue;
+    const at = meta.updatedAt ?? 0;
+    if (seenAt.has(meta.sessionId) && at < seenAt.get(meta.sessionId)!) continue;
+    seenAt.set(meta.sessionId, at);
+    names.set(meta.sessionId, name);
   }
   return names;
 }
