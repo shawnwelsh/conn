@@ -112,15 +112,16 @@ export function commandTile(
   return { text: t.label, subtext: t.label === t.text ? undefined : t.text, state: "command" };
 }
 
-/** Mic-key face per PTT sidecar state (absent = offline). */
+/** Mic-key face per PTT sidecar state (absent = offline). Toggle model:
+ * tap to record, tap to stop; Send mid-recording stops AND submits. */
 export function pttTile(ptt: DeckLayerState["ptt"], flashPhase: boolean): TileSpec {
   switch (ptt) {
     case "recording":
-      return { text: "REC", subtext: "release → text", state: "error", icon: "mic", selected: flashPhase };
+      return { text: "REC", subtext: "tap to stop", state: "error", icon: "mic", selected: flashPhase };
     case "transcribing":
       return { text: "PTT", subtext: "transcribing…", state: "waiting", icon: "mic", selected: flashPhase };
     case "ready":
-      return { text: "PTT", subtext: "hold to talk", state: "command", icon: "mic" };
+      return { text: "PTT", subtext: "tap to talk", state: "command", icon: "mic" };
     case "loading":
       return { text: "PTT", subtext: "loading…", state: "blank", icon: "mic" };
     default:

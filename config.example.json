@@ -28,7 +28,6 @@
     "python": "python",
     "model": "distil-small.en",
     "language": "en",
-    "minHoldMs": 300,
     "maxSeconds": 60,
     "reasonMaxSeconds": 10
   },

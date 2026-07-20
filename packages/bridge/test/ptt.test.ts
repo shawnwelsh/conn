@@ -11,7 +11,7 @@ const cfg = {
   doubleTapMs: 300,
   longPressMs: 500,
   moveCancelSeconds: 5,
-  ptt: { enabled: true, python: "python", model: "m", language: "en", minHoldMs: 300, maxSeconds: 60 },
+  ptt: { enabled: true, python: "python", model: "m", language: "en", maxSeconds: 60, reasonMaxSeconds: 10 },
 } as unknown as DeckConfig;
 const noopLog = { info: () => {}, warn: () => {}, debug: () => {} } as never;
 
@@ -50,7 +50,20 @@ class RecordingAdapter implements DeliveryAdapter {
   async dispose(): Promise<void> {}
 }
 
-describe("push-to-talk (hold mic → record → release → text lands unsent)", () => {
+/** Tap the mic key (down edge acts; up is swallowed). */
+function tapMic(c: DeckController) {
+  c.down(10);
+  c.up(10);
+}
+
+/** Tap a row-3 key that goes through the gesture recognizer (e.g. Send). */
+async function tapKey(c: DeckController, slot: number) {
+  c.down(slot);
+  c.up(slot);
+  await vi.advanceTimersByTimeAsync(cfg.doubleTapMs + 10); // resolve the tap
+}
+
+describe("dictation toggle (tap → record, tap → stop & type)", () => {
   let registry: SessionRegistry;
   let layer: DeckLayerState;
   let delivery: RecordingAdapter;
@@ -69,50 +82,71 @@ describe("push-to-talk (hold mic → record → release → text lands unsent)",
   });
   afterEach(() => vi.useRealTimers());
 
-  it("hold → release delivers the transcription WITHOUT Enter", async () => {
-    controller.down(10);
+  it("tap starts, second tap stops and types WITHOUT Enter", async () => {
+    tapMic(controller);
     await vi.advanceTimersByTimeAsync(0);
     expect(stt.calls).toEqual(["start"]);
-    await vi.advanceTimersByTimeAsync(1000); // held past minHoldMs
-    controller.up(10);
+
+    await vi.advanceTimersByTimeAsync(5_000); // think as long as you like
+    tapMic(controller);
     await vi.advanceTimersByTimeAsync(0);
     expect(stt.calls).toEqual(["start", "stop"]);
     expect(delivery.calls).toEqual([{ m: "sendText", arg: "fix the failing registry test" }]);
   });
 
-  it("a sub-minHold press cancels — nothing recorded, nothing delivered", async () => {
-    controller.down(10);
-    await vi.advanceTimersByTimeAsync(100); // released too early
-    controller.up(10);
+  it("Send mid-recording stops, types, AND submits", async () => {
+    tapMic(controller);
     await vi.advanceTimersByTimeAsync(0);
-    expect(stt.calls).toEqual(["start", "cancel"]);
-    expect(delivery.calls).toEqual([]);
+    await tapKey(controller, 11); // Send
+    expect(stt.calls).toEqual(["start", "stop"]);
+    expect(delivery.calls).toEqual([
+      { m: "sendText", arg: "fix the failing registry test" },
+      { m: "sendKey", arg: "enter" },
+    ]);
   });
 
-  it("empty transcription delivers nothing", async () => {
+  it("Send while idle is a plain Enter", async () => {
+    await tapKey(controller, 11);
+    expect(stt.calls).toEqual([]);
+    expect(delivery.calls).toEqual([{ m: "sendKey", arg: "enter" }]);
+  });
+
+  it("Send never hijacks a deny-reason recording (not ours)", async () => {
+    stt.status = "recording"; // deny-reason flow owns the mic
+    await tapKey(controller, 11);
+    expect(stt.calls).toEqual([]); // no stop from us
+    expect(delivery.calls).toEqual([{ m: "sendKey", arg: "enter" }]);
+  });
+
+  it("mic tap while deny-reason owns the recording is ignored", async () => {
+    stt.status = "recording";
+    tapMic(controller);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(stt.calls).toEqual([]);
+  });
+
+  it("empty transcription types nothing; Send-stop still submits", async () => {
     stt.text = "";
-    controller.down(10);
-    await vi.advanceTimersByTimeAsync(1000);
-    controller.up(10);
+    tapMic(controller);
     await vi.advanceTimersByTimeAsync(0);
-    expect(delivery.calls).toEqual([]);
+    await tapKey(controller, 11); // Send while recording
+    expect(delivery.calls).toEqual([{ m: "sendKey", arg: "enter" }]); // no sendText
   });
 
-  it("holding past maxSeconds auto-stops and delivers", async () => {
-    controller.down(10);
-    await vi.advanceTimersByTimeAsync(60_000 + 50); // cap fires while held
+  it("forgotten recording auto-stops at maxSeconds and types, never sends", async () => {
+    tapMic(controller);
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(60_000 + 50);
     expect(stt.calls).toEqual(["start", "stop"]);
     expect(delivery.calls).toEqual([{ m: "sendText", arg: "fix the failing registry test" }]);
-    controller.up(10); // release after auto-stop is a no-op
+    tapMic(controller); // next tap starts a FRESH recording
     await vi.advanceTimersByTimeAsync(0);
-    expect(stt.calls).toEqual(["start", "stop"]);
+    expect(stt.calls).toEqual(["start", "stop", "start"]);
   });
 
-  it("a press while offline retries the sidecar instead of recording", async () => {
+  it("a tap while offline retries the sidecar instead of recording", async () => {
     stt.status = "offline";
-    controller.down(10);
-    await vi.advanceTimersByTimeAsync(0);
-    controller.up(10);
+    tapMic(controller);
     await vi.advanceTimersByTimeAsync(0);
     expect(stt.calls).toEqual(["ensureStarted"]);
     expect(delivery.calls).toEqual([]);
@@ -122,14 +156,12 @@ describe("push-to-talk (hold mic → record → release → text lands unsent)",
     const empty = new SessionRegistry(5);
     const c = new DeckController(empty, layer, delivery, cfg, noopLog, () => {});
     c.setStt(stt);
-    c.down(10);
-    await vi.advanceTimersByTimeAsync(0);
-    c.up(10);
+    tapMic(c);
     await vi.advanceTimersByTimeAsync(0);
     expect(stt.calls).toEqual([]);
   });
 
-  it("on globals page 2 the mic slot is NOT ptt (Mode menu lives there)", async () => {
+  it("on globals page 2 the mic slot is NOT dictation (Mode menu lives there)", async () => {
     layer.row3Page = 1;
     controller.down(10);
     await vi.advanceTimersByTimeAsync(0);
@@ -137,14 +169,25 @@ describe("push-to-talk (hold mic → record → release → text lands unsent)",
     controller.up(10);
     await vi.advanceTimersByTimeAsync(cfg.doubleTapMs + 10);
   });
+
+  it("a LIVE recording keeps owning the mic key even after the page flips", async () => {
+    tapMic(controller);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(stt.calls).toEqual(["start"]);
+    layer.row3Page = 1; // user flips to globals page 2 mid-recording
+    tapMic(controller); // still stops the dictation, not Mode-menu
+    await vi.advanceTimersByTimeAsync(0);
+    expect(stt.calls).toEqual(["start", "stop"]);
+    expect(delivery.calls).toEqual([{ m: "sendText", arg: "fix the failing registry test" }]);
+  });
 });
 
 describe("pttTile faces", () => {
   it("maps each sidecar state to a distinct key face", () => {
     expect(pttTile(undefined, false)).toMatchObject({ subtext: "offline", state: "blank" });
     expect(pttTile("loading", false)).toMatchObject({ subtext: "loading…" });
-    expect(pttTile("ready", false)).toMatchObject({ subtext: "hold to talk", state: "command" });
-    expect(pttTile("recording", true)).toMatchObject({ text: "REC", state: "error", selected: true });
+    expect(pttTile("ready", false)).toMatchObject({ subtext: "tap to talk", state: "command" });
+    expect(pttTile("recording", true)).toMatchObject({ text: "REC", subtext: "tap to stop", state: "error", selected: true });
     expect(pttTile("transcribing", false)).toMatchObject({ subtext: "transcribing…", state: "waiting" });
   });
 });

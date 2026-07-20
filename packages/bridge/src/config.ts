@@ -59,9 +59,10 @@ export interface DeckConfig {
    * sessions — the Electron app renders its input/slash-popup async and an
    * instant Enter is swallowed. Consoles never delay. */
   desktopSubmitDelayMs: number;
-  /** Push-to-talk: hold the mic key, speak, release — transcription lands in
-   * the targeted session's input (not auto-sent). Local faster-whisper via a
-   * Python sidecar; missing deps just leave the key "offline". */
+  /** Dictation: tap the mic key to record, tap again to stop — the
+   * transcription lands in the targeted session's input (not auto-sent;
+   * pressing Send mid-recording stops AND submits). Local faster-whisper via
+   * a Python sidecar; missing deps just leave the key "offline". */
   ptt: {
     enabled: boolean;
     python: string;
@@ -72,9 +73,9 @@ export interface DeckConfig {
     /** Deny-with-dictated-reason recording window (seconds); a second press
      * of the key stops early. The decision timeout is never extended. */
     reasonMaxSeconds: number;
-    /** Sub-hold presses this short are treated as accidental and discarded. */
-    minHoldMs: number;
-    /** Recording auto-stops (and transcribes) after this long. */
+    /** @deprecated hold-to-talk relic — the mic key is a toggle now. */
+    minHoldMs?: number;
+    /** Recording auto-stops (and types, never sends) after this long. */
     maxSeconds: number;
   };
   log: { level: string; dir: string };
@@ -125,7 +126,6 @@ export function loadConfig(): DeckConfig {
   cfg.ptt.python ??= "python";
   cfg.ptt.model ??= "distil-small.en";
   cfg.ptt.language ??= "en";
-  cfg.ptt.minHoldMs ??= 300;
   cfg.ptt.maxSeconds ??= 60;
   cfg.ptt.reasonMaxSeconds ??= 10;
   cfg.delivery.windowMode ??= "activeWindow";

@@ -89,11 +89,14 @@ aesthetics). Sessions you start yourself in terminals remain
   console) · Page. Page flips to a second globals page (Mode picker menu —
   desktop sessions only, room for more).
 
-## Push-to-talk
+## Dictation (mic key)
 
-Hold the mic key, speak, release — the transcription is typed into the
-targeted session's input **unsent** (review it, then press Send). Everything
-runs locally: a Python sidecar owns the microphone and a
+A toggle, not a hold: **tap the mic to start recording, tap again to stop**
+— the transcription is typed into the targeted session's input **unsent**
+(review it, then press Send). And the shortcut that makes it sing:
+**pressing Send while recording stops the dictation, types it, and submits
+it** in one motion. Send when nothing is recording is just Enter, as always.
+Everything runs locally: a Python sidecar owns the microphone and a
 [faster-whisper](https://github.com/SYSTRAN/faster-whisper) model (CPU int8,
 `distil-small.en` by default — downloaded once on first start, ~170 MB).
 
@@ -101,11 +104,12 @@ Setup: `python -m pip install faster-whisper sounddevice` (needs Python
 3.10+; cp314 wheels exist). No Python or missing deps? The key just shows
 "PTT offline" — press it to retry once you've installed them.
 
-Details: presses shorter than `ptt.minHoldMs` (300) are discarded as
-accidental; recording auto-stops at `ptt.maxSeconds` (60) and delivers what
-it has; silence transcribes to nothing (VAD) and nothing is typed. Configure
-in `config.json` → `ptt {enabled, python, model, language, minHoldMs,
-maxSeconds, reasonMaxSeconds}`.
+Details: a forgotten recording auto-stops at `ptt.maxSeconds` (60) and types
+what it has — it never auto-sends; silence transcribes to nothing (VAD) and
+nothing is typed. A live recording keeps ownership of the mic key even if
+you flip the globals page mid-take. Configure in `config.json` →
+`ptt {enabled, python, model, language, device?, maxSeconds,
+reasonMaxSeconds}`.
 
 ### Deny with a dictated reason
 

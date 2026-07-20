@@ -64,20 +64,20 @@ export class DeckController {
   }
 
   /** Raw key events from clients — fed straight to the recognizer, except
-   * PTT: hold-to-record needs the raw down/up edges, so the mic key bypasses
-   * gesture classification entirely while on the globals' default page. */
+   * the mic key: it acts on the DOWN edge (snappier than tap classification)
+   * while on the globals' default page — and it OWNS the key while a
+   * dictation is live, even if the globals page flipped mid-recording. */
   down(slot: Slot): void {
-    if (slot === PTT_SLOT && this.stt && this.layer.row3Page === 0) {
-      this.pttHeld = true;
-      void this.pttDown();
+    if (slot === PTT_SLOT && this.stt && (this.layer.row3Page === 0 || this.pttActive)) {
+      this.pttPressed = true;
+      void this.pttToggle();
       return;
     }
     this.gestures.down(slot);
   }
   up(slot: Slot): void {
-    if (this.pttHeld && slot === PTT_SLOT) {
-      this.pttHeld = false;
-      void this.pttUp();
+    if (this.pttPressed && slot === PTT_SLOT) {
+      this.pttPressed = false; // swallow the matching release
       return;
     }
     this.gestures.up(slot);
@@ -397,16 +397,21 @@ export class DeckController {
     }, this.cfg.cmdPagerRevertSeconds * 1000);
   }
 
-  // --- Push-to-talk (hold mic key → record → release → text lands unsent) ---
+  // --- Dictation (tap mic → record, tap again → stop & type; Send while
+  // recording stops AND submits — a toggle, not a hold) ---
 
-  private pttHeld = false;
-  private pttStartAt = 0;
+  private pttPressed = false; // down-edge seen; swallow the matching up
+  private pttActive = false; // WE own the current stt recording (vs deny-reason)
   private pttTarget: SessionEntry | undefined;
   private pttMaxTimer: ReturnType<typeof setTimeout> | null = null;
+  /** stop→transcribe→type in flight; Send awaits it so quick fingers still
+   * submit the dictated text rather than an empty input. */
+  private pttFlight: Promise<void> | null = null;
 
-  private async pttDown(): Promise<void> {
+  private async pttToggle(): Promise<void> {
     const stt = this.stt;
     if (!stt) return;
+    if (this.pttActive) return this.pttFinish(false); // second tap = stop & type
     if (stt.status === "offline") {
       // Pressing the offline key is consent to retry the sidecar; a later
       // press records once it's ready.
@@ -414,51 +419,53 @@ export class DeckController {
       void stt.ensureStarted?.();
       return;
     }
-    if (stt.status !== "ready") return; // loading or mid-cycle — ignore
+    // "recording" here without pttActive = the deny-reason flow owns the mic.
+    if (stt.status !== "ready") return;
     const target = this.registry.targetedSession;
     if (!target) {
       this.log.warn("PTT ignored: no targeted session");
       return;
     }
     this.pttTarget = target;
-    this.pttStartAt = Date.now();
+    this.pttActive = true; // claim before the await so a double-tap can't double-start
     if (await stt.start()) {
-      // Cap runaway holds: stop and deliver what we have at maxSeconds.
-      this.pttMaxTimer = setTimeout(() => {
-        this.pttHeld = false;
-        void this.pttUp();
-      }, this.cfg.ptt.maxSeconds * 1000);
+      // Cap forgotten recordings: stop and type what we have at maxSeconds
+      // (never auto-SENDS — submitting is always an explicit Send press).
+      this.pttMaxTimer = setTimeout(() => void this.pttFinish(false), this.cfg.ptt.maxSeconds * 1000);
+    } else {
+      this.pttActive = false;
+      this.pttTarget = undefined;
     }
   }
 
-  private async pttUp(): Promise<void> {
+  /** Stop the dictation, type the transcription into the press-time target
+   * (unsent), and — when `send` — follow with Enter. */
+  private async pttFinish(send: boolean): Promise<void> {
     const stt = this.stt;
-    if (!stt || stt.status !== "recording") return;
+    if (!stt || !this.pttActive) return;
+    this.pttActive = false;
     if (this.pttMaxTimer) {
       clearTimeout(this.pttMaxTimer);
       this.pttMaxTimer = null;
     }
-    const heldMs = Date.now() - this.pttStartAt;
-    if (heldMs < this.cfg.ptt.minHoldMs) {
-      await stt.cancel();
-      this.log.debug({ heldMs }, "PTT: sub-hold press discarded");
-      return;
-    }
-    const text = await stt.stop();
     const target = this.pttTarget;
     this.pttTarget = undefined;
-    if (!text) {
-      this.log.info("PTT: empty transcription");
-      return;
-    }
-    // Deliver WITHOUT Enter — the dictation lands in the input for review;
-    // Send is its own key. Target is the session from press time; skip if it
-    // vanished mid-utterance.
-    let ok = false;
-    if (target && this.registry.get(target.sessionId)) {
-      ok = await this.delivery.sendText(target, text);
-    }
-    this.log.info({ chars: text.length, session: target?.sessionId, ok }, "PTT: delivered");
+    const flight = (async () => {
+      const text = await stt.stop();
+      // Target from recording-start time; skip if it vanished mid-utterance.
+      const live = target && this.registry.get(target.sessionId) ? target : undefined;
+      let ok = false;
+      if (text && live) ok = await this.delivery.sendText(live, text);
+      if (!text) this.log.info("dictation: empty transcription");
+      else this.log.info({ chars: text.length, session: live?.sessionId, ok }, "dictation: typed");
+      // Send-while-recording submits even when the transcription came back
+      // empty — the press meant "ship what's in the input".
+      if (send && live) await this.delivery.sendKey(live, "enter");
+    })();
+    this.pttFlight = flight.finally(() => {
+      if (this.pttFlight === flight) this.pttFlight = null;
+    });
+    await flight;
   }
 
   /** Row 3: PTT / interrupt / globals; the Page key flips global pages. */
@@ -484,6 +491,11 @@ export class DeckController {
       case 0: // PTT — handled at the raw down/up layer (hold-to-record);
         return; // a stray classified gesture here is a no-op.
       case 1:
+        // Send: mid-dictation → stop, type, AND submit in one press; while
+        // the transcription is still landing → wait, then submit; otherwise
+        // a plain Enter. (A deny-reason recording is not ours to send.)
+        if (this.pttActive) return void (await this.pttFinish(true));
+        if (this.pttFlight) await this.pttFlight;
         if (target) await this.delivery.sendKey(target, "enter");
         return;
       case 2: // Esc — interrupt the targeted session
