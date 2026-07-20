@@ -446,6 +446,14 @@ export class DeckController {
     const stt = this.stt;
     if (!stt) return;
     if (this.pttActive) return this.pttFinish(false); // second tap = stop & type
+    // The mic key shows REC for ANY live dictation, so it has to end any of
+    // them — a blinking mic that ignores a press is a broken promise.
+    if (this.renameActive) return this.renameFinish();
+    if (this.layer.permissionRec) {
+      // Deny-reason owns the mic; route to the key that started it.
+      this.hooks.onPermissionKey?.(3);
+      return;
+    }
     if (stt.status === "offline") {
       // Pressing the offline key is consent to retry the sidecar; a later
       // press records once it's ready.

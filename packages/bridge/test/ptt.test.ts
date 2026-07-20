@@ -118,8 +118,23 @@ describe("dictation toggle (tap → record, tap → stop & type)", () => {
     expect(delivery.calls).toEqual([{ m: "sendKey", arg: "enter" }]);
   });
 
-  it("mic tap while deny-reason owns the recording is ignored", async () => {
-    stt.status = "recording";
+  it("mic tap ends a deny-reason dictation through its own key", async () => {
+    const pressed: number[] = [];
+    const c = new DeckController(registry, layer, delivery, cfg, noopLog, () => {}, {
+      onPermissionKey: (i) => pressed.push(i),
+    });
+    c.setStt(stt);
+    stt.status = "recording"; // deny-reason holds the mic
+    layer.permissionRec = { deadline: Date.now() + 10_000 };
+    tapMic(c);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(pressed).toEqual([3]); // routed to the Deny + reason key
+    expect(stt.calls).toEqual([]); // never grabbed the engine itself
+    layer.permissionRec = undefined;
+  });
+
+  it("mic tap is ignored when the engine is busy with nothing of ours", async () => {
+    stt.status = "recording"; // no rename, no permissionRec — not ours to stop
     tapMic(controller);
     await vi.advanceTimersByTimeAsync(0);
     expect(stt.calls).toEqual([]);

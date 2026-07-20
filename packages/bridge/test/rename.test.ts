@@ -382,6 +382,22 @@ describe("Rename key (globals page 2)", () => {
     expect(registry.get("s1")?.label).toBe("stream deck push to talk");
   });
 
+  it("tapping the blinking mic key ends the rename too", async () => {
+    // The mic key renders REC for any live dictation, so it must stop this one.
+    layer.row3Page = 0;
+    const tap = () => { controller.down(0); controller.up(0); };
+    tap(); tap(); tap(); // triple → start
+    await vi.advanceTimersByTimeAsync(10);
+    expect(layer.renameRec).toBeDefined();
+
+    controller.down(10); // mic key acts on the down edge
+    controller.up(10);
+    await vi.advanceTimersByTimeAsync(10);
+    expect(stt.calls).toEqual(["start", "stop"]);
+    expect(layer.renameRec).toBeUndefined();
+    expect(registry.get("s1")?.label).toBe("stream deck push to talk");
+  });
+
   it("the session's row-1 key becomes the countdown while listening", async () => {
     layer.row3Page = 0;
     const tap = () => { controller.down(0); controller.up(0); };
