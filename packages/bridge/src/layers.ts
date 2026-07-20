@@ -225,10 +225,11 @@ export function computeTiles(
     const rec = layer.permissionRec;
     const denyReasonTile: TileSpec = rec
       ? {
-          text: "REC",
-          subtext: `${Math.max(0, Math.ceil((rec.deadline - now) / 1000))}s · tap to stop`,
+          // The countdown IS the key face: a big ticking number (re-rendered
+          // by the 2 Hz flash loop), red + flashing = recording.
+          text: `${Math.max(0, Math.ceil((rec.deadline - now) / 1000))}s`,
+          subtext: "tap to stop",
           state: "error",
-          icon: "mic",
           selected: flashPhase,
         }
       : layer.ptt === "transcribing"

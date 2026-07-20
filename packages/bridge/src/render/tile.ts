@@ -126,13 +126,16 @@ export function renderTile(spec: TileSpec): Buffer {
   const hasSub = Boolean(spec.subtext);
 
   if (spec.icon) {
-    // Icon layout: vector glyph on top, label + subtext beneath.
+    // Icon layout: vector glyph on top, label + subtext beneath. The label
+    // auto-fits on ONE line (long labels like "Deny + reason" shrink, then
+    // ellipsize) — a fixed size overflows the tile.
     drawIcon(ctx, spec.icon, S / 2, S * 0.36, S * 0.2, theme.fg);
-    ctx.font = `600 24px ${FONT_FAMILY}`;
+    const { fontPx, lines } = fitText(ctx, spec.text, maxWidth, 1, 12, 24);
+    const line = lines[0]!;
+    ctx.font = `600 ${fontPx}px ${FONT_FAMILY}`;
     ctx.fillStyle = theme.fg;
     ctx.textBaseline = "middle";
-    const w = ctx.measureText(spec.text).width;
-    ctx.fillText(spec.text, (S - w) / 2, S * 0.72);
+    ctx.fillText(line.text, (S - line.width) / 2, S * 0.72);
   } else {
     // Main text: up to 3 lines, auto-fit.
     const { fontPx, lines } = fitText(ctx, spec.text, maxWidth, hasSub ? 2 : 3);

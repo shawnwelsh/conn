@@ -29,6 +29,14 @@ describe("tile renderer", () => {
     }
   });
 
+  it("icon tiles auto-fit long labels (Deny + reason regression)", () => {
+    // Fixed-size icon labels overflowed the tile; now they shrink to one line.
+    for (const text of ["Deny + reason", "A very long icon key label indeed"]) {
+      const buf = renderTile({ text, subtext: "dictate", state: "answer", icon: "mic" });
+      expect(buf.subarray(0, 4).equals(PNG_MAGIC)).toBe(true);
+    }
+  });
+
   it("slices banners into the requested span", () => {
     const parts = renderBanner("A long command being approved across keys", 3, "waiting");
     expect(parts).toHaveLength(3);
