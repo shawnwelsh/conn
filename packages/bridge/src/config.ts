@@ -73,6 +73,8 @@ export interface DeckConfig {
     /** Deny-with-dictated-reason recording window (seconds); a second press
      * of the key stops early. The decision timeout is never extended. */
     reasonMaxSeconds: number;
+    /** Session-rename dictation window (seconds); tap the key again to stop. */
+    renameMaxSeconds: number;
     /** @deprecated hold-to-talk relic — the mic key is a toggle now. */
     minHoldMs?: number;
     /** Recording auto-stops (and types, never sends) after this long. */
@@ -128,6 +130,7 @@ export function loadConfig(): DeckConfig {
   cfg.ptt.language ??= "en";
   cfg.ptt.maxSeconds ??= 60;
   cfg.ptt.reasonMaxSeconds ??= 10;
+  cfg.ptt.renameMaxSeconds ??= 10;
   cfg.delivery.windowMode ??= "activeWindow";
   cfg.alwaysAllowDestination ??= "session";
   const validDest = ["session", "localSettings", "projectSettings", "userSettings"];

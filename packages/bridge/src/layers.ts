@@ -72,6 +72,9 @@ export interface DeckLayerState {
   /** A deny-reason dictation is live for the CURRENT held permission — the
    * "Deny + reason" key renders as a recording indicator with countdown. */
   permissionRec?: { deadline: number };
+  /** A rename dictation is live — the Rename key counts down, showing the
+   * name being replaced. */
+  renameRec?: { deadline: number; label: string };
   permission?: PermissionContext;
   question?: QuestionContext;
   controls: DeckControls;
@@ -321,11 +324,22 @@ export function computeTiles(
     // Mode (menu) speaks the desktop picker chord (Ctrl+Shift+M); the console
     // TUI has no such menu — hide the key there (console mode cycling is the
     // row-2 "mode" builtin, Shift+Tab).
+    const rec = layer.renameRec;
     tiles.push(
       targeted?.windowKind === "desktop"
         ? { text: "Mode", subtext: "menu", state: "command", icon: "menu" }
         : { text: "", state: "blank" },
-      { text: "", state: "blank" },
+      rec
+        ? {
+            // Countdown IS the face while listening for the new name.
+            text: `${Math.max(0, Math.ceil((rec.deadline - now) / 1000))}s`,
+            subtext: `renaming ${rec.label}`,
+            state: "error",
+            selected: flashPhase,
+          }
+        : targeted
+          ? { text: "Rename", subtext: targeted.label, state: "command", icon: "mic" }
+          : { text: "", state: "blank" },
       { text: "", state: "blank" },
       { text: "", state: "blank" },
       { text: "Page", subtext: "back", state: "command", icon: "page" },

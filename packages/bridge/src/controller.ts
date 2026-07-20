@@ -1,5 +1,6 @@
 import type { Slot } from "@claude-deck/shared";
-import type { SessionRegistry, SessionEntry } from "./registry.js";
+import { gitBranch, type SessionRegistry, type SessionEntry } from "./registry.js";
+import { slugifyName, isDeckBranch, renameDeckBranch } from "./rename.js";
 import type { DeckLayerState } from "./layers.js";
 import { COMMANDS_PER_PAGE, QUESTION_OPTIONS_PER_PAGE } from "./layers.js";
 import type { DeliveryAdapter } from "./delivery/adapter.js";
@@ -61,6 +62,14 @@ export class DeckController {
 
   setStt(stt: SttEngine): void {
     this.stt = stt;
+  }
+
+  /** Notified when a session gets a hand-typed name, so console bindings can
+   * persist it across bridge restarts. */
+  private onSessionRenamed?: (session: SessionEntry) => void;
+
+  setOnSessionRenamed(fn: (session: SessionEntry) => void): void {
+    this.onSessionRenamed = fn;
   }
 
   /** Raw key events from clients — fed straight to the recognizer, except
@@ -468,6 +477,82 @@ export class DeckController {
     await flight;
   }
 
+  // --- Rename (speak a session's real name once the feature has one) ---
+
+  private renameActive = false;
+  private renameTarget: SessionEntry | undefined;
+  private renameMaxTimer: ReturnType<typeof setTimeout> | null = null;
+
+  /** Rename key: tap to dictate a name for the targeted session, tap again
+   * to stop early. Renames the deck branch when it owns one (so the PR gets
+   * the good name too), else sets a display-only override. */
+  private async renameToggle(): Promise<void> {
+    const stt = this.stt;
+    if (!stt) return;
+    if (this.renameActive) return this.renameFinish();
+    if (stt.status === "offline") {
+      this.log.info("rename pressed while offline — retrying sidecar spawn");
+      void stt.ensureStarted?.();
+      return;
+    }
+    if (stt.status !== "ready") return; // busy with another dictation
+    const target = this.registry.targetedSession;
+    if (!target) {
+      this.log.warn("rename ignored: no targeted session");
+      return;
+    }
+    this.renameTarget = target;
+    this.renameActive = true;
+    if (await stt.start()) {
+      const seconds = this.cfg.ptt.renameMaxSeconds;
+      this.layer.renameRec = { deadline: Date.now() + seconds * 1000, label: target.label };
+      this.renameMaxTimer = setTimeout(() => void this.renameFinish(), seconds * 1000);
+      this.log.info({ session: target.sessionId, seconds }, "rename: recording");
+      this.onLayerChanged();
+    } else {
+      this.renameActive = false;
+      this.renameTarget = undefined;
+    }
+  }
+
+  private async renameFinish(): Promise<void> {
+    const stt = this.stt;
+    if (!stt || !this.renameActive) return;
+    this.renameActive = false;
+    if (this.renameMaxTimer) {
+      clearTimeout(this.renameMaxTimer);
+      this.renameMaxTimer = null;
+    }
+    const target = this.renameTarget;
+    this.renameTarget = undefined;
+    this.layer.renameRec = undefined;
+    this.onLayerChanged();
+
+    const spoken = await stt.stop();
+    const named = slugifyName(spoken);
+    // Session gone mid-utterance, or nothing usable came back → no change.
+    if (!named || !target || !this.registry.get(target.sessionId)) {
+      this.log.info({ spoken }, "rename: nothing usable — name unchanged");
+      return;
+    }
+    const branch = gitBranch(target.cwd);
+    if (isDeckBranch(branch)) {
+      // Rename the real artifact; the 30s label sweep would catch it anyway,
+      // but refresh now so the key updates immediately.
+      const ok = await renameDeckBranch(target.cwd, branch!, `deck/${named.slug}`, this.log);
+      if (ok) {
+        this.registry.refreshLabels();
+        this.log.info({ session: target.sessionId, branch: `deck/${named.slug}` }, "rename: applied via branch");
+        return;
+      }
+    }
+    // Not ours to rewrite (real feature branch, non-git dir, desktop app) or
+    // the rename failed → name the button only.
+    this.registry.setLabelOverride(target.sessionId, named.label);
+    this.onSessionRenamed?.(target);
+    this.log.info({ session: target.sessionId, label: named.label }, "rename: applied as label override");
+  }
+
   /** Row 3: PTT / interrupt / globals; the Page key flips global pages. */
   private async row3(index: number): Promise<void> {
     const target = this.registry.targetedSession;
@@ -485,6 +570,7 @@ export class DeckController {
         const ok = await this.delivery.sendKey(target, "ctrl+shift+m");
         this.log.info({ key: "ModeMenu", session: target.sessionId, ok }, "row3 command");
       }
+      if (index === 1) await this.renameToggle();
       return; // remaining page-2 slots reserved for future globals
     }
     switch (index) {

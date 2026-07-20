@@ -111,6 +111,21 @@ you flip the globals page mid-take. Configure in `config.json` →
 `ptt {enabled, python, model, language, device?, maxSeconds,
 reasonMaxSeconds}`.
 
+### Naming a session
+
+New spawns a session under a random codename (`brisk-wombat`) because the
+feature rarely has a name yet. Once it does: target the session, flip to
+globals page 2, and tap **Rename** — the key counts down while you say the
+name, tap again to stop early. "Stream deck push to talk" becomes the label
+*and*, when the session sits on a deck-created branch, renames
+`deck/brisk-wombat` → `deck/stream-deck-push-to-talk`, so the pull request
+gets the good name too.
+
+Branches the deck didn't create (your own feature branch, a non-git folder,
+the desktop app) are never rewritten — those sessions get a display-only
+name instead, which sticks through label refreshes and survives bridge
+restarts alongside the console binding.
+
 ### Deny with a dictated reason
 
 On the permission layer, **Deny + reason** records up to

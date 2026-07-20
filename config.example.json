@@ -29,7 +29,8 @@
     "model": "distil-small.en",
     "language": "en",
     "maxSeconds": 60,
-    "reasonMaxSeconds": 10
+    "reasonMaxSeconds": 10,
+    "renameMaxSeconds": 10
   },
   "log": {
     "level": "info",

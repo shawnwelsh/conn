@@ -12,6 +12,10 @@ export interface SessionEntry {
   /** Label before duplicate-disambiguation — compared on refresh so a branch
    * rename updates the button without suffixes flapping. */
   labelBase: string;
+  /** Manual name from the deck's Rename key, for sessions whose branch we
+   * can't (or shouldn't) rename. Wins over branch derivation forever —
+   * refreshLabels leaves it alone. */
+  labelOverride?: string;
   cwd: string;
   status: SessionStatus;
   lastEventAt: number;
@@ -262,9 +266,20 @@ export class SessionRegistry extends EventEmitter {
    * sweep; only sessions whose BASE name changed are touched, so existing
    * duplicate suffixes never flap.
    */
+  /** Name a session by hand (deck Rename key) — sticks through refreshes. */
+  setLabelOverride(sessionId: string, name: string): void {
+    const entry = this.sessions.get(sessionId);
+    if (!entry) return;
+    entry.labelOverride = name;
+    entry.labelBase = name;
+    entry.label = this.dedupeLabel(name, sessionId);
+    this.emit("changed");
+  }
+
   refreshLabels(): void {
     let changed = false;
     for (const entry of this.sessions.values()) {
+      if (entry.labelOverride) continue; // hand-named — never re-derive
       const base = deriveLabel(entry.cwd);
       if (base === entry.labelBase) continue;
       entry.labelBase = base;
@@ -478,7 +493,7 @@ export function deriveLabel(cwd: string | undefined): string {
 
 /** Read the current branch by walking up to the repo's .git (file or dir),
  * following worktree gitdir pointers. No subprocess — avoids git index locks. */
-function gitBranch(cwd: string): string | null {
+export function gitBranch(cwd: string): string | null {
   let dir = cwd;
   for (let i = 0; i < 30; i++) {
     const dotgit = join(dir, ".git");

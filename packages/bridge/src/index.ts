@@ -199,6 +199,9 @@ controller.setLauncher(
   ),
 );
 controller.setCommands(commands);
+// A hand-given name has no branch to live in — persist it with the console
+// binding so it survives restarts.
+controller.setOnSessionRenamed((session) => bindings.setLabel(session.cwd, session.label));
 
 // Push-to-talk sidecar: model load (and first-run download) happens in the
 // background; the mic key tracks its status and stays "offline" gracefully

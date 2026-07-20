@@ -22,6 +22,10 @@ export interface PersistedBinding {
    * WT windows can't be re-derived from the pid, so persisting is the only
    * way focus survives a restart there. */
   hwnd?: number;
+  /** Hand-given name (deck Rename key) for sessions whose branch couldn't
+   * carry it. Branch-renamed sessions need nothing here — the branch is the
+   * name. */
+  label?: string;
   at: number;
 }
 
@@ -50,6 +54,16 @@ export class BindingStore {
   upsert(binding: PersistedBinding): void {
     const rest = this.load().filter((b) => !sameCwd(b.cwd, binding.cwd));
     this.save([...rest, binding]);
+  }
+
+  /** Attach a hand-given name to an existing binding (no-op if untracked —
+   * a desktop session has no console to persist against). */
+  setLabel(cwd: string, label: string): void {
+    const all = this.load();
+    const match = all.find((b) => sameCwd(b.cwd, cwd));
+    if (!match) return;
+    match.label = label;
+    this.save(all);
   }
 
   removeByCwd(cwd: string): void {
@@ -109,8 +123,9 @@ export async function restoreConsoleBindings(
     } else {
       hwnd = await delivery.findWindowByPid(binding.pid); // conhost fallback
     }
-    registry.addProvisionalAt(binding.cwd);
+    const entry = registry.addProvisionalAt(binding.cwd);
     registry.bindProvisional(binding.cwd, { pid: binding.pid, hwnd });
-    log.info({ cwd: binding.cwd, pid: binding.pid, hwnd }, "bindings: console restored");
+    if (binding.label) registry.setLabelOverride(entry.sessionId, binding.label);
+    log.info({ cwd: binding.cwd, pid: binding.pid, hwnd, label: binding.label }, "bindings: console restored");
   }
 }
