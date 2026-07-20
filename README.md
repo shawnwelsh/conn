@@ -1,9 +1,43 @@
-# belay
+# Belay
 
-A 15-key Elgato Stream Deck (3×5) as a physical control surface for multiple
-concurrent Claude Code sessions on Windows: live per-session status lights,
-keys that morph into permission/question answer buttons, and one-press
-commands.
+Supervise a room full of Claude Code sessions from a grid of 15 keys. Every
+session gets a key showing what it's doing; permission prompts morph the keys
+into Allow / Deny answers you hit with one press; you can talk to any session,
+spawn new ones in their own git worktrees, and deny a tool call *by saying why*.
+
+**It runs in your browser. No hardware needed.** Point a Stream Deck at it
+later if you like it — same bridge, nicer buttons.
+
+> In climbing, the belayer holds the rope while the climber leads: you can
+> arrest a fall at any moment, but you never make the moves. At sea, "belay
+> that" means stop, cancel. Both are this tool.
+
+## Try it in your browser
+
+```bash
+git clone https://github.com/shawnwelsh/belay && cd belay
+npm install
+cp config.example.json config.json
+node scripts/install-hooks.mjs   # prints the diff, merges only on confirm
+npm run bridge                   # → http://127.0.0.1:3711/
+```
+
+Open that URL. You get the entire deck as a clickable 3×5 grid, speaking the
+*same* WebSocket protocol as the hardware plugin — same tiles, same gestures
+(click, double-click, triple-click, click-and-hold; the bridge does all
+gesture recognition, so the browser is not a degraded mode). Start a Claude
+Code session anywhere on the machine and watch its key light up.
+
+Everything works here: status lights, permission approve/deny, the question
+layer, voice dictation, worktree spawning. The web deck was the primary
+development surface before any hardware existed, and it stays a first-class
+client.
+
+Requirements: **Node 24+** and **Windows**, plus Claude Code ≥ 2.1.211.
+[AutoHotkey v2](https://www.autohotkey.com/) is needed only for the parts that
+type into windows — monitoring and permission decisions work without it, since
+those travel back through the hook response rather than the keyboard. For
+voice, `python -m pip install faster-whisper sounddevice`.
 
 ## Architecture
 
@@ -15,12 +49,17 @@ commands.
 - **`packages/plugin`** — deliberately thin Elgato plugin
   (`@elgato/streamdeck`): renders whatever the bridge sends, reports key
   presses. No logic.
-- **Web debug deck** — `http://127.0.0.1:3711/` — a clickable 3×5 grid
-  speaking the *same* WebSocket protocol as the plugin. Primary test surface
-  until hardware arrives, permanent debug window after.
+- **Web deck** — `http://127.0.0.1:3711/`, served by the bridge — a clickable
+  3×5 grid speaking the *same* WebSocket protocol as the plugin. Not a
+  simulator: it's a peer client, and the two can run side by side.
 - **`packages/bridge/src/delivery/`** — the swappable input-delivery module
-  (Windows desktop app now via AutoHotkey v2 daemon; tmux `send-keys` adapter
-  later touches only this directory).
+  (console input-buffer injection and an AutoHotkey v2 daemon today; a tmux
+  `send-keys` adapter would touch only this directory).
+
+Because every client is just "render these tiles, report these presses", the
+bridge is really a control plane for supervising agents that happens to drive
+a Stream Deck. A phone, a tablet, or a foot pedal are all the same 40-line
+client.
 
 ## Two functions, logically separated
 
@@ -55,24 +94,29 @@ badger"). Non-git dirs or git failures fall back to spawning in place (with a
 loud shared-working-tree warning). Worktrees aren't auto-removed; clean up
 with `git worktree remove` when a feature is done.
 
-The bridge captures the console's window handle (via `Start-Process` pid →
-AHK window lookup — titles are useless because CC overwrites them) and binds
-it to the session that starts there, marking it `windowKind: "console"` with
-a `›_` badge on its key.
+Consoles open as **Windows Terminal** tabs (full copy/paste and proper
+rendering), and the bridge binds the console's *process* to the session that
+starts there, marking it `windowKind: "console"` with a `›_` badge on its key.
 
-Console sessions are fully targetable: double-tap surfaces *that* window, and
-commands go to *that* session even when it's in the background. The deck also
-speaks each kind's dialect automatically:
+That process binding is what makes console sessions fully targetable.
+Keystrokes are written straight into the console's input buffer by pid
+(`AttachConsole` + `WriteConsoleInput`), so delivery needs no window and steals
+no focus — a command lands in a buried session without anything jumping to the
+foreground, and it works identically under Windows Terminal and classic
+conhost (`consoleHost: "conhost"` if you'd rather). Special keys ride as their
+VT sequences, the way tmux does it. Bindings persist across bridge restarts,
+so a restart doesn't orphan your consoles.
+
+The deck also speaks each kind's dialect automatically:
 
 | Key | Console session (TUI) | Desktop tab |
 |---|---|---|
 | Plan/Mode (row 2) | `Shift+Tab` cycles modes | `Ctrl+Shift+M` + number toggle (blind Plan⇄Auto) |
 | Model (row 3) | types `/model` + Enter | `Ctrl+Shift+I` + number cycle |
-| Focus / commands | exact window (HWND) | app front window (visible tab) |
+| Commands | exact session, focus-free (pid) | app front window (visible tab) |
 
-Deck-launched consoles use the classic console host (targetability over
-aesthetics). Sessions you start yourself in terminals remain
-`windowKind: "desktop"`-behaved unless launched via the deck.
+Sessions you start yourself in terminals remain `windowKind: "desktop"`-behaved
+unless launched via the deck.
 
 ## Key layout
 
@@ -86,9 +130,9 @@ aesthetics). Sessions you start yourself in terminals remain
   `{label, text}` pairs, or the builtins `mode` / `model` / `sendname`.
   Hand-edit `commands.json` any time; it hot-reloads. Morph layers (permission / question / suggestion) override
   this row automatically.
-- **Row 3** — PTT (hold-to-talk) · Send · Esc (interrupt) · New (worktree
-  console) · Page. Page flips to a second globals page (Mode picker menu —
-  desktop sessions only, room for more).
+- **Row 3** — Mic (tap to dictate) · Send · Esc (interrupt) · New (worktree
+  console) · Page. Page flips to a second globals page (Rename, and the Mode
+  picker menu for desktop sessions).
 
 ## Dictation (mic key)
 
@@ -166,21 +210,19 @@ normal interactive permission dialog — never auto-allow, never auto-deny.
 This relies on documented Claude Code `http`-hook semantics: non-2xx,
 connection failure, and timeout are all non-blocking errors.
 
-## Install
+## Configuration notes
 
-1. Prereqs: Node 24+ (`winget install OpenJS.NodeJS.LTS`), AutoHotkey v2
-   (`winget install AutoHotkey.AutoHotkey`), Claude Code ≥ 2.1.211.
-2. `npm install`
-3. `cp config.example.json config.json` and adjust. Ship-safe default is
-   `delivery.adapter: "noop"`; switch to `"ahk"` once you're ready for the
-   deck to actually type into windows. `alwaysAllowDestination` controls
-   where the "Always allow" key writes its rule — `"session"` (default; this
-   run only, no disk write) or `"localSettings"` / `"projectSettings"` /
-   `"userSettings"` to persist like CC's own "don't ask again".
-4. `node scripts/install-hooks.mjs` — prints the diff for
-   `~/.claude/settings.json` and merges only on confirm (purely additive,
-   idempotent; never clobbers existing hook entries). `--dry-run` to preview.
-5. `npm run bridge`, open `http://127.0.0.1:3711/` — the web debug deck.
+- `winget install OpenJS.NodeJS.LTS` / `winget install AutoHotkey.AutoHotkey`
+  if you need either.
+- `delivery.adapter` is `"ahk"` in the example config — the deck will type
+  into windows. Set it to `"noop"` for a look-but-don't-touch run; monitoring
+  and permission decisions are unaffected either way.
+- `alwaysAllowDestination` controls where the "Always allow" key writes its
+  rule: `"session"` (default; this run only, no disk write) or
+  `"localSettings"` / `"projectSettings"` / `"userSettings"` to persist like
+  Claude Code's own "don't ask again".
+- `scripts/install-hooks.mjs` is purely additive and idempotent, never
+  clobbers existing hook entries, and takes `--dry-run`.
 
 ### Stream Deck plugin (hardware)
 
