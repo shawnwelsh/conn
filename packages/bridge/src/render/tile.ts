@@ -333,22 +333,31 @@ function drawIcon(
       break;
     }
     case "resume": {
-      // Counter-clockwise restore arc with an arrowhead — "pick up where you
-      // left off". Deliberately not a play triangle, which would read as a
-      // sibling of the Send plane two keys away.
-      const rr = r * 0.82;
-      const start = Math.PI * 0.45; // gap at the lower right, where the head sits
-      ctx.lineWidth = r * 0.26;
+      // Open circular arrow — "pick up where you left off". Deliberately not
+      // a play triangle, which would read as a sibling of the Send plane.
+      // The head is built from the arc's own tangent and normal at its end
+      // point, so it sits ON the curve pointing the way it travels; offsets
+      // guessed by eye just look broken.
+      const rr = r * 0.8;
+      const a0 = Math.PI * 0.3;
+      const a1 = Math.PI * 1.95; // ~60° gap where the head goes
+      ctx.lineWidth = r * 0.24;
       ctx.beginPath();
-      ctx.arc(cx, cy, rr, start, Math.PI * 2.1);
+      ctx.arc(cx, cy, rr, a0, a1);
       ctx.stroke();
-      const hx = cx + Math.cos(start) * rr;
-      const hy = cy + Math.sin(start) * rr;
-      const h = r * 0.4;
-      ctx.beginPath(); // head pointing along the arc's travel
-      ctx.moveTo(hx - h, hy - h * 0.25);
-      ctx.lineTo(hx + h * 0.35, hy - h * 0.55);
-      ctx.lineTo(hx + h * 0.1, hy + h * 0.75);
+
+      const px = cx + Math.cos(a1) * rr;
+      const py = cy + Math.sin(a1) * rr;
+      const tx = -Math.sin(a1); // tangent, in the direction of travel
+      const ty = Math.cos(a1);
+      const nx = Math.cos(a1); // outward normal
+      const ny = Math.sin(a1);
+      const len = r * 0.52;
+      const wid = r * 0.34;
+      ctx.beginPath();
+      ctx.moveTo(px + tx * len, py + ty * len); // tip
+      ctx.lineTo(px + nx * wid, py + ny * wid);
+      ctx.lineTo(px - nx * wid, py - ny * wid);
       ctx.closePath();
       ctx.fill();
       break;
