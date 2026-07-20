@@ -1,10 +1,15 @@
 # Phase 4 design — push-to-talk & deny-with-dictated-reason
 
-**Status:** PTT is IMPLEMENTED (2026-07-17) per the design below, with two
-deltas: the down/up protocol addition was already in place (raw down/up +
-bridge-side gesture recognition landed in Phase 3), and the mic key bypasses
-the gesture recognizer entirely while on globals page 1 so hold-to-record
-gets true press edges. Deny-with-dictated-reason remains future work.
+**Status:** BOTH halves are IMPLEMENTED (2026-07-17) per the design below.
+PTT deltas: the down/up protocol addition was already in place (raw down/up
++ bridge-side gesture recognition landed in Phase 3), and the mic key
+bypasses the gesture recognizer entirely while on globals page 1 so
+hold-to-record gets true press edges. Deny-with-reason deltas
+(`denyReason.ts`): the recording indicator is the deny-reason key itself
+(red REC + countdown, tap to stop early), and cancellation is driven by the
+decision store's queue-change hook — any other settlement (key, on-screen
+answer, timeout, session end) cancels the dictation and discards a
+transcription that finishes late.
 
 ## Push-to-talk (PTT)
 

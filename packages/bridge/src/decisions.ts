@@ -85,11 +85,12 @@ export class DecisionStore {
     });
   }
 
-  /** Resolve the CURRENT permission from a deck key press. */
-  decide(action: PermissionKeyAction): PendingPermission | undefined {
+  /** Resolve the CURRENT permission from a deck key press. `message` carries
+   * a dictated deny reason into the decision body (deny/deny-reason only). */
+  decide(action: PermissionKeyAction, opts?: { message?: string }): PendingPermission | undefined {
     const held = this.queue[0];
     if (!held) return undefined;
-    const body = buildDecisionBody(action, held.pending, this.alwaysAllowDestination);
+    const body = buildDecisionBody(action, held.pending, this.alwaysAllowDestination, opts?.message);
     this.settle(held, body, `decided: ${action}`);
     return held.pending;
   }
@@ -153,6 +154,7 @@ function buildDecisionBody(
   action: PermissionKeyAction,
   pending: PendingPermission,
   alwaysAllowDestination: AlwaysAllowDestination,
+  message?: string,
 ): unknown {
   switch (action) {
     case "allow":
@@ -178,10 +180,11 @@ function buildDecisionBody(
       });
     }
     case "deny":
-      return decision({ behavior: "deny", message: "Denied from claude-deck" });
+      return decision({ behavior: "deny", message: message ?? "Denied from claude-deck" });
     case "deny-reason":
-      // Phase 4 replaces the canned message with a dictated reason.
-      return decision({ behavior: "deny", message: "Denied from claude-deck (with reason — stub)" });
+      // The dictated reason reaches Claude as structured feedback through the
+      // still-held hook response; no/empty transcription → the canned deny.
+      return decision({ behavior: "deny", message: message ?? "Denied from claude-deck" });
     case "show-on-screen":
       return {}; // defer → Claude Code's normal dialog appears
   }

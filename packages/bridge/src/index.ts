@@ -4,6 +4,7 @@ import { loadConfig } from "./config.js";
 import { createLogger } from "./log.js";
 import { SessionRegistry, type SessionEntry } from "./registry.js";
 import { BindingStore, restoreConsoleBindings } from "./bindings.js";
+import { DenyReasonFlow } from "./denyReason.js";
 import { DecisionStore } from "./decisions.js";
 import { computeTiles, initialControls, initialRow1, initialRow2Cmd, type DeckLayerState } from "./layers.js";
 import { CommandStore } from "./commands.js";
@@ -130,9 +131,13 @@ function syncFlash(active: boolean): void {
   }
 }
 
+let denyReason: DenyReasonFlow | null = null;
+
 /** Keep the row-2 layer in lockstep with the decision queue. A pending
  * permission outranks a question layer. */
 function syncPermissionLayer(): void {
+  // A queue change means any in-flight deny-reason dictation may be moot.
+  denyReason?.sync();
   const current = decisions.current;
   if (current) {
     layer.row2 = "permission";
@@ -213,10 +218,21 @@ if (cfg.ptt.enabled) {
   void stt.ensureStarted();
 }
 
+denyReason = new DenyReasonFlow(decisions, stt ?? undefined, layer, cfg.ptt.reasonMaxSeconds, log, () => {
+  syncFlash(flashNeeded());
+  pushRender();
+});
+
 controller.setHooks({
   onPermissionKey: (index) => {
     const action = (["allow", "always-allow", "deny", "deny-reason", "show-on-screen"] as const)[index];
     if (!action) return;
+    if (action === "deny-reason") {
+      // Dictation flow: records against the held decision, resolves it with
+      // the transcribed reason (canned deny when the sidecar can't).
+      denyReason?.press();
+      return;
+    }
     const settled = decisions.decide(action);
     if (settled && action === "show-on-screen") {
       const session = registry.get(settled.sessionId);

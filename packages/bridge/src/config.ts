@@ -69,6 +69,9 @@ export interface DeckConfig {
     language: string;
     /** sounddevice input device name/index; omit for the system default. */
     device?: string;
+    /** Deny-with-dictated-reason recording window (seconds); a second press
+     * of the key stops early. The decision timeout is never extended. */
+    reasonMaxSeconds: number;
     /** Sub-hold presses this short are treated as accidental and discarded. */
     minHoldMs: number;
     /** Recording auto-stops (and transcribes) after this long. */
@@ -124,6 +127,7 @@ export function loadConfig(): DeckConfig {
   cfg.ptt.language ??= "en";
   cfg.ptt.minHoldMs ??= 300;
   cfg.ptt.maxSeconds ??= 60;
+  cfg.ptt.reasonMaxSeconds ??= 10;
   cfg.delivery.windowMode ??= "activeWindow";
   cfg.alwaysAllowDestination ??= "session";
   const validDest = ["session", "localSettings", "projectSettings", "userSettings"];

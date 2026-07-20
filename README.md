@@ -105,7 +105,20 @@ Details: presses shorter than `ptt.minHoldMs` (300) are discarded as
 accidental; recording auto-stops at `ptt.maxSeconds` (60) and delivers what
 it has; silence transcribes to nothing (VAD) and nothing is typed. Configure
 in `config.json` → `ptt {enabled, python, model, language, minHoldMs,
-maxSeconds}`.
+maxSeconds, reasonMaxSeconds}`.
+
+### Deny with a dictated reason
+
+On the permission layer, **Deny + reason** records up to
+`ptt.reasonMaxSeconds` (10) — the key becomes a countdown; tap it again to
+stop early. The transcription travels **inside the still-held hook
+response** as `{behavior: "deny", message: "<your reason>"}`, so Claude
+receives it as structured feedback on that exact tool call — no keystrokes
+are typed anywhere. Sidecar offline (key shows "canned"), empty
+transcription, or a mic failure all degrade to the plain canned deny. The
+overall decision timeout keeps running while you speak: if it expires
+mid-dictation the request falls through to the on-screen dialog, exactly as
+if the deck had stayed silent.
 
 ## Safety model (permission flow)
 

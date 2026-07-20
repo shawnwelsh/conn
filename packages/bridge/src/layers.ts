@@ -69,6 +69,9 @@ export interface DeckLayerState {
   /** Push-to-talk sidecar state, mirrored from the STT adapter; drives the
    * mic key face. Absent = offline (PTT not configured/available). */
   ptt?: "offline" | "loading" | "ready" | "recording" | "transcribing";
+  /** A deny-reason dictation is live for the CURRENT held permission — the
+   * "Deny + reason" key renders as a recording indicator with countdown. */
+  permissionRec?: { deadline: number };
   permission?: PermissionContext;
   question?: QuestionContext;
   controls: DeckControls;
@@ -219,11 +222,29 @@ export function computeTiles(
 
   // Row 2 — morphing layer
   if (layer.row2 === "permission" && layer.permission) {
+    const rec = layer.permissionRec;
+    const denyReasonTile: TileSpec = rec
+      ? {
+          text: "REC",
+          subtext: `${Math.max(0, Math.ceil((rec.deadline - now) / 1000))}s · tap to stop`,
+          state: "error",
+          icon: "mic",
+          selected: flashPhase,
+        }
+      : layer.ptt === "transcribing"
+        ? { text: "Deny + reason", subtext: "transcribing…", state: "waiting", icon: "mic", selected: flashPhase }
+        : {
+            text: "Deny + reason",
+            state: "answer",
+            icon: "mic",
+            // Honest affordance: without a ready sidecar the key is a canned deny.
+            subtext: layer.ptt === "ready" ? "dictate" : "canned",
+          };
     tiles.push(
       { text: "Allow", state: "answer" },
       { text: "Always allow", state: "answer" },
       { text: "Deny", state: "answer", subtext: "" },
-      { text: "Deny + reason", state: "answer", subtext: "stub" },
+      denyReasonTile,
       { text: "Show on screen", state: "answer", subtext: "release" },
     );
   } else if (layer.row2 === "question" && layer.question) {
