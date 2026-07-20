@@ -61,8 +61,37 @@ interface CcRecord {
   name?: unknown;
   nameSource?: unknown;
   status?: unknown;
+  pid?: unknown;
+  entrypoint?: unknown;
   updatedAt?: number;
   statusUpdatedAt?: number;
+}
+
+/**
+ * sessionId → pid, for sessions running in a TERMINAL.
+ *
+ * `entrypoint: "cli"` is Claude Code's own word for "this session is a
+ * command-line process", as opposed to `"claude-desktop"` (a tab in the
+ * Windows app, which owns no console and must never be injected into). It's
+ * authoritative where the deck previously had to guess from "did I launch
+ * it?", and it's what lets sessions started by hand become controllable.
+ *
+ * `kind` is deliberately ignored: a FleetView-dispatched session is "bg" but
+ * still a terminal you type in.
+ */
+export function readCliSessionPids(dir: string = CC_SESSIONS_DIR, log?: Logger): Map<string, number> {
+  const pids = new Map<string, number>();
+  const seenAt = new Map<string, number>();
+  for (const meta of readRecords(dir, log)) {
+    if (typeof meta.sessionId !== "string") continue;
+    if (meta.entrypoint !== "cli") continue;
+    if (typeof meta.pid !== "number" || !Number.isInteger(meta.pid) || meta.pid <= 0) continue;
+    const at = meta.updatedAt ?? 0;
+    if (seenAt.has(meta.sessionId) && at < seenAt.get(meta.sessionId)!) continue;
+    seenAt.set(meta.sessionId, at);
+    pids.set(meta.sessionId, meta.pid);
+  }
+  return pids;
 }
 
 /** Every readable record in the directory. Malformed files are skipped, not

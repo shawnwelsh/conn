@@ -7,7 +7,7 @@ import { DeckController } from "../src/controller.js";
 import { SessionRegistry } from "../src/registry.js";
 import { initialControls, initialRow1, initialRow2Cmd, computeTiles, type DeckLayerState } from "../src/layers.js";
 import { slugifyName, isDeckBranch, renameDeckBranch } from "../src/rename.js";
-import { readCcSessionNames, isAwaitingInput } from "../src/sessionMeta.js";
+import { readCcSessionNames, isAwaitingInput, readCliSessionPids } from "../src/sessionMeta.js";
 import type { CommandSource } from "../src/commands.js";
 import type { DeckConfig } from "../src/config.js";
 import { NoopAdapter } from "../src/delivery/adapter.js";
@@ -143,6 +143,16 @@ describe("readCcSessionNames (Claude Code's own /rename)", () => {
     write("200.json", { pid: 200, sessionId: "s1", status: "idle", statusUpdatedAt: 3000 });
     expect(isAwaitingInput("s1", dir)).toBe(false);
     expect(isAwaitingInput("nobody", dir)).toBeNull(); // unknown stays unknown
+  });
+
+  it("reads terminal pids for cli sessions only — never desktop-app tabs", () => {
+    write("36588.json", { pid: 36588, sessionId: "term", entrypoint: "cli", kind: "interactive" });
+    write("79256.json", { pid: 79256, sessionId: "dispatched", entrypoint: "cli", kind: "bg" });
+    write("3816.json", { pid: 3816, sessionId: "apptab", entrypoint: "claude-desktop", kind: "interactive" });
+    const pids = readCliSessionPids(dir);
+    expect(pids.get("term")).toBe(36588);
+    expect(pids.get("dispatched")).toBe(79256); // FleetView-dispatched is still a terminal
+    expect(pids.has("apptab")).toBe(false); // the app owns no console to inject into
   });
 
   it("survives junk files and a missing directory", () => {

@@ -109,6 +109,14 @@ export class AhkAdapter implements DeliveryAdapter {
   }
 
   async focus(session: SessionRef): Promise<boolean> {
+    if (session.pid && !session.hwnd) {
+      // A terminal adopted by pid: we can type into it, but we never learned
+      // its window. Falling through to the app fallback would surface the
+      // Claude desktop app — a different program from the one this session
+      // is running in. Better to do nothing than to raise the wrong window.
+      this.log.info({ session: session.label, pid: session.pid }, "focus unavailable: adopted terminal has no window handle");
+      return false;
+    }
     return this.withWindow(session, async (query) => this.command(`focus|${query}`));
   }
 

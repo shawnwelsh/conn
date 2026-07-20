@@ -73,6 +73,44 @@ describe("provisional adoption from a subdirectory", () => {
   });
 });
 
+describe("adopting terminal sessions the deck didn't launch", () => {
+  it("binds a hand-started session to its pid and makes it a console", () => {
+    const r = new SessionRegistry(5);
+    const e = start(r, "s1");
+    expect(e.windowKind).toBe("desktop"); // the old guess
+    expect(r.adoptTerminal("s1", 36588)).toBe(true);
+    expect(e.pid).toBe(36588);
+    expect(e.windowKind).toBe("console"); // now speaks the TUI dialect
+  });
+
+  it("never overwrites a deck-launched binding", () => {
+    const r = new SessionRegistry(5);
+    r.registerPendingLaunch({ cwd: "C:\\dev\\x", pid: 4242, hwnd: 777, at: Date.now() });
+    const e = r.ensure({ session_id: "s1", cwd: "C:\\dev\\x", hook_event_name: "SessionStart" });
+    expect(e.pid).toBe(4242);
+    // The deck-launched binding also carries an hwnd for focus — strictly
+    // better than what adoption can offer, so it wins.
+    expect(r.adoptTerminal("s1", 36588)).toBe(false);
+    expect(e.pid).toBe(4242);
+    expect(e.hwnd).toBe(777);
+  });
+
+  it("announces new sessions so they bind on arrival, not 30s later", () => {
+    const r = new SessionRegistry(5);
+    const seen: string[] = [];
+    r.on("session-added", (entry: { sessionId: string }) => seen.push(entry.sessionId));
+    start(r, "s1");
+    start(r, "s2");
+    r.ensure({ session_id: "s1", cwd: "C:\\dev\\s1", hook_event_name: "Stop" }); // existing → no event
+    expect(seen).toEqual(["s1", "s2"]);
+  });
+
+  it("ignores an unknown session", () => {
+    const r = new SessionRegistry(5);
+    expect(r.adoptTerminal("nobody", 123)).toBe(false);
+  });
+});
+
 describe("duplicate label disambiguation", () => {
   it("suffixes sessions that resolve to the same feature name", () => {
     const r = new SessionRegistry(5);

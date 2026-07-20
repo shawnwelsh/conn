@@ -5,7 +5,7 @@ import { createLogger } from "./log.js";
 import { SessionRegistry, type SessionEntry } from "./registry.js";
 import { BindingStore, restoreConsoleBindings } from "./bindings.js";
 import { DenyReasonFlow } from "./denyReason.js";
-import { readCcSessionNames, CC_SESSIONS_DIR } from "./sessionMeta.js";
+import { readCcSessionNames, readCliSessionPids, CC_SESSIONS_DIR } from "./sessionMeta.js";
 import { DecisionStore } from "./decisions.js";
 import { computeTiles, initialControls, initialRow1, initialRow2Cmd, type DeckLayerState } from "./layers.js";
 import { CommandStore } from "./commands.js";
@@ -280,6 +280,20 @@ registry.on("changed", () => {
   pushRender();
 });
 
+/** Bind any terminal session to its process, so sessions the deck didn't
+ * launch are controllable too. Runs on arrival AND on the sweep, because
+ * Claude Code may write its metadata a moment after the first hook. */
+function adoptTerminals(only?: SessionEntry): void {
+  const pids = readCliSessionPids(CC_SESSIONS_DIR, log);
+  for (const session of only ? [only] : registry.all()) {
+    const pid = pids.get(session.sessionId);
+    if (pid && registry.adoptTerminal(session.sessionId, pid)) {
+      log.info({ session: session.sessionId, label: session.label, pid }, "adopted terminal session by pid");
+    }
+  }
+}
+registry.on("session-added", (entry: SessionEntry) => adoptTerminals(entry));
+
 registerHookRoutes(app, registry, log, {
   onPermissionRequest: (event) => decisions.hold(event),
   onSessionEnd: (sessionId) => decisions.releaseSession(sessionId),
@@ -310,6 +324,7 @@ setInterval(() => {
   // Claude Code's own `/rename` reaches the button here (its session
   // metadata is the only place that name is published).
   registry.refreshLabels(readCcSessionNames(CC_SESSIONS_DIR, log));
+  adoptTerminals();
   void livenessSweep(registry, delivery, cfg.deadSessionSweepHours * 3_600_000, log).finally(() =>
     pushRender(),
   );

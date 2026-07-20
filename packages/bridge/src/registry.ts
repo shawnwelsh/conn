@@ -157,6 +157,11 @@ export class SessionRegistry extends EventEmitter {
       this.consumePendingLaunch(entry);
       this.place(entry.sessionId);
       if (!this.targeted) this.targeted = entry.sessionId;
+      // Listeners bind terminals immediately, rather than leaving a fresh
+      // session mis-classified until the next 30s sweep — commands aimed at
+      // a "desktop" session go to the app's front window, which would be the
+      // wrong place entirely.
+      this.emit("session-added", entry);
       this.emit("changed");
     }
     return entry;
@@ -270,6 +275,24 @@ export class SessionRegistry extends EventEmitter {
    * sweep; only sessions whose BASE name changed are touched, so existing
    * duplicate suffixes never flap.
    */
+  /**
+   * Bind a session to its terminal process, learned from Claude Code's own
+   * metadata. This is how sessions the deck DIDN'T launch become
+   * controllable: delivery injects by pid, so a process id is the whole
+   * requirement.
+   *
+   * Never touches an already-bound session — a deck-launched console holds
+   * the cmd pid plus a window handle for focus, which is strictly better.
+   */
+  adoptTerminal(sessionId: string, pid: number): boolean {
+    const entry = this.sessions.get(sessionId);
+    if (!entry || entry.pid) return false;
+    entry.pid = pid;
+    entry.windowKind = "console";
+    this.emit("changed");
+    return true;
+  }
+
   /** Name a session by hand (deck Rename key) — sticks through refreshes. */
   setLabelOverride(sessionId: string, name: string): void {
     const entry = this.sessions.get(sessionId);

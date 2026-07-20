@@ -141,4 +141,14 @@ describe("console delivery via input-buffer injection (pid-bound sessions)", () 
     await adapter.focus(con);
     expect(calls).toEqual(["focus|ahk_id 42"]);
   });
+
+  it("a pid-adopted terminal refuses focus rather than raising the desktop app", async () => {
+    const { adapter, calls } = stubbed();
+    const adopted = { sessionId: "s", cwd: "", label: "nimble otter", pid: 36588 }; // no hwnd
+    expect(await adapter.focus(adopted)).toBe(false);
+    expect(calls).toEqual([]); // never touched the app fallback
+    // …but it still takes keystrokes, which is the point of adopting it.
+    await adapter.sendText(adopted, "/status");
+    expect(calls).toEqual(["conwrite|36588|/status"]);
+  });
 });
