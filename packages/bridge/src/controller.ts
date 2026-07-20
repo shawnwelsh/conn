@@ -579,7 +579,11 @@ export class DeckController {
       // but refresh now so the key updates immediately.
       viaBranch = await renameDeckBranch(target.cwd, branch!, `deck/${named.slug}`, this.log);
       if (viaBranch) {
-        this.registry.refreshLabels();
+        // Carry the new name as the CC name too. A previously-adopted
+        // `/rename` outranks the branch, so refreshing without it would leave
+        // the button on the OLD name until the next 30s sweep read the new
+        // one back — and we're about to make Claude Code agree anyway.
+        this.registry.refreshLabels(new Map([[target.sessionId, named.label]]));
         this.log.info({ session: target.sessionId, branch: `deck/${named.slug}` }, "rename: applied via branch");
       }
     }

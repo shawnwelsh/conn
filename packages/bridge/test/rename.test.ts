@@ -291,6 +291,11 @@ describe("Rename key (globals page 2)", () => {
     const r = new SessionRegistry(5);
     r.ensure({ session_id: "c1", cwd: repo, hook_event_name: "SessionStart" });
     expect(r.get("c1")?.label).toBe("brisk wombat"); // derived from the branch
+    // Simulate an earlier rename already adopted from Claude Code: this
+    // outranks the branch, and a second rename must still take effect
+    // IMMEDIATELY rather than waiting for the next 30s sweep.
+    r.refreshLabels(new Map([["c1", "an earlier name"]]));
+    expect(r.get("c1")?.label).toBe("an earlier name");
 
     const c = new DeckController(r, layer, new NoopAdapter(() => {}), cfg, noopLog, () => {});
     c.setStt(stt);
