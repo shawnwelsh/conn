@@ -5,6 +5,7 @@ import { createLogger } from "./log.js";
 import { SessionRegistry, type SessionEntry } from "./registry.js";
 import { BindingStore, restoreConsoleBindings } from "./bindings.js";
 import { DenyReasonFlow } from "./denyReason.js";
+import { readCcSessionNames, CC_SESSIONS_DIR } from "./sessionMeta.js";
 import { DecisionStore } from "./decisions.js";
 import { computeTiles, initialControls, initialRow1, initialRow2Cmd, type DeckLayerState } from "./layers.js";
 import { CommandStore } from "./commands.js";
@@ -306,7 +307,9 @@ log.info({ port: cfg.port }, `claude-deck bridge up — web deck at http://127.0
 // Periodic sweep: re-derive labels (branch renames reach the buttons), skull
 // and demote dead-window sessions (3h TTL sweep), refresh stale dimming.
 setInterval(() => {
-  registry.refreshLabels();
+  // Claude Code's own `/rename` reaches the button here (its session
+  // metadata is the only place that name is published).
+  registry.refreshLabels(readCcSessionNames(CC_SESSIONS_DIR, log));
   void livenessSweep(registry, delivery, cfg.deadSessionSweepHours * 3_600_000, log).finally(() =>
     pushRender(),
   );

@@ -114,17 +114,30 @@ reasonMaxSeconds}`.
 ### Naming a session
 
 New spawns a session under a random codename (`brisk-wombat`) because the
-feature rarely has a name yet. Once it does: target the session, flip to
-globals page 2, and tap **Rename** — the key counts down while you say the
-name, tap again to stop early. "Stream deck push to talk" becomes the label
-*and*, when the session sits on a deck-created branch, renames
-`deck/brisk-wombat` → `deck/stream-deck-push-to-talk`, so the pull request
-gets the good name too.
+feature rarely has a name yet. Once it does, name it by voice two ways:
+**triple-tap its key** on row 1, or target it and tap **Rename** on globals
+page 2. Either counts down while you speak; tap again to stop early.
 
+Saying "stream deck push to talk" then aligns everything at once:
+
+| Surface | Result |
+|---|---|
+| Deck button | `stream deck push to talk` |
+| Git branch | `deck/brisk-wombat` → `deck/stream-deck-push-to-talk` |
+| Claude Code | `/rename stream deck push to talk` (console sessions) |
+
+So the pull request gets the good name too — the button was never the point.
 Branches the deck didn't create (your own feature branch, a non-git folder,
-the desktop app) are never rewritten — those sessions get a display-only
-name instead, which sticks through label refreshes and survives bridge
-restarts alongside the console binding.
+the desktop app) are never rewritten; those get a display-only name that
+sticks through refreshes and survives bridge restarts. The `/rename` push
+goes to console sessions only, where targeting is exact — sending it at the
+desktop app would retitle whichever conversation happened to be visible.
+
+Naming also flows the other way: run **`/rename`** (or `/name`) inside any
+session and the deck adopts it within 30s, reading Claude Code's own session
+metadata. Precedence is **deck rename → `/rename` → git branch → folder**,
+so a triple-tap is always the final word. (`/color` can't be mirrored — it
+sets the prompt bar for the session but isn't persisted anywhere readable.)
 
 ### Deny with a dictated reason
 

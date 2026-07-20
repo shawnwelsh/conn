@@ -16,6 +16,9 @@ export interface SessionEntry {
    * can't (or shouldn't) rename. Wins over branch derivation forever —
    * refreshLabels leaves it alone. */
   labelOverride?: string;
+  /** Name Claude Code itself carries for the conversation (`/rename`), read
+   * from its session metadata. Beats the branch, loses to a deck rename. */
+  ccName?: string;
   cwd: string;
   status: SessionStatus;
   lastEventAt: number;
@@ -276,11 +279,21 @@ export class SessionRegistry extends EventEmitter {
     this.emit("changed");
   }
 
-  refreshLabels(): void {
+  /**
+   * Re-derive labels, newest name wins by precedence:
+   *   deck rename (labelOverride) → Claude Code `/rename` → git branch → cwd.
+   * `ccNames` comes from Claude Code's own session metadata; omit it to just
+   * re-check branches.
+   */
+  refreshLabels(ccNames?: Map<string, string>): void {
     let changed = false;
     for (const entry of this.sessions.values()) {
-      if (entry.labelOverride) continue; // hand-named — never re-derive
-      const base = deriveLabel(entry.cwd);
+      if (ccNames) {
+        const named = ccNames.get(entry.sessionId);
+        if (named !== undefined) entry.ccName = named;
+      }
+      if (entry.labelOverride) continue; // hand-named on the deck — final say
+      const base = entry.ccName ?? deriveLabel(entry.cwd);
       if (base === entry.labelBase) continue;
       entry.labelBase = base;
       entry.label = this.dedupeLabel(base, entry.sessionId);

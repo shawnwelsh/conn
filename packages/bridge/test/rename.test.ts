@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeEach, afterEach, vi } from "vitest";
-import { mkdirSync, rmSync } from "node:fs";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { execFileSync } from "node:child_process";
@@ -7,6 +7,7 @@ import { DeckController } from "../src/controller.js";
 import { SessionRegistry } from "../src/registry.js";
 import { initialControls, initialRow1, initialRow2Cmd, computeTiles, type DeckLayerState } from "../src/layers.js";
 import { slugifyName, isDeckBranch, renameDeckBranch } from "../src/rename.js";
+import { readCcSessionNames } from "../src/sessionMeta.js";
 import type { DeckConfig } from "../src/config.js";
 import { NoopAdapter } from "../src/delivery/adapter.js";
 import type { SttEngine, SttStatus } from "../src/stt/sidecar.js";
@@ -95,6 +96,57 @@ describe("renameDeckBranch (real git)", () => {
 
   it("reports failure instead of throwing when the branch is missing", async () => {
     expect(await renameDeckBranch(repo, "deck/nope", "deck/whatever", noopLog)).toBe(false);
+  });
+});
+
+describe("readCcSessionNames (Claude Code's own /rename)", () => {
+  const dir = join(tmpdir(), `claude-deck-ccmeta-${process.pid}`);
+  beforeEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+    mkdirSync(dir, { recursive: true });
+  });
+  afterEach(() => rmSync(dir, { recursive: true, force: true }));
+
+  const write = (file: string, obj: unknown) => writeFileSync(join(dir, file), JSON.stringify(obj));
+
+  it("adopts user-given names and ignores cwd-derived filler", () => {
+    write("92100.json", { pid: 92100, sessionId: "s-named", name: "Renewal Fix", status: "busy" });
+    write("68060.json", { pid: 68060, sessionId: "s-derived", name: "dazzling-williams-cb6de4-18", nameSource: "derived" });
+    const names = readCcSessionNames(dir);
+    expect(names.get("s-named")).toBe("Renewal Fix");
+    expect(names.has("s-derived")).toBe(false);
+  });
+
+  it("survives junk files and a missing directory", () => {
+    write("broken.json", "not-an-object");
+    writeFileSync(join(dir, "notjson.txt"), "ignored");
+    writeFileSync(join(dir, "bad.json"), "{oops");
+    expect(readCcSessionNames(dir).size).toBe(0);
+    expect(readCcSessionNames(join(dir, "does-not-exist")).size).toBe(0);
+  });
+});
+
+describe("label precedence: deck rename > /rename > branch", () => {
+  it("adopts a Claude Code name, then lets a deck rename overrule it", () => {
+    const r = new SessionRegistry(5);
+    r.ensure({ session_id: "s1", cwd: "C:\\dev\\some-repo", hook_event_name: "SessionStart" });
+    const derived = r.get("s1")!.label;
+
+    r.refreshLabels(new Map([["s1", "Renewal Fix"]]));
+    expect(r.get("s1")?.label).toBe("Renewal Fix");
+    expect(r.get("s1")?.label).not.toBe(derived);
+
+    r.setLabelOverride("s1", "hosting rework"); // triple-tap has the final say
+    r.refreshLabels(new Map([["s1", "Renewal Fix"]])); // CC name still present
+    expect(r.get("s1")?.label).toBe("hosting rework");
+  });
+
+  it("keeps the Claude Code name across sweeps that pass no map", () => {
+    const r = new SessionRegistry(5);
+    r.ensure({ session_id: "s1", cwd: "C:\\dev\\some-repo", hook_event_name: "SessionStart" });
+    r.refreshLabels(new Map([["s1", "Renewal Fix"]]));
+    r.refreshLabels(); // branch-only sweep must not clobber it back
+    expect(r.get("s1")?.label).toBe("Renewal Fix");
   });
 });
 
@@ -224,6 +276,54 @@ describe("Rename key (globals page 2)", () => {
     expect(seen).toEqual([]); // nothing to persist — the branch IS the name
     rmSync(repo, { recursive: true, force: true });
   }, 30_000);
+
+  it("pushes /rename into a CONSOLE session so Claude Code's name matches", async () => {
+    const r = new SessionRegistry(5);
+    r.registerPendingLaunch({ cwd: "C:\\dev\\not-a-repo", pid: 9, hwnd: 7, at: Date.now() });
+    r.ensure({ session_id: "con", cwd: "C:\\dev\\not-a-repo", hook_event_name: "SessionStart" });
+    const sent: string[] = [];
+    const adapter = new NoopAdapter(() => {});
+    adapter.sendText = async (_s, t) => { sent.push(`text:${t}`); return true; };
+    adapter.sendKey = async (_s, k) => { sent.push(`key:${k}`); return true; };
+    const c = new DeckController(r, layer, adapter, cfg, noopLog, () => {});
+    c.setStt(stt);
+
+    const tap = async () => { c.down(11); c.up(11); await vi.advanceTimersByTimeAsync(cfg.doubleTapMs + 10); };
+    await tap();
+    await tap();
+    expect(sent).toEqual(["text:/rename stream deck push to talk", "key:enter"]);
+    expect(r.get("con")?.label).toBe("stream deck push to talk");
+  });
+
+  it("does NOT push /rename at a desktop session (would retitle the visible one)", async () => {
+    const sent: string[] = [];
+    const adapter = new NoopAdapter(() => {});
+    adapter.sendText = async (_s, t) => { sent.push(t); return true; };
+    const c = new DeckController(registry, layer, adapter, cfg, noopLog, () => {});
+    c.setStt(stt);
+    const tap = async () => { c.down(11); c.up(11); await vi.advanceTimersByTimeAsync(cfg.doubleTapMs + 10); };
+    await tap();
+    await tap();
+    expect(sent).toEqual([]); // registry's s1 is a desktop session
+    expect(registry.get("s1")?.label).toBe("stream deck push to talk"); // button still renamed
+  });
+
+  it("triple-tapping a session key starts its rename (the final override)", async () => {
+    layer.row3Page = 0; // row 1 works regardless of the globals page
+    const tap = () => {
+      controller.down(0);
+      controller.up(0);
+    };
+    tap();
+    tap(); // double → focus fires here, harmlessly
+    tap(); // triple → rename
+    await vi.advanceTimersByTimeAsync(10);
+    expect(stt.calls).toEqual(["start"]);
+    expect(layer.renameRec).toBeDefined();
+
+    await vi.advanceTimersByTimeAsync(10_000); // window elapses
+    expect(registry.get("s1")?.label).toBe("stream deck push to talk");
+  });
 
   it("renders the key with the current name, then a countdown while listening", async () => {
     const before = computeTiles(registry, layer, cfg, [], false);

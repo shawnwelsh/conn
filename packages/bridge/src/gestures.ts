@@ -10,7 +10,7 @@ import type { Slot } from "@claude-deck/shared";
  * - double-tap: a second tap on the same slot within doubleTapMs.
  * - tap: a short press that isn't the first half of a double-tap.
  */
-export type Gesture = "tap" | "double" | "long";
+export type Gesture = "tap" | "double" | "triple" | "long";
 
 interface SlotState {
   downAt: number | null;
@@ -18,6 +18,8 @@ interface SlotState {
   longFired: boolean;
   singleTimer: ReturnType<typeof setTimeout> | null;
   lastTapAt: number;
+  /** Length of the current tap chain, for double/triple recognition. */
+  tapCount: number;
 }
 
 export interface GestureConfig {
@@ -38,7 +40,7 @@ export class GestureRecognizer {
   private state(slot: Slot): SlotState {
     let s = this.slots.get(slot);
     if (!s) {
-      s = { downAt: null, longTimer: null, longFired: false, singleTimer: null, lastTapAt: 0 };
+      s = { downAt: null, longTimer: null, longFired: false, singleTimer: null, lastTapAt: 0, tapCount: 0 };
       this.slots.set(slot, s);
     }
     return s;
@@ -68,21 +70,33 @@ export class GestureRecognizer {
       s.downAt = null;
       return;
     }
-    // Short press → tap, with double-tap disambiguation.
+    // Short press → tap / double / triple. Double still fires the instant the
+    // second tap lands (focus must stay snappy); a third tap inside the window
+    // then adds "triple" on top of it, so the rare gesture costs the common
+    // one nothing.
     const at = this.now();
     s.downAt = null;
-    if (s.singleTimer && at - s.lastTapAt <= this.cfg.doubleTapMs) {
+    const chain = s.tapCount > 0 && at - s.lastTapAt <= this.cfg.doubleTapMs ? s.tapCount + 1 : 1;
+    s.tapCount = chain;
+    s.lastTapAt = at;
+    if (s.singleTimer) {
       clearTimeout(s.singleTimer);
       s.singleTimer = null;
-      s.lastTapAt = 0;
+    }
+    if (chain === 1) {
+      s.singleTimer = setTimeout(() => {
+        s.singleTimer = null;
+        s.tapCount = 0;
+        this.emit(slot, "tap");
+      }, this.cfg.doubleTapMs);
+      return;
+    }
+    if (chain === 2) {
       this.emit(slot, "double");
       return;
     }
-    s.lastTapAt = at;
-    if (s.singleTimer) clearTimeout(s.singleTimer);
-    s.singleTimer = setTimeout(() => {
-      s.singleTimer = null;
-      this.emit(slot, "tap");
-    }, this.cfg.doubleTapMs);
+    s.tapCount = 0; // chain complete — a 4th tap starts fresh
+    s.lastTapAt = 0;
+    this.emit(slot, "triple");
   }
 }

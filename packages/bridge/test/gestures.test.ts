@@ -45,6 +45,29 @@ describe("GestureRecognizer", () => {
     expect(events).toEqual([{ slot: 0, g: "long" }]);
   });
 
+  it("three quick presses → triple, riding the double it already fired", () => {
+    const { r, events } = setup();
+    const quickTap = () => { r.down(0); vi.advanceTimersByTime(60); r.up(0); vi.advanceTimersByTime(80); };
+    quickTap();
+    quickTap();
+    quickTap();
+    // Double stays instant (focus must not lag); triple lands on top of it.
+    expect(events).toEqual([{ slot: 0, g: "double" }, { slot: 0, g: "triple" }]);
+    vi.advanceTimersByTime(400);
+    expect(events).toHaveLength(2); // no trailing tap
+  });
+
+  it("a slow third press starts a fresh chain instead of a triple", () => {
+    const { r, events } = setup();
+    r.down(0); vi.advanceTimersByTime(60); r.up(0); vi.advanceTimersByTime(80);
+    r.down(0); vi.advanceTimersByTime(60); r.up(0);
+    expect(events).toEqual([{ slot: 0, g: "double" }]);
+    vi.advanceTimersByTime(400); // gap exceeds the window
+    r.down(0); vi.advanceTimersByTime(60); r.up(0);
+    vi.advanceTimersByTime(400);
+    expect(events).toEqual([{ slot: 0, g: "double" }, { slot: 0, g: "tap" }]);
+  });
+
   it("keeps slots independent", () => {
     const { r, events } = setup();
     r.down(0); vi.advanceTimersByTime(500); // slot 0 long

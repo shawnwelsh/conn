@@ -119,6 +119,7 @@ export class DeckController {
           return;
         }
         if (gesture === "long") return this.beginMove(this.registry.bySlot(slot)?.sessionId);
+        if (gesture === "triple") return void this.row1TripleTap(slot);
         if (gesture === "double") return void this.row1DoubleTap(slot);
         return this.row1Tap(slot);
     }
@@ -134,6 +135,15 @@ export class DeckController {
     if (!session) return;
     const ok = await this.delivery.focus(session);
     this.log.info({ slot, session: session.sessionId, ok }, "focus");
+  }
+
+  /** Triple-tap a session key = the final say on its name. Rare gesture for a
+   * rare act; the double-tap focus it rides in on is a harmless side effect. */
+  private async row1TripleTap(slot: Slot): Promise<void> {
+    const session = this.registry.targetSlot(slot);
+    if (!session) return;
+    this.log.info({ slot, session: session.sessionId }, "rename: triple-tap");
+    await this.renameToggle(session);
   }
 
   // --- Pager (browse overflow → pick into slot #1) ---
@@ -486,7 +496,7 @@ export class DeckController {
   /** Rename key: tap to dictate a name for the targeted session, tap again
    * to stop early. Renames the deck branch when it owns one (so the PR gets
    * the good name too), else sets a display-only override. */
-  private async renameToggle(): Promise<void> {
+  private async renameToggle(explicit?: SessionEntry): Promise<void> {
     const stt = this.stt;
     if (!stt) return;
     if (this.renameActive) return this.renameFinish();
@@ -496,7 +506,7 @@ export class DeckController {
       return;
     }
     if (stt.status !== "ready") return; // busy with another dictation
-    const target = this.registry.targetedSession;
+    const target = explicit ?? this.registry.targetedSession;
     if (!target) {
       this.log.warn("rename ignored: no targeted session");
       return;
@@ -536,21 +546,31 @@ export class DeckController {
       return;
     }
     const branch = gitBranch(target.cwd);
+    let viaBranch = false;
     if (isDeckBranch(branch)) {
       // Rename the real artifact; the 30s label sweep would catch it anyway,
       // but refresh now so the key updates immediately.
-      const ok = await renameDeckBranch(target.cwd, branch!, `deck/${named.slug}`, this.log);
-      if (ok) {
+      viaBranch = await renameDeckBranch(target.cwd, branch!, `deck/${named.slug}`, this.log);
+      if (viaBranch) {
         this.registry.refreshLabels();
         this.log.info({ session: target.sessionId, branch: `deck/${named.slug}` }, "rename: applied via branch");
-        return;
       }
     }
-    // Not ours to rewrite (real feature branch, non-git dir, desktop app) or
-    // the rename failed → name the button only.
-    this.registry.setLabelOverride(target.sessionId, named.label);
-    this.onSessionRenamed?.(target);
-    this.log.info({ session: target.sessionId, label: named.label }, "rename: applied as label override");
+    if (!viaBranch) {
+      // Not ours to rewrite (real feature branch, non-git dir, desktop app) or
+      // the rename failed → name the button only.
+      this.registry.setLabelOverride(target.sessionId, named.label);
+      this.onSessionRenamed?.(target);
+      this.log.info({ session: target.sessionId, label: named.label }, "rename: applied as label override");
+    }
+    // Carry the name into Claude Code itself so the conversation, the branch,
+    // and the button all agree. Console only: `/rename` has to land in THIS
+    // session, and only console sessions are targeted exactly (a desktop send
+    // would retitle whichever conversation happens to be visible).
+    if (target.windowKind === "console") {
+      const ok = await this.typeSubmit(target, `/rename ${named.label}`);
+      this.log.info({ session: target.sessionId, name: named.label, ok }, "rename: pushed /rename to the session");
+    }
   }
 
   /** Row 3: PTT / interrupt / globals; the Page key flips global pages. */
