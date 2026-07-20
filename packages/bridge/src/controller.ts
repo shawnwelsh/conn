@@ -337,6 +337,16 @@ export class DeckController {
       }
     } else if (entry.kind === "builtin" && entry.id === "model") {
       ok = await this.cycleModel(target);
+    } else if (entry.kind === "builtin" && entry.id === "sendname") {
+      // Push the button's name into Claude Code — the manual half of the
+      // rename sync, for when the deck and the conversation drifted apart.
+      // Console only: `/rename` must land in THIS session, and a desktop send
+      // would retitle whichever conversation happens to be visible.
+      if (target.windowKind === "console") {
+        ok = await this.typeSubmit(target, `/rename ${target.labelBase}`);
+      } else {
+        this.log.warn({ session: target.sessionId }, "sendname ignored: desktop session isn't targeted exactly");
+      }
     } else if (entry.kind === "text") {
       ok = await this.typeSubmit(target, entry.text);
     }

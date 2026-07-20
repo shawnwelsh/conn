@@ -150,6 +150,47 @@ describe("label precedence: deck rename > /rename > branch", () => {
   });
 });
 
+describe('"sendname" command (manual name sync)', () => {
+  function setup(kind: "console" | "desktop") {
+    const r = new SessionRegistry(5);
+    if (kind === "console") r.registerPendingLaunch({ cwd: "C:\\dev\\x", pid: 9, hwnd: 7, at: Date.now() });
+    r.ensure({ session_id: "s1", cwd: "C:\\dev\\x", hook_event_name: "SessionStart" });
+    r.setLabelOverride("s1", "hosting rework");
+    const layer: DeckLayerState = {
+      row1: initialRow1(), row2: "idle", row2Cmd: initialRow2Cmd(), row3Page: 0, controls: initialControls(),
+    };
+    const sent: string[] = [];
+    const adapter = new NoopAdapter(() => {});
+    adapter.sendText = async (_s, t) => { sent.push(`text:${t}`); return true; };
+    adapter.sendKey = async (_s, k) => { sent.push(`key:${k}`); return true; };
+    const c = new DeckController(r, layer, adapter, cfg, noopLog, () => {});
+    c.setCommands({ all: () => [{ kind: "builtin", id: "sendname" }], move: () => {} });
+    return { r, c, sent, layer };
+  }
+
+  it("types /rename with the button's name into a console session", async () => {
+    const { c, sent } = setup("console");
+    (c as any).row2(0);
+    await vi.waitFor(() => expect(sent).toEqual(["text:/rename hosting rework", "key:enter"]));
+  });
+
+  it("refuses on a desktop session (would retitle the visible conversation)", async () => {
+    const { c, sent } = setup("desktop");
+    (c as any).row2(0);
+    await new Promise((r) => setTimeout(r, 20));
+    expect(sent).toEqual([]);
+  });
+
+  it("renders the name it would send, and greys out for desktop", () => {
+    const con = setup("console");
+    expect(computeTiles(con.r, con.layer, cfg, [{ kind: "builtin", id: "sendname" }], false)[5])
+      .toMatchObject({ text: "Send name", subtext: "hosting rework", state: "command" });
+    const desk = setup("desktop");
+    expect(computeTiles(desk.r, desk.layer, cfg, [{ kind: "builtin", id: "sendname" }], false)[5])
+      .toMatchObject({ text: "Send name", subtext: "console only", state: "blank" });
+  });
+});
+
 describe("Rename key (globals page 2)", () => {
   let registry: SessionRegistry;
   let layer: DeckLayerState;

@@ -82,8 +82,9 @@ aesthetics). Sessions you start yourself in terminals remain
   `commands.json` (up to 15 entries; `"mode"`/`"model"` builtins plus slash
   commands sent as type+Enter). First 4 show; key 10 pages the rest — tap in
   the pager **executes**, long-press starts an insert-before move that
-  persists back to the file. Hand-edit `commands.json` any time; it
-  hot-reloads. Morph layers (permission / question / suggestion) override
+  persists back to the file. Entries are slash-command strings,
+  `{label, text}` pairs, or the builtins `mode` / `model` / `sendname`.
+  Hand-edit `commands.json` any time; it hot-reloads. Morph layers (permission / question / suggestion) override
   this row automatically.
 - **Row 3** — PTT (hold-to-talk) · Send · Esc (interrupt) · New (worktree
   console) · Page. Page flips to a second globals page (Mode picker menu —
@@ -138,6 +139,10 @@ session and the deck adopts it within 30s, reading Claude Code's own session
 metadata. Precedence is **deck rename → `/rename` → git branch → folder**,
 so a triple-tap is always the final word. (`/color` can't be mirrored — it
 sets the prompt bar for the session but isn't persisted anywhere readable.)
+
+To re-sync at any time — after a branch rename, or when the two drifted —
+put **`"sendname"`** in `commands.json`: the key shows the name it would
+send and types `/rename <name>` into the targeted console session.
 
 ### Deny with a dictated reason
 

@@ -6,5 +6,6 @@
   { "label": "Commit", "text": "/save-work" },
   "/status",
   "/context",
-  "/usage"
+  "/usage",
+  "sendname"
 ]

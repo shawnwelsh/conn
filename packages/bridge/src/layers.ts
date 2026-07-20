@@ -111,6 +111,12 @@ export function commandTile(
       ? { text: "Model", subtext: "/model", state: "command" }
       : { text: "Model", subtext: "cycle", state: "command", badge: String(controls.modelNext) };
   }
+  if (entry.kind === "builtin" && entry.id === "sendname") {
+    // Shows what it would send, so the sync is never a guess.
+    return targeted?.windowKind === "console"
+      ? { text: "Send name", subtext: targeted.labelBase, state: "command" }
+      : { text: "Send name", subtext: "console only", state: "blank" };
+  }
   const t = entry as Extract<CommandEntry, { kind: "text" }>;
   return { text: t.label, subtext: t.label === t.text ? undefined : t.text, state: "command" };
 }

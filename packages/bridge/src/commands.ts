@@ -6,6 +6,8 @@ import type { Logger } from "./log.js";
  *
  * File format: a JSON array, up to 15 entries, in deck order:
  *   - "mode"  / "model"          → the builtin cycle keys
+ *   - "sendname"                 → push the button's name into the session
+ *                                  (`/rename <name>`, console sessions only)
  *   - "/compact"                 → text command, label = the text itself
  *   - { "label": "Commit", "text": "/save-work" } → text command, custom face
  *
@@ -18,8 +20,10 @@ import type { Logger } from "./log.js";
 export const MAX_COMMANDS = 15;
 
 export type CommandEntry =
-  | { kind: "builtin"; id: "mode" | "model" }
+  | { kind: "builtin"; id: "mode" | "model" | "sendname" }
   | { kind: "text"; label: string; text: string };
+
+const BUILTIN_IDS = ["mode", "model", "sendname"] as const;
 
 /** What the controller needs from a command lineup (CommandStore implements
  * this; tests can pass a plain object). */
@@ -37,13 +41,16 @@ export const DEFAULT_COMMANDS_JSON: unknown[] = [
   "/status",
   "/context",
   "/usage",
+  "sendname",
 ];
 
 function parseEntry(raw: unknown): CommandEntry | null {
   if (typeof raw === "string") {
     const s = raw.trim();
     if (!s) return null;
-    if (s === "mode" || s === "model") return { kind: "builtin", id: s };
+    if ((BUILTIN_IDS as readonly string[]).includes(s)) {
+      return { kind: "builtin", id: s as (typeof BUILTIN_IDS)[number] };
+    }
     return { kind: "text", label: s, text: s };
   }
   if (raw && typeof raw === "object") {
