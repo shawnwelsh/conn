@@ -1,4 +1,4 @@
-import type { TileSpec, Row2Layer } from "@claude-deck/shared";
+import type { TileSpec, Row2Layer } from "@belay/shared";
 import type { SessionRegistry, SessionEntry } from "./registry.js";
 import type { DeckConfig } from "./config.js";
 import { activeSuggestion } from "./suggestions.js";

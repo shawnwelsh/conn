@@ -137,7 +137,7 @@ describe("provisional launch keys (no SessionStart at interactive launch)", () =
 });
 
 describe("live label refresh (branch rename → button)", () => {
-  const repo = join(tmpdir(), `claude-deck-labelrefresh-${process.pid}`);
+  const repo = join(tmpdir(), `belay-labelrefresh-${process.pid}`);
 
   beforeAll(() => {
     // A fake repo: .git dir with a HEAD file is all deriveLabel reads.

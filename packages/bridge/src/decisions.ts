@@ -161,7 +161,7 @@ function buildDecisionBody(
       return decision({ behavior: "allow" });
     case "always-allow": {
       const rule = deriveAlwaysRule(pending);
-      if (!rule) return decision({ behavior: "allow", message: "claude-deck: allowed once (no narrow rule derivable)" });
+      if (!rule) return decision({ behavior: "allow", message: "belay: allowed once (no narrow rule derivable)" });
       // Schema verified against the CC 2.1.211 binary: updatedPermissions is
       // a PermissionUpdate[] discriminated on `type`; the addRules variant is
       // { type, rules: [{toolName, ruleContent}], behavior, destination }.
@@ -180,11 +180,11 @@ function buildDecisionBody(
       });
     }
     case "deny":
-      return decision({ behavior: "deny", message: message ?? "Denied from claude-deck" });
+      return decision({ behavior: "deny", message: message ?? "Denied from belay" });
     case "deny-reason":
       // The dictated reason reaches Claude as structured feedback through the
       // still-held hook response; no/empty transcription → the canned deny.
-      return decision({ behavior: "deny", message: message ?? "Denied from claude-deck" });
+      return decision({ behavior: "deny", message: message ?? "Denied from belay" });
     case "show-on-screen":
       return {}; // defer → Claude Code's normal dialog appears
   }

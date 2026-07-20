@@ -10,7 +10,7 @@ import type { DeckConfig } from "../src/config.js";
 import { NoopAdapter } from "../src/delivery/adapter.js";
 
 const noopLog = { info: () => {}, warn: () => {}, debug: () => {} } as never;
-const dir = join(tmpdir(), `claude-deck-commands-${process.pid}`);
+const dir = join(tmpdir(), `belay-commands-${process.pid}`);
 const file = join(dir, "commands.json");
 
 beforeEach(() => mkdirSync(dir, { recursive: true }));

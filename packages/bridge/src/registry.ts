@@ -1,7 +1,7 @@
 import { EventEmitter } from "node:events";
 import { basename, join, resolve, isAbsolute, dirname } from "node:path";
 import { readFileSync, statSync } from "node:fs";
-import type { SessionStatus } from "@claude-deck/shared";
+import type { SessionStatus } from "@belay/shared";
 import { RingBuffer } from "./log.js";
 import type { AnyHookEvent } from "./hookTypes.js";
 

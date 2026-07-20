@@ -47,7 +47,7 @@ const decisions = {
   deny: {
     hookSpecificOutput: {
       hookEventName: "PermissionRequest",
-      decision: { behavior: "deny", message: "Denied by claude-deck probe" },
+      decision: { behavior: "deny", message: "Denied by belay probe" },
     },
   },
 };

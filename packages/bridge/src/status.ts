@@ -1,4 +1,4 @@
-import type { SessionStatus } from "@claude-deck/shared";
+import type { SessionStatus } from "@belay/shared";
 import type { AnyHookEvent } from "./hookTypes.js";
 
 /**

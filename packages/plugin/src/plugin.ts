@@ -1,5 +1,5 @@
 /**
- * claude-deck Elgato plugin — deliberately thin, by design and by contract:
+ * belay Elgato plugin — deliberately thin, by design and by contract:
  * it renders whatever the bridge sends and reports raw key presses back.
  * It speaks the SAME WebSocket protocol as the web debug deck; anything the
  * plugin can do, the web deck can do, and vice versa.
@@ -70,7 +70,7 @@ function slotOf(payload: unknown): number | null {
   return coords.row * COLS + coords.column;
 }
 
-@action({ UUID: "com.shawnwelsh.claude-deck.key" })
+@action({ UUID: "com.shawnwelsh.belay.key" })
 class DeckKey extends SingletonAction {
   override onWillAppear(ev: WillAppearEvent): void {
     const slot = slotOf(ev.payload);

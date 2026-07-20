@@ -1,4 +1,4 @@
-; claude-deck delivery daemon (AutoHotkey v2)
+; belay delivery daemon (AutoHotkey v2)
 ; Spawned once by the bridge; commands arrive as pipe-delimited lines on stdin:
 ;   focus|<winQuery>
 ;   text|<winQuery>|<literal text>            (text may contain '|' — join tail)

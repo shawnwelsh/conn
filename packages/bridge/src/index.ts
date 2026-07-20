@@ -22,7 +22,7 @@ import { registerApiRoutes } from "./http/api.js";
 import { livenessSweep } from "./liveness.js";
 import { QUESTION_OPTIONS_PER_PAGE } from "./layers.js";
 import type { AskUserQuestionInput } from "./hookTypes.js";
-import type { KeyRender } from "@claude-deck/shared";
+import type { KeyRender } from "@belay/shared";
 
 const cfg = loadConfig();
 const log = createLogger(cfg);
@@ -302,7 +302,7 @@ sockets = new DeckSocketServer(
 );
 pushRender();
 
-log.info({ port: cfg.port }, `claude-deck bridge up — web deck at http://127.0.0.1:${cfg.port}/`);
+log.info({ port: cfg.port }, `belay bridge up — web deck at http://127.0.0.1:${cfg.port}/`);
 
 // Periodic sweep: re-derive labels (branch renames reach the buttons), skull
 // and demote dead-window sessions (3h TTL sweep), refresh stale dimming.

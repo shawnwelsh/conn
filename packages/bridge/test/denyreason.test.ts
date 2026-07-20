@@ -106,7 +106,7 @@ describe("deny-with-dictated-reason", () => {
     await flush();
     flow.press();
     const d = decisionOf(await resolved);
-    expect(d).toEqual({ behavior: "deny", message: "Denied from claude-deck" });
+    expect(d).toEqual({ behavior: "deny", message: "Denied from belay" });
   });
 
   it("sidecar not ready → immediate canned deny, no recording", async () => {
@@ -114,7 +114,7 @@ describe("deny-with-dictated-reason", () => {
     const resolved = store.hold(permissionEvent("s1"));
     flow.press();
     const d = decisionOf(await resolved);
-    expect(d).toEqual({ behavior: "deny", message: "Denied from claude-deck" });
+    expect(d).toEqual({ behavior: "deny", message: "Denied from belay" });
     expect(stt.started).toBe(0);
     expect(layer.permissionRec).toBeUndefined();
   });
@@ -125,7 +125,7 @@ describe("deny-with-dictated-reason", () => {
     const resolved = store.hold(permissionEvent("s1"));
     flow.press();
     const d = decisionOf(await resolved);
-    expect(d).toEqual({ behavior: "deny", message: "Denied from claude-deck" });
+    expect(d).toEqual({ behavior: "deny", message: "Denied from belay" });
   });
 
   it("another key settling the decision mid-recording cancels the dictation", async () => {

@@ -3,7 +3,7 @@ import { createCanvas } from "@napi-rs/canvas";
 import { writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 
-const dir = join("packages", "plugin", "com.shawnwelsh.claude-deck.sdPlugin", "imgs");
+const dir = join("packages", "plugin", "com.shawnwelsh.belay.sdPlugin", "imgs");
 mkdirSync(dir, { recursive: true });
 
 function icon(size: number): Buffer {

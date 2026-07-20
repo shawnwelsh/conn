@@ -17295,7 +17295,7 @@ function slotOf(payload) {
   if (!coords) return null;
   return coords.row * COLS + coords.column;
 }
-var DeckKey = @action({ UUID: "com.shawnwelsh.claude-deck.key" }) class extends SingletonAction {
+var DeckKey = @action({ UUID: "com.shawnwelsh.belay.key" }) class extends SingletonAction {
   onWillAppear(ev) {
     const slot = slotOf(ev.payload);
     if (slot === null) return;

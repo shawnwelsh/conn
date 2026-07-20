@@ -1,5 +1,5 @@
 {
-  "name": "claude-deck",
+  "name": "belay",
   "version": "0.1.0",
   "private": true,
   "description": "Stream Deck control surface for Claude Code — bridge service, web debug deck, and Elgato plugin",
@@ -8,7 +8,7 @@
     "packages/*"
   ],
   "scripts": {
-    "bridge": "npm run dev -w @claude-deck/bridge",
+    "bridge": "npm run dev -w @belay/bridge",
     "probe": "node scripts/probe-hooks.mjs",
     "test": "npm test --workspaces --if-present"
   },

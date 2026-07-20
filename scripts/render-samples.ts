@@ -6,14 +6,14 @@
 import { writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { renderTile, renderBanner } from "../packages/bridge/src/render/tile.js";
-import type { TileSpec } from "@claude-deck/shared";
+import type { TileSpec } from "@belay/shared";
 
 const outDir = process.argv[2] ?? "sample-tiles";
 mkdirSync(outDir, { recursive: true });
 
 const samples: Array<[string, TileSpec]> = [
   ["status-thinking", { text: "revops-platform", subtext: "thinking", state: "thinking", selected: true }],
-  ["status-waiting", { text: "claude-deck", subtext: "waiting", state: "waiting" }],
+  ["status-waiting", { text: "belay", subtext: "waiting", state: "waiting" }],
   ["status-error", { text: "email-agent", subtext: "error", state: "error" }],
   ["status-done", { text: "revops-platform", subtext: "done", state: "done" }],
   ["answer-allow", { text: "Allow", state: "answer" }],

@@ -1,6 +1,6 @@
 import { WebSocketServer, WebSocket } from "ws";
 import type { Server } from "node:http";
-import { PROTOCOL_VERSION, GRID, type ServerMessage, type ClientMessage, type KeyRender } from "@claude-deck/shared";
+import { PROTOCOL_VERSION, GRID, type ServerMessage, type ClientMessage, type KeyRender } from "@belay/shared";
 import type { Logger } from "../log.js";
 
 /**

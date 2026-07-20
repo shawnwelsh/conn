@@ -1,4 +1,4 @@
-# claude-deck
+# belay
 
 A 15-key Elgato Stream Deck (3×5) as a physical control surface for multiple
 concurrent Claude Code sessions on Windows: live per-session status lights,
@@ -186,10 +186,10 @@ connection failure, and timeout are all non-blocking errors.
 
 1. Install Stream Deck software ≥ 7.1 (bundles the plugin Node runtime; SDK
    dev tooling needs Node 24 locally).
-2. `npm run build -w @claude-deck/plugin`
-3. `npx -y @elgato/cli link packages/plugin/com.shawnwelsh.claude-deck.sdPlugin`
+2. `npm run build -w @belay/plugin`
+3. `npx -y @elgato/cli link packages/plugin/com.shawnwelsh.belay.sdPlugin`
    (dev-links the plugin into Stream Deck; `streamdeck restart
-   com.shawnwelsh.claude-deck` after rebuilds).
+   com.shawnwelsh.belay` after rebuilds).
 4. Create a 3×5 profile and place the single "Deck Key" action on all 15
    keys — each instance derives its role from its position; zero per-key
    configuration.
@@ -199,7 +199,7 @@ connection failure, and timeout are all non-blocking errors.
 Task Scheduler (no extra tools): create a task triggered "At log on" running
 `"C:\Program Files\nodejs\node.exe" C:\dev\claude-deck\node_modules\tsx\dist\cli.mjs C:\dev\claude-deck\packages\bridge\src\index.ts`,
 "Run only when user is logged on" (it types into your windows, so it must run
-in your interactive session). Alternatively NSSM: `nssm install claude-deck-bridge <same command>` —
+in your interactive session). Alternatively NSSM: `nssm install belay-bridge <same command>` —
 but note NSSM services run in session 0 by default, which breaks window
 focus/keystrokes; prefer Task Scheduler here.
 
