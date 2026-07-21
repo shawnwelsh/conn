@@ -24,6 +24,7 @@ const cfg: DeckConfig = {
   suggestionAcceptText: "yes",
   desktopSubmitDelayMs: 250,
   ptt: { enabled: false, python: "python", model: "distil-small.en", language: "en", maxSeconds: 60, reasonMaxSeconds: 10, renameMaxSeconds: 10 },
+  optionReader: { enabled: false, model: "haiku", timeoutSeconds: 20 },
   log: { level: "info", dir: "logs" },
 };
 

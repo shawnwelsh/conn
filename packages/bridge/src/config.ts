@@ -80,6 +80,22 @@ export interface DeckConfig {
     /** Recording auto-stops (and types, never sends) after this long. */
     maxSeconds: number;
   };
+  /**
+   * Reading a prose ending with a cheap model so its choices become real keys.
+   *
+   * OFF by default, deliberately: it spawns Claude Code, which draws on YOUR
+   * subscription usage (or bills your API key). That is the owner's call to
+   * make, not a default to inherit. It is gated even when on — see
+   * looksEnumerated — so it only runs on messages that plausibly offer a
+   * choice, never on every turn.
+   */
+  optionReader: {
+    enabled: boolean;
+    /** Model alias for the classification: haiku is ample and cheapest. */
+    model: string;
+    /** Give up after this long and fall back to the reading surface. */
+    timeoutSeconds: number;
+  };
   log: { level: string; dir: string };
 }
 
@@ -120,6 +136,9 @@ export function loadConfig(): DeckConfig {
     throw new Error('config: consoleHost must be "wt" or "conhost"');
   }
   cfg.newSessionWorktrees ??= true;
+  cfg.optionReader ??= { enabled: false, model: "haiku", timeoutSeconds: 20 };
+  cfg.optionReader.model ||= "haiku";
+  cfg.optionReader.timeoutSeconds ||= 20;
   cfg.worktreeTimeoutSeconds ??= 90;
   cfg.suggestionAcceptText ??= "yes";
   cfg.desktopSubmitDelayMs ??= 250;

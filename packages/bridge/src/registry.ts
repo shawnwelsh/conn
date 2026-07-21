@@ -43,6 +43,12 @@ export interface SessionEntry {
   /** Trailing offer from the last finished turn ("Want me to X?"),
    * surfaced on the deck for console sessions. Cleared on new activity. */
   suggestion?: string;
+  /** The option reader is reading this turn's ending right now — the keys say
+   * so, because a row that silently rearranges ~13s later invites a mispress. */
+  optionsPending?: boolean;
+  /** Choices the option reader found in the prose, or its verdict that they
+   * don't fit on keys. Cleared with `suggestion`. */
+  suggestionOptions?: { question: string; options: string[]; viewInWindow?: boolean };
   /** The bound window died (no clean SessionEnd) — rendered with a skull,
    * demoted to the end of the overflow line, swept after a TTL. */
   windowDead?: boolean;

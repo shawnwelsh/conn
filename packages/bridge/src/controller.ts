@@ -298,6 +298,30 @@ export class DeckController {
     // session so you can read the context before deciding.
     const suggestion = activeSuggestion(this.registry, this.layer);
     if (suggestion) {
+      const read = suggestion.session.suggestionOptions;
+      if (read?.viewInWindow) {
+        // Key 6 is the advice itself; the banner keys do the same thing,
+        // since "go and read it" is the only action on this face.
+        void this.delivery.focus(suggestion.session);
+        return;
+      }
+      if (read?.options.length) {
+        const chosen = read.options[index];
+        if (chosen === undefined) return void this.pttToggle(); // key 10 = Talk
+        void (async () => {
+          // Send the LABEL, not an index: the label is the message's own
+          // wording, so the reply reads as an answer rather than a bare "2"
+          // whose meaning depends on a numbering the session never printed.
+          const ok = await this.typeSubmit(suggestion.session, chosen);
+          if (ok) {
+            suggestion.session.suggestion = undefined; // consumed
+            suggestion.session.suggestionOptions = undefined;
+            this.onLayerChanged();
+          }
+          this.log.info({ session: suggestion.session.sessionId, option: chosen, ok }, "option chosen from deck");
+        })();
+        return;
+      }
       if (needsSpokenAnswer(suggestion.text)) {
         // No button answers "A, or B?" — the whole row is the question, and
         // any key talks. Tap, speak, tap to stop (or press Send to stop,

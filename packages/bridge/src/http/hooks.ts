@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import type { SessionRegistry } from "../registry.js";
 import { nextStatus } from "../status.js";
 import { extractSuggestion } from "../suggestions.js";
+import { isSidecarEvent } from "../optionReader.js";
 import type { AnyHookEvent } from "../hookTypes.js";
 import type { Logger } from "../log.js";
 
@@ -23,6 +24,8 @@ export interface HookHandlers {
   /** Fires after every /hooks/event ingest — used to auto-revert the
    * question layer when its session moves on (answered on screen). */
   onAnyEvent?: (sessionId: string, eventName: string) => void;
+  /** A turn ended with a suggestion worth reading for choices. */
+  onTurnEnded?: (sessionId: string, lastMessage: string) => void;
 }
 
 export function registerHookRoutes(
@@ -34,9 +37,14 @@ export function registerHookRoutes(
   app.post("/hooks/event", async (req) => {
     const event = req.body as AnyHookEvent;
     log.info({ hook: event.hook_event_name, session: event.session_id, payload: event }, "hook");
+    if (isSidecarEvent(event.cwd)) return {}; // our own classifier talking
     applyEvent(registry, event);
     if (event.hook_event_name === "SessionEnd") handlers.onSessionEnd?.(event.session_id);
     handlers.onAnyEvent?.(event.session_id, event.hook_event_name);
+    if (event.hook_event_name === "Stop") {
+      const last = event["last_assistant_message"];
+      if (typeof last === "string" && last) handlers.onTurnEnded?.(event.session_id, last);
+    }
     return {};
   });
 
@@ -53,6 +61,11 @@ export function registerHookRoutes(
     const event = req.body as AnyHookEvent;
     log.info({ hook: "PermissionRequest", session: event.session_id, payload: event }, "hook");
     applyEvent(registry, event);
+    // NEVER hold the sidecar's own request: it would wait on a deck press for
+    // a decision nobody can see, while the bridge waits on the sidecar. Tools
+    // are disabled for it, so this should be unreachable — which is exactly
+    // why it's worth a guard rather than an assumption.
+    if (isSidecarEvent(event.cwd)) return {};
     if (!handlers.onPermissionRequest) return {};
     return handlers.onPermissionRequest(event);
   });
@@ -60,6 +73,12 @@ export function registerHookRoutes(
 
 function applyEvent(registry: SessionRegistry, event: AnyHookEvent): void {
   if (!event?.session_id) return;
+  // The option-reader sidecar is Claude Code too, and the user's hooks are
+  // user-scope, so it reports its own lifecycle back to the bridge that
+  // spawned it. Discard it by cwd — otherwise the deck grows keys for its own
+  // machinery, and a sidecar tool call could deadlock on its parent's
+  // permission long-poll.
+  if (isSidecarEvent(event.cwd)) return;
 
   if (event.hook_event_name === "SessionEnd") {
     const existing = registry.get(event.session_id);
@@ -86,8 +105,11 @@ function applyEvent(registry: SessionRegistry, event: AnyHookEvent): void {
   // option"; any new activity invalidates it.
   if (event.hook_event_name === "Stop") {
     entry.suggestion = extractSuggestion(event["last_assistant_message"] as string | undefined) ?? undefined;
+    entry.suggestionOptions = undefined; // belongs to the turn that just ended
   } else if (["UserPromptSubmit", "PostToolUse", "PostToolUseFailure", "PermissionRequest"].includes(event.hook_event_name)) {
     entry.suggestion = undefined;
+    entry.suggestionOptions = undefined;
+    entry.optionsPending = false;
   }
 
   // Subagent activity keeps the parent session alive/thinking but never

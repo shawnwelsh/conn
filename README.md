@@ -84,6 +84,33 @@ supersedes this with true per-pane targeting.
 
 ### Console sessions — full per-session control
 
+### Turning prose into buttons (`optionReader`, off by default)
+
+When a turn ends by offering several courses of action in ordinary sentences —
+"I can add a fourth rule, widen the APAC gate, or leave it deferred" — the deck
+can read that with a cheap model and put **one key on each option**. Pressing a
+key sends that option's own wording. If the choice is real but carries
+trade-offs that four-word labels would misrepresent, the reader says so and the
+key becomes **View in window**, which focuses the session instead of faking a
+button.
+
+It is **off by default** and stays that way unless you opt in: it spawns Claude
+Code, so it draws on *your* subscription usage (or bills your API key). That's
+the owner's call. Even when on it is gated — it only runs on messages that
+plausibly enumerate alternatives, never on every turn, because yes/no offers
+and open questions are already handled for free. Any failure (timeout, refusal,
+nonsense) falls back to the plain reading surface, which is always correct.
+
+```jsonc
+"optionReader": { "enabled": true, "model": "haiku", "timeoutSeconds": 25 }
+```
+
+Expect ~10-15s before the keys appear; the reading surface shows immediately
+and says "reading for options…" while it works. The sidecar runs in a neutral
+temp directory so it doesn't inherit a repo's `CLAUDE.md`, runs with all tools
+disabled, and the bridge discards its hook events by cwd — otherwise the
+classifier would show up as a session on your own deck.
+
 The **New** key (row 3) spawns `newSessionCommand` (default `claude`) in a
 fresh console window. With `newSessionWorktrees: true` (default) it first
 creates a **fresh git worktree** in the targeted session's repo — branch

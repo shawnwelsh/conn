@@ -30,6 +30,7 @@ import { registerHookRoutes } from "./http/hooks.js";
 import { registerApiRoutes } from "./http/api.js";
 import { livenessSweep } from "./liveness.js";
 import { endsPendingQuestion } from "./status.js";
+import { ensureSidecarDir, looksEnumerated, readOptions } from "./optionReader.js";
 import { QUESTION_OPTIONS_PER_PAGE } from "./layers.js";
 import type { AskUserQuestionInput } from "./hookTypes.js";
 import type { KeyRender } from "@belay/shared";
@@ -189,6 +190,45 @@ function showQuestion(event: Parameters<typeof decisions.hold>[0]): void {
   registry.target(event.session_id);
   syncFlash(flashNeeded());
   pushRender();
+}
+
+/**
+ * A turn ended on prose that may put choices to you. Read it with the cheap
+ * model so those choices become keys.
+ *
+ * Fire-and-forget and heavily gated: off unless configured, console sessions
+ * only (accept types into a specific window), and only when the text looks
+ * like it enumerates alternatives — the free heuristics already handle yes/no
+ * offers and open questions, and on a subscription every call spends the
+ * owner's usage. Any failure leaves the plain reading surface, which is always
+ * a correct answer.
+ */
+async function readTurnOptions(sessionId: string, lastMessage: string): Promise<void> {
+  if (!cfg.optionReader.enabled) return;
+  const session = registry.get(sessionId);
+  if (!session || session.windowKind !== "console") return;
+  if (!session.suggestion) return; // nothing was offered
+  if (!looksEnumerated(lastMessage)) return;
+  session.optionsPending = true;
+  pushRender();
+  try {
+    const found = await readOptions(lastMessage, {
+      cwd: ensureSidecarDir(),
+      model: cfg.optionReader.model,
+      timeoutMs: cfg.optionReader.timeoutSeconds * 1000,
+      log,
+    });
+    // The turn may have moved on during the ~10s read — a new prompt clears
+    // `suggestion`, and attaching options to a superseded turn would put stale
+    // buttons under a live session.
+    if (found && registry.get(sessionId)?.suggestion === session.suggestion) {
+      session.suggestionOptions = found;
+      log.info({ session: sessionId, options: found.options, viewInWindow: found.viewInWindow }, "option reader");
+    }
+  } finally {
+    session.optionsPending = false;
+    pushRender();
+  }
 }
 
 function revertQuestion(): void {
@@ -368,6 +408,7 @@ registerHookRoutes(app, registry, log, {
   onPermissionRequest: (event) => decisions.hold(event),
   onSessionEnd: (sessionId) => decisions.releaseSession(sessionId),
   onQuestion: (event) => showQuestion(event),
+  onTurnEnded: (sessionId, lastMessage) => void readTurnOptions(sessionId, lastMessage),
   onAnyEvent: (sessionId, eventName) => {
     // Real activity from the asking session means the question was answered
     // (on screen or via the deck) or abandoned. Notification is NOT activity —

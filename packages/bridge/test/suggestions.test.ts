@@ -117,6 +117,62 @@ describe("suggestion layer gating + accept", () => {
     expect(activeSuggestion(r, layer)).toBeNull();
   });
 
+  it("prose options become one key each, and the press sends the label", async () => {
+    // The reader found three courses of action in the message's own words.
+    const e = consoleSession("c1", "Which way do you want it?");
+    e.suggestionOptions = {
+      question: "How should we handle the Japan gap?",
+      options: ["Add Japan regional rule", "Widen APAC gate", "Defer the decision"],
+    };
+    const tiles = computeTiles(r, layer, cfg);
+    expect(tiles.slice(5, 8).map((t) => t.text)).toEqual([
+      "Add Japan regional rule",
+      "Widen APAC gate",
+      "Defer the decision",
+    ]);
+    expect(tiles[8]!.state).toBe("blank"); // only three offered
+    expect(tiles[9]!.text).toBe("Talk"); // voice still available
+
+    const adapter = new RecordingAdapter();
+    const c = new DeckController(r, layer, adapter, cfg, noopLog, () => {});
+    (c as any).row2(1);
+    await flush();
+    // The LABEL, not "2": a bare index means nothing unless the session
+    // happened to print that numbering.
+    expect(adapter.calls).toEqual(["text:Widen APAC gate", "key:enter"]);
+    expect(e.suggestion).toBeUndefined();
+  });
+
+  it("an un-compressible choice offers to open the window instead of faking buttons", async () => {
+    const e = consoleSession("c1", "Which way do you want it?");
+    e.suggestionOptions = {
+      question: "Three routes, each with different rollback exposure",
+      options: [],
+      viewInWindow: true,
+    };
+    const tiles = computeTiles(r, layer, cfg);
+    expect(tiles[5]!.text).toBe("View in window");
+    expect(tiles[6]!.bannerSpan).toBe(4);
+    expect(tiles[6]!.text).toContain("rollback exposure");
+
+    const adapter = new RecordingAdapter();
+    const c = new DeckController(r, layer, adapter, cfg, noopLog, () => {});
+    (c as any).row2(0);
+    await flush();
+    // Focus only — nothing is typed, because no answer was chosen.
+    expect(adapter.calls).toEqual(["focus"]);
+    expect(e.suggestion).toBe("Which way do you want it?");
+  });
+
+  it("says it is reading, so keys arriving ~10s later are not a surprise", () => {
+    const e = consoleSession("c1", "Patch the flow, or add a rule?");
+    e.optionsPending = true;
+    const tiles = computeTiles(r, layer, cfg);
+    expect(tiles[5]!.text).toContain("reading for options");
+    e.optionsPending = false;
+    expect(computeTiles(r, layer, cfg)[5]!.text).not.toContain("reading for options");
+  });
+
   it("an either/or question takes the whole row and answers by voice", async () => {
     const e = consoleSession("c1", "Should I run that as a separate cleanup, or leave it?");
     const adapter = new RecordingAdapter();

@@ -459,11 +459,39 @@ export function computeTiles(
     // Suggestion layer: the targeted console session finished with a
     // "pre-produced option" — Accept on key 6, the text bannered across 7-10.
     const s = activeSuggestion(registry, layer)!;
-    if (needsSpokenAnswer(s.text)) {
+    const read = s.session.suggestionOptions;
+    if (read?.viewInWindow) {
+      // The reader judged the choice real but too conditional to put on key
+      // faces. Say so, and make the key do the thing it's advising.
+      tiles.push({ text: "View in window", subtext: "too long for keys", state: "answer", icon: "resume" });
+      for (let i = 0; i < 4; i++) {
+        tiles.push({ text: read.question || s.text, state: "command", bannerSpan: 4, bannerIndex: i });
+      }
+    } else if (read?.options.length) {
+      // The prose offered alternatives; each is a key. Numbered, because the
+      // console lists them numbered too.
+      for (let i = 0; i < 4; i++) {
+        const opt = read.options[i];
+        tiles.push(
+          opt !== undefined
+            ? { text: opt, state: "answer", badge: String(i + 1) }
+            : { text: "", state: "blank" },
+        );
+      }
+      tiles.push({ text: "Talk", subtext: "answer aloud", state: "command", icon: "mic" });
+    } else if (needsSpokenAnswer(s.text)) {
       // Either/or: there's no button that answers it, so spend the whole row
       // on reading it. Any key starts dictation (see the controller).
+      const pending = s.session.optionsPending;
       for (let i = 0; i < 5; i++) {
-        tiles.push({ text: s.text, state: "command", bannerSpan: 5, bannerIndex: i });
+        tiles.push({
+          // Say the reader is working, so keys appearing ~10s later read as
+          // an upgrade rather than the row moving under your hand.
+          text: pending ? `${s.text}\n(reading for options…)` : s.text,
+          state: "command",
+          bannerSpan: 5,
+          bannerIndex: i,
+        });
       }
     } else {
       tiles.push({ text: "Accept", subtext: `sends "${cfg.suggestionAcceptText}"`, state: "answer" });

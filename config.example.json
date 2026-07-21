@@ -35,5 +35,10 @@
   "log": {
     "level": "info",
     "dir": "logs"
+  },
+  "optionReader": {
+    "enabled": false,
+    "model": "haiku",
+    "timeoutSeconds": 25
   }
 }
