@@ -273,7 +273,8 @@ export function computeTiles(
         : qTotal > 1 ? `${qIndex} of ${qTotal}`
         : undefined,
       state: asking?.status ?? "waiting",
-      badge: asking?.windowKind === "console" ? "›_" : undefined,
+      statusMark: asking?.status,
+      promptMark: asking?.windowKind === "console",
       selected: flashPhase,
       dead: asking?.windowDead,
     });
@@ -355,8 +356,11 @@ export function computeTiles(
         // agents branch never renders the origin key while one is up.
         subtext: undefined,
         state: session.status,
-        // Console sessions (own window, fully targetable) get a ›_ badge.
-        badge: session.windowKind === "console" ? "›_" : undefined,
+        // Status twice over — colour AND shape — so the row reads at a
+        // glance. Console sessions (own window, fully targetable) also carry
+        // a quiet ›_ in the opposite corner.
+        statusMark: session.status,
+        promptMark: session.windowKind === "console",
         selected: isMorphOrigin ? flashPhase : session.sessionId === targeted?.sessionId,
         dim: stale,
         dead: session.windowDead,

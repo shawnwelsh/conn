@@ -49,4 +49,17 @@ export interface TileSpec {
    * string on every slice). */
   bannerSpan?: number;
   bannerIndex?: number;
+  /**
+   * Draw the session's status as a SHAPE in the top-right, alongside the
+   * colour. Colour alone is one channel: harder to read at an angle, and
+   * "waiting" yellow vs "done" green sits on the most common colour-vision
+   * axis. `idle` deliberately draws nothing — no news, no mark.
+   */
+  statusMark?: SessionStatus;
+  /**
+   * Console session (own window, takes keystrokes) — a quiet ›_ in the
+   * BOTTOM-LEFT. You learn it once per session and stop consulting it, so it
+   * yields the busy corner to the status mark.
+   */
+  promptMark?: boolean;
 }

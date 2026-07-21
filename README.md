@@ -140,8 +140,12 @@ surfacing the wrong one is worse than surfacing nothing.
 
 ## Key layout
 
-- **Row 1** — agent slots (feature-name labels, status colors, targeting,
-  long-press move). At ≥6 sessions the last key becomes **Page** and the row
+- **Row 1** — agent slots (feature-name labels, targeting, long-press move).
+  Status shows twice over: the key **colour**, plus a **shape** in the corner
+  (dots = thinking, `!` = waiting on you, tick = done, `✕` = error, nothing =
+  idle) — colour alone is one channel, and waiting-yellow vs done-green sits
+  on the most common colour-vision axis. Console sessions carry a quiet `›_`
+  in the bottom-left. At ≥6 sessions the last key becomes **Page** and the row
   pages in place: pressing a session uses it and leaves you on the page you
   were reading — nothing is promoted or reshuffled. Nothing is yanked into
   view either; when a session on another page needs you, the Page key turns

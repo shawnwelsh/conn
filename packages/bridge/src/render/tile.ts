@@ -1,6 +1,6 @@
 import { createCanvas, type SKRSContext2D } from "@napi-rs/canvas";
 import { createHash } from "node:crypto";
-import type { TileSpec } from "@belay/shared";
+import type { TileSpec, SessionStatus } from "@belay/shared";
 import { themeFor, SELECTED_BORDER, TILE_SIZE, FONT_FAMILY } from "./theme.js";
 
 /**
@@ -160,6 +160,22 @@ export function renderTile(spec: TileSpec): Buffer {
     if (sub !== spec.subtext) sub += "…";
     ctx.fillText(sub, (S - ctx.measureText(sub).width) / 2, S - 20);
   }
+
+  // Status as a SHAPE, top-right — the second channel alongside colour.
+  // idle draws nothing: an always-present mark stops being a signal.
+  if (spec.statusMark && spec.statusMark !== "idle") {
+    const r = 16;
+    const cx = S - r - 8;
+    const cy = r + 8;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.fillStyle = theme.border;
+    ctx.fill();
+    drawStatusMark(ctx, spec.statusMark, cx, cy, r * 0.8, theme.bg);
+  }
+
+  // Console tell, bottom-left and deliberately quiet.
+  if (spec.promptMark) drawPromptMark(ctx, 20, S - 20, 11, theme.subFg);
 
   // Badge: small filled circle with short text, top-right.
   if (spec.badge) {
@@ -422,6 +438,78 @@ function drawIcon(
 }
 
 /** Vector skull-and-crossbones centered at (cx, cy); r ≈ skull radius. */
+/**
+ * Status shapes. Vector, never font glyphs — a missing glyph renders as a
+ * tofu box, and a key that shows a box is worse than a key that shows
+ * nothing. Sized for a 32px badge circle, where fine detail disappears:
+ * "thinking" is three dots rather than a thought bubble because the bubble's
+ * tail dots vanish entirely at this size.
+ */
+function drawStatusMark(
+  ctx: SKRSContext2D,
+  status: SessionStatus,
+  cx: number,
+  cy: number,
+  r: number,
+  color: string,
+): void {
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.fillStyle = color;
+  ctx.lineWidth = Math.max(2, r * 0.22);
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  if (status === "thinking") {
+    for (let i = -1; i <= 1; i++) {
+      ctx.beginPath();
+      ctx.arc(cx + i * r * 0.62, cy, r * 0.17, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  } else if (status === "waiting") {
+    // The one status that means "come here" gets the loudest shape.
+    ctx.beginPath();
+    ctx.moveTo(cx, cy - r * 0.62);
+    ctx.lineTo(cx, cy + r * 0.12);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(cx, cy + r * 0.56, r * 0.15, 0, Math.PI * 2);
+    ctx.fill();
+  } else if (status === "done") {
+    ctx.beginPath();
+    ctx.moveTo(cx - r * 0.55, cy);
+    ctx.lineTo(cx - r * 0.12, cy + r * 0.45);
+    ctx.lineTo(cx + r * 0.58, cy - r * 0.45);
+    ctx.stroke();
+  } else if (status === "error") {
+    ctx.beginPath();
+    ctx.moveTo(cx - r * 0.5, cy - r * 0.5);
+    ctx.lineTo(cx + r * 0.5, cy + r * 0.5);
+    ctx.moveTo(cx + r * 0.5, cy - r * 0.5);
+    ctx.lineTo(cx - r * 0.5, cy + r * 0.5);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+/** The ›_ console tell, drawn rather than typed. */
+function drawPromptMark(ctx: SKRSContext2D, cx: number, cy: number, r: number, color: string): void {
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = Math.max(2, r * 0.2);
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  ctx.beginPath();
+  ctx.moveTo(cx - r * 0.55, cy - r * 0.4);
+  ctx.lineTo(cx - r * 0.1, cy);
+  ctx.lineTo(cx - r * 0.55, cy + r * 0.4);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(cx + r * 0.1, cy + r * 0.42);
+  ctx.lineTo(cx + r * 0.6, cy + r * 0.42);
+  ctx.stroke();
+  ctx.restore();
+}
+
 function drawSkull(ctx: SKRSContext2D, cx: number, cy: number, r: number): void {
   ctx.save();
   ctx.strokeStyle = "#f8fafc";
