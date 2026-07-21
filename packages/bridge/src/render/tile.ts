@@ -152,13 +152,33 @@ export function renderTile(spec: TileSpec): Buffer {
   }
 
   // Subtext: one small line pinned near the bottom.
+  //
+  // Sized for the PANEL, not the canvas. Tiles render at 144px and the deck
+  // downscales them to a 72px LCD, so every dimension here is effectively
+  // halved — 16px thin rendered as 8px on glass, which reads as "very fine"
+  // in the hand. Weight matters more than size at that scale: a semibold
+  // stroke survives the downsample where a 400 hairline dissolves.
   if (spec.subtext) {
-    ctx.font = `400 16px ${FONT_FAMILY}`;
+    // Keep clear of the ›_ corner mark, which shares this baseline.
+    const left = spec.promptMark ? 38 : pad;
+    const subWidth = S - left - pad;
+    // Auto-fit rather than one fixed size: "2 pending" gets the full 20px,
+    // "name + branch" shrinks to fit instead of ellipsizing. Losing the words
+    // is worse than losing a couple of points — the subtext is where a key
+    // says what it will actually do.
+    const { fontPx } = fitText(ctx, spec.subtext, subWidth, 1, 14, 20);
+    ctx.font = `600 ${fontPx}px ${FONT_FAMILY}`;
     ctx.fillStyle = theme.subFg;
+    // Only pay for the ellipsis if it's actually needed. Measuring
+    // `sub + "…"` up front charged every string for a character it wasn't
+    // going to use, clipping text that fit perfectly well: "2 pending" is
+    // 92px in a 94px box, but 106px once an unnecessary ellipsis is added.
     let sub = spec.subtext;
-    while (sub.length > 1 && ctx.measureText(sub + "…").width > maxWidth) sub = sub.slice(0, -1);
-    if (sub !== spec.subtext) sub += "…";
-    ctx.fillText(sub, (S - ctx.measureText(sub).width) / 2, S - 20);
+    if (ctx.measureText(sub).width > subWidth) {
+      while (sub.length > 1 && ctx.measureText(sub + "…").width > subWidth) sub = sub.slice(0, -1);
+      sub += "…";
+    }
+    ctx.fillText(sub, left + (subWidth - ctx.measureText(sub).width) / 2, S - 20);
   }
 
   // Status as a SHAPE, top-right — the second channel alongside colour.

@@ -17,6 +17,8 @@
   "OS": [
     { "Platform": "windows", "MinimumVersion": "10" }
   ],
+  "Category": "Belay",
+  "CategoryIcon": "imgs/plugin-icon",
   "Actions": [
     {
       "UUID": "com.shawnwelsh.belay.key",
@@ -26,7 +28,10 @@
       "Controllers": ["Keypad"],
       "States": [
         { "Image": "imgs/action-icon" }
-      ]
+      ],
+      "SupportedInMultiActions": false,
+      "DisableAutomaticStates": true,
+      "UserTitleEnabled": false
     }
   ]
 }
