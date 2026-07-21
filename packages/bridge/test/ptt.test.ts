@@ -135,14 +135,60 @@ describe("dictation toggle (tap → record, tap → stop & type)", () => {
     layer.ptt = undefined;
   });
 
-  it("the mic key says WHERE the words will go", () => {
-    // The reason voice landed in the wrong session: the destination lived a
-    // row away, behind a 2px-on-glass border, and you read it while talking.
-    layer.ptt = "ready";
-    const mic = computeTiles(registry, layer, cfg, [], false)[10]!;
-    expect(mic.text).toBe("Talk");
-    expect(mic.subtext).toBe(`→ ${registry.targetedSession!.label}`);
-    layer.ptt = undefined;
+  it("flashes the DESTINATION session's key in sync with the mic, no static border otherwise", async () => {
+    registry.ensure({ session_id: "s2", cwd: "C:\\dev\\y", hook_event_name: "SessionStart" });
+    registry.target("s1");
+    const s1Slot = registry.get("s1")!.slot;
+    // Not recording: the targeted key has NO border — the veil marks it.
+    expect(computeTiles(registry, layer, cfg, [], true)[s1Slot]!.selected).toBe(false);
+
+    tapMic(controller);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(layer.talkTarget).toBe("s1");
+    // Recording: the destination flashes with the mic (both keyed off the
+    // same flashPhase), and it's the ONLY row-1 key that does.
+    expect(computeTiles(registry, layer, cfg, [], true)[s1Slot]!.selected).toBe(true);
+    expect(computeTiles(registry, layer, cfg, [], false)[s1Slot]!.selected).toBe(false);
+    const s2Slot = registry.get("s2")!.slot;
+    expect(computeTiles(registry, layer, cfg, [], true)[s2Slot]!.selected).toBe(false);
+  });
+
+  it("marks the destination even if you retarget mid-utterance", async () => {
+    registry.ensure({ session_id: "s2", cwd: "C:\\dev\\y", hook_event_name: "SessionStart" });
+    registry.target("s1");
+    tapMic(controller);
+    await vi.advanceTimersByTimeAsync(0);
+    registry.target("s2"); // look at another session while still dictating to s1
+    // The words go to s1 (captured at start), so s1's key keeps flashing.
+    expect(layer.talkTarget).toBe("s1");
+    const s1Slot = registry.get("s1")!.slot;
+    expect(computeTiles(registry, layer, cfg, [], true)[s1Slot]!.selected).toBe(true);
+  });
+
+  it("Esc cancels a live dictation: purge the buffer, type NOTHING", async () => {
+    tapMic(controller);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(layer.talkActive).toBe(true);
+    // Esc is row-3 key index 2 → physical slot 12.
+    await tapKey(controller, 12);
+    expect(stt.calls).toEqual(["start", "cancel"]); // cancel, never stop
+    expect(delivery.calls).toEqual([]); // nothing typed
+    expect(layer.talkActive).toBeUndefined();
+    expect(layer.talkTarget).toBeUndefined();
+  });
+
+  it("the Esc key reads Cancel while we hold the mic, Esc otherwise", async () => {
+    const escTile = () => computeTiles(registry, layer, cfg, [], false)[12]!;
+    expect(escTile().text).toBe("Esc");
+    tapMic(controller);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(escTile()).toMatchObject({ text: "Cancel", subtext: "discard", state: "error", icon: "esc" });
+  });
+
+  it("Esc with no dictation still interrupts the targeted session", async () => {
+    registry.target("s1");
+    await tapKey(controller, 12);
+    expect(delivery.calls).toEqual([{ m: "sendKey", arg: "escape" }]);
   });
 
   it("Send while idle is a plain Enter", async () => {
@@ -239,10 +285,15 @@ describe("dictation toggle (tap → record, tap → stop & type)", () => {
 
 describe("pttTile faces", () => {
   it("maps each sidecar state to a distinct key face", () => {
+    // Subtext only where it says something the face can't. Ready and REC carry
+    // none — "tap to start"/"tap to stop" were captions on an obvious mic, and
+    // the destination is shown by flashing that session's key, not here.
     expect(pttTile(undefined, false)).toMatchObject({ subtext: "offline", state: "blank" });
     expect(pttTile("loading", false)).toMatchObject({ subtext: "loading…" });
-    expect(pttTile("ready", false)).toMatchObject({ text: "Talk", subtext: "tap to start", state: "command" });
-    expect(pttTile("recording", true)).toMatchObject({ text: "REC", subtext: "tap to stop", state: "error", selected: true });
+    expect(pttTile("ready", false)).toMatchObject({ text: "Talk", state: "command" });
+    expect(pttTile("ready", false).subtext).toBeUndefined();
+    expect(pttTile("recording", true)).toMatchObject({ text: "REC", state: "error", selected: true });
+    expect(pttTile("recording", true).subtext).toBeUndefined();
     expect(pttTile("transcribing", false)).toMatchObject({ subtext: "transcribing…", state: "waiting" });
   });
 });

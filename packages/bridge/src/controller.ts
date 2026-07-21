@@ -646,8 +646,10 @@ export class DeckController {
     this.pttTarget = target;
     this.pttActive = true; // claim before the await so a double-tap can't double-start
     if (await stt.start()) {
-      // Send now means "stop, type, submit" — tell the key to say so.
+      // Send now means "stop, type, submit" — tell the key to say so. The
+      // target's row-1 key flashes with the mic from here (talkTarget).
       this.layer.talkActive = true;
+      this.layer.talkTarget = target.sessionId;
       this.onLayerChanged();
       // Cap forgotten recordings: stop and type what we have at maxSeconds
       // (never auto-SENDS — submitting is always an explicit Send press).
@@ -665,6 +667,7 @@ export class DeckController {
     if (!stt || !this.pttActive) return;
     this.pttActive = false;
     this.layer.talkActive = undefined; // Send goes back to a plain Enter
+    this.layer.talkTarget = undefined; // the target's key stops flashing
     this.onLayerChanged();
     if (this.pttMaxTimer) {
       clearTimeout(this.pttMaxTimer);
@@ -692,6 +695,25 @@ export class DeckController {
       if (this.pttFlight === flight) this.pttFlight = null;
     });
     await flight;
+  }
+
+  /** Esc during a Talk dictation: stop, throw the audio away, type NOTHING.
+   * The short-circuit for a dictation that came out wrong — distinct from the
+   * second-tap/Send stop, which keeps what you said. */
+  private async pttCancel(): Promise<void> {
+    const stt = this.stt;
+    if (!stt || !this.pttActive) return;
+    this.pttActive = false;
+    this.layer.talkActive = undefined;
+    this.layer.talkTarget = undefined;
+    this.onLayerChanged();
+    if (this.pttMaxTimer) {
+      clearTimeout(this.pttMaxTimer);
+      this.pttMaxTimer = null;
+    }
+    this.pttTarget = undefined;
+    await stt.cancel(); // stops, releases the mic, discards the buffer
+    this.log.info("dictation: cancelled — buffer purged, nothing typed");
   }
 
   // --- Rename (speak a session's real name once the feature has one) ---
@@ -816,7 +838,10 @@ export class DeckController {
         if (this.pttFlight) await this.pttFlight;
         if (target) await this.delivery.sendKey(target, "enter");
         return;
-      case 2: // Esc — interrupt the targeted session
+      case 2:
+        // Esc — while we hold the mic, it's a cancel-and-purge (nothing
+        // typed); otherwise it interrupts the targeted session.
+        if (this.pttActive) return void (await this.pttCancel());
         if (target) await this.delivery.sendKey(target, "escape");
         return;
       case 3: {

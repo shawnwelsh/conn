@@ -106,6 +106,10 @@ export interface DeckLayerState {
    * "stop, type, submit". False during a rename or deny-reason recording,
    * where Send is still a plain Enter and must not promise otherwise. */
   talkActive?: boolean;
+  /** sessionId the live Talk dictation is typing into. Its row-1 key flashes
+   * in sync with the mic — live "the words are going HERE" feedback. Captured
+   * at record-start, so it stays put even if you retarget mid-utterance. */
+  talkTarget?: string;
   /** A deny-reason dictation is live for the CURRENT held permission — the
    * "Deny + reason" key renders as a recording indicator with countdown. */
   permissionRec?: { deadline: number };
@@ -217,21 +221,19 @@ export function commandTile(
  * push-to-talk: tap to start, tap to stop; Send mid-recording stops AND
  * submits. Hence "Talk", not "PTT". */
 /**
- * The mic key — and, when it's ready or listening, WHERE the words will land.
- *
- * Dictation goes to whichever session is targeted on row 1, so the deck used
- * to make you look up a row, spot a border and start talking. Naming the
- * destination on the key that does the sending puts the fact where the action
- * is; "tap to start" was a caption on a microphone.
+ * The mic key. Where the words will land is shown by FLASHING the destination
+ * session's key in sync with this one (see the agents row) — live feedback
+ * beats a caption too small to read while you're already talking. Subtext only
+ * for the transient/broken states that the face can't convey on its own.
  */
-export function pttTile(ptt: DeckLayerState["ptt"], flashPhase: boolean, target?: string): TileSpec {
+export function pttTile(ptt: DeckLayerState["ptt"], flashPhase: boolean): TileSpec {
   switch (ptt) {
     case "recording":
-      return { text: "REC", subtext: target ?? "tap to stop", state: "error", icon: "mic", selected: flashPhase };
+      return { text: "REC", state: "error", icon: "mic", selected: flashPhase };
     case "transcribing":
       return { text: "Talk", subtext: "transcribing…", state: "waiting", icon: "mic", selected: flashPhase };
     case "ready":
-      return { text: "Talk", subtext: target ? `→ ${target}` : "tap to start", state: "command", icon: "mic" };
+      return { text: "Talk", state: "command", icon: "mic" };
     case "loading":
       return { text: "Talk", subtext: "loading…", state: "blank", icon: "mic" };
     default:
@@ -386,7 +388,14 @@ export function computeTiles(
         // a quiet ›_ in the opposite corner.
         statusMark: session.status,
         promptMark: session.windowKind === "console",
-        selected: isMorphOrigin ? flashPhase : session.sessionId === targeted?.sessionId,
+        // No static border for "targeted" — the veil carries that now, and a
+        // 2px-on-glass border was what people missed. The border returns only
+        // as ACTIVE feedback: the dictation destination pulses in sync with
+        // the mic while you talk, and the morph origin flashes while it asks.
+        selected:
+          isMorphOrigin ? flashPhase
+          : layer.talkActive && session.sessionId === layer.talkTarget ? flashPhase
+          : false,
         // Everything that ISN'T the target recedes. Dictation and commands go
         // to exactly one session, and a 2px border on glass was not enough to
         // say which — voice landed in the wrong window more than once.
@@ -572,13 +581,18 @@ export function computeTiles(
     // "worktree") — read once, never again, and they cost the space the label
     // needs. The exceptions earn it: they say something the key face can't.
     tiles.push(
-      pttTile(layer.ptt, flashPhase, targeted?.label),
+      pttTile(layer.ptt, flashPhase),
       // Mid-dictation Send is a compound: stop, type, submit. Keep the plane
       // (that's how the key is found by shape) but light it up and say so.
       layer.talkActive
         ? { text: "Send", subtext: "stop + send", state: "answer", icon: "send" }
         : { text: "Send", state: "command", icon: "send" },
-      { text: "Esc", state: "command", icon: "esc" },
+      // While we hold the mic, Esc short-circuits: stop and PURGE, nothing
+      // typed — the escape hatch for a dictation gone wrong. Otherwise it's
+      // the interrupt.
+      layer.talkActive
+        ? { text: "Cancel", subtext: "discard", state: "error", icon: "esc" }
+        : { text: "Esc", state: "command", icon: "esc" },
       layer.launching
         ? { text: "New", subtext: "spawning…", state: "waiting", icon: "new", selected: flashPhase }
         : { text: "New", state: "command", icon: "new" },
