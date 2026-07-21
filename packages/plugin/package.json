@@ -4,8 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "esbuild src/plugin.ts --bundle --platform=node --format=cjs --outfile=com.shawnwelsh.belay.sdPlugin/bin/plugin.js",
-    "watch": "npm run build -- --watch"
+    "build": "node build.mjs",
+    "watch": "node build.mjs --watch"
   },
   "dependencies": {
     "@elgato/streamdeck": "^2.0.0",

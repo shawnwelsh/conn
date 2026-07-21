@@ -2,7 +2,16 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "noEmit": true,
-    "types": ["node"]
+    "types": ["node"],
+    // The Elgato SDK registers actions with an @action decorator, and esbuild
+    // only transforms decorators when it sees this in tsconfig. Without it the
+    // bundle kept `@action(...)` verbatim and died at parse time — which
+    // Stream Deck surfaces only as "Process stopped (unexpected): code=1",
+    // retried every 10s forever.
+    "experimentalDecorators": true,
+    // Legacy decorators need fields assigned, not defined, or the decorator
+    // metadata is clobbered by the class-field initialisers.
+    "useDefineForClassFields": false
   },
   "include": ["src/**/*.ts"]
 }
