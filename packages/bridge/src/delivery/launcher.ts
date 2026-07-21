@@ -54,6 +54,13 @@ function pick<T>(arr: T[]): T {
 }
 
 /**
+ * Directory (and branch suffix) of the pre-built spare worktree. Leading
+ * underscore so it sorts away from real codenames and reads as machinery — it
+ * is never a session, and it gets renamed the moment it becomes one.
+ */
+const SPARE_NAME = "_spare";
+
+/**
  * Resolve the MAIN repo root for a cwd — walking up to `.git`, and following
  * a worktree's `gitdir:` pointer (…/.git/worktrees/<name>) back to the
  * primary checkout so new worktrees are created as siblings, not nested.
@@ -99,6 +106,9 @@ export class ConsoleLauncher {
     private readonly consoleHost: "wt" | "conhost" = "wt",
   ) {}
 
+  /** Roots with a spare being built right now — never two at once per repo. */
+  private readonly prewarming = new Set<string>();
+
   /**
    * Pre-trust a worktree WE just created, so Claude doesn't stall at the
    * folder-trust prompt in a console nobody has surfaced yet. Scope is
@@ -121,6 +131,111 @@ export class ConsoleLauncher {
     } catch (err) {
       this.log.warn({ err: String(err), dir }, "launcher: pre-trust failed — the trust prompt will show");
     }
+  }
+
+  /** Run a git command; true on a clean exit. */
+  private git(cwd: string, args: string[], timeoutMs = this.worktreeTimeoutMs): Promise<boolean> {
+    return new Promise((res) => {
+      const git = spawn("git", ["-C", cwd, ...args], {
+        stdio: ["ignore", "ignore", "pipe"],
+        windowsHide: true,
+        env: { ...process.env, GIT_OPTIONAL_LOCKS: "0" },
+      });
+      let err = "";
+      git.stderr.on("data", (d) => (err += d));
+      const timer = setTimeout(() => {
+        git.kill();
+        res(false);
+      }, timeoutMs);
+      git.on("exit", (code) => {
+        clearTimeout(timer);
+        if (code !== 0) this.log.warn({ args, err: err.trim() }, "launcher: git failed");
+        res(code === 0);
+      });
+    });
+  }
+
+  /** Run a git command and capture stdout, trimmed. Empty string on failure. */
+  private gitOut(cwd: string, args: string[]): Promise<string> {
+    return new Promise((res) => {
+      const git = spawn("git", ["-C", cwd, ...args], {
+        stdio: ["ignore", "pipe", "ignore"],
+        windowsHide: true,
+        env: { ...process.env, GIT_OPTIONAL_LOCKS: "0" },
+      });
+      let out = "";
+      git.stdout.on("data", (d) => (out += d));
+      const timer = setTimeout(() => {
+        git.kill();
+        res("");
+      }, 15_000);
+      git.on("exit", (code) => {
+        clearTimeout(timer);
+        res(code === 0 ? out.trim() : "");
+      });
+    });
+  }
+
+  private spareDir(root: string): string {
+    return join(root, ".claude", "worktrees", SPARE_NAME);
+  }
+
+  /**
+   * Bank a spare for the repo containing `cwd` — but only one we ALREADY make
+   * worktrees in. Creating a worktree at boot in a repo the deck has never
+   * touched would be an unpleasant surprise; re-stocking one it uses is not.
+   */
+  async prewarmFor(cwd: string): Promise<void> {
+    const root = findRepoRoot(cwd);
+    if (!root || !existsSync(join(root, ".claude", "worktrees"))) return;
+    await this.prewarm(root);
+  }
+
+  /**
+   * Build the next spare in the background. `git worktree add` is 19-32s on a
+   * real repo — the entire cost of New — so it gets paid while nobody is
+   * waiting. Never throws: a missing spare only means the old slow path.
+   */
+  async prewarm(root: string): Promise<void> {
+    if (!this.useWorktrees || this.prewarming.has(root)) return;
+    const dir = this.spareDir(root);
+    if (existsSync(join(dir, ".git"))) return; // one is already banked
+    this.prewarming.add(root);
+    try {
+      // A stale branch from a half-finished claim would block the add.
+      await this.git(root, ["branch", "-D", `deck/${SPARE_NAME}`], 15_000);
+      const ok = await this.git(root, ["worktree", "add", dir, "-b", `deck/${SPARE_NAME}`]);
+      if (ok) {
+        this.preTrust(dir);
+        this.log.info({ dir }, "launcher: spare worktree banked");
+      }
+    } finally {
+      this.prewarming.delete(root);
+    }
+  }
+
+  /**
+   * Turn the banked spare into a real session's worktree: move it into place
+   * and re-cut its branch at the repo's CURRENT head. The re-cut matters — a
+   * spare banked hours ago sits on a stale base, and starting work there would
+   * silently miss every commit since. Verified end-to-end at ~660ms, versus
+   * 19-32s to build one from scratch.
+   */
+  async claimSpare(root: string, name: string, dir: string): Promise<string | null> {
+    const spare = this.spareDir(root);
+    if (!existsSync(join(spare, ".git"))) return null;
+    if (!(await this.git(root, ["worktree", "move", spare, dir]))) return null;
+    const head = await this.gitOut(root, ["rev-parse", "HEAD"]);
+    // `switch -C` renames AND rebases the tree onto head in one step.
+    const switched = head && (await this.git(dir, ["switch", "-C", `deck/${name}`, head]));
+    if (!switched) {
+      // The tree is already moved and usable; it just kept the spare's branch.
+      this.log.warn({ dir }, "launcher: claimed spare kept its branch — name will not match");
+    } else {
+      await this.git(root, ["branch", "-D", `deck/${SPARE_NAME}`], 15_000);
+    }
+    this.log.info({ dir, branch: `deck/${name}`, head }, "launcher: claimed spare worktree");
+    return dir;
   }
 
   /** Two-word codename, collision-checked against existing worktree dirs.
@@ -202,11 +317,14 @@ export class ConsoleLauncher {
       const name = this.codename(root);
       const dir = join(root, ".claude", "worktrees", name);
       this.registry.addProvisionalAt(dir);
-      const worktree = await this.createWorktree(root, name, dir);
+      // A banked spare turns the 19-32s checkout into a sub-second rename.
+      const worktree = (await this.claimSpare(root, name, dir)) ?? (await this.createWorktree(root, name, dir));
       if (worktree) {
         spawnDir = worktree;
         this.preTrust(worktree);
         this.registry.refreshLabels(); // branch now exists → spaced feature name
+        // Bank the next one now, while nobody is waiting on it.
+        void this.prewarm(root);
       } else {
         this.registry.repointProvisional(dir, cwd); // shared-dir fallback keeps the key
       }

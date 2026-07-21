@@ -190,19 +190,18 @@ const controller = new DeckController(registry, layer, delivery, cfg, log, () =>
   syncFlash(flashNeeded());
   pushRender();
 });
-controller.setLauncher(
-  new ConsoleLauncher(
-    registry,
-    delivery,
-    cfg.newSessionCommand,
-    log,
-    cfg.newSessionWorktrees,
-    cfg.worktreeTimeoutSeconds * 1000,
-    undefined,
-    bindings,
-    cfg.consoleHost,
-  ),
+const launcher = new ConsoleLauncher(
+  registry,
+  delivery,
+  cfg.newSessionCommand,
+  log,
+  cfg.newSessionWorktrees,
+  cfg.worktreeTimeoutSeconds * 1000,
+  undefined,
+  bindings,
+  cfg.consoleHost,
 );
+controller.setLauncher(launcher);
 controller.setCommands(commands);
 // A hand-given name has no branch to live in — persist it with the console
 // binding so it survives restarts.
@@ -329,6 +328,13 @@ function adoptTerminals(only?: SessionEntry): void {
 }
 registry.on("session-added", (entry: SessionEntry) => adoptTerminals(entry));
 adoptTerminals(); // catch everything already running at boot
+
+// Re-stock the spare worktree for every repo the deck already spawns into, so
+// the first New after a restart is as fast as the rest. Spares survive on
+// disk, so this is usually a no-op.
+if (cfg.newSessionWorktrees) {
+  for (const cwd of new Set(registry.all().map((s) => s.cwd))) void launcher.prewarmFor(cwd);
+}
 
 registerHookRoutes(app, registry, log, {
   onPermissionRequest: (event) => decisions.hold(event),

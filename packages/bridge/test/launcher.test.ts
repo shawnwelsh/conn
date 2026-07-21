@@ -1,5 +1,6 @@
 import { describe, expect, it, beforeAll, afterAll } from "vitest";
-import { mkdirSync, writeFileSync, readFileSync, rmSync } from "node:fs";
+import { mkdirSync, writeFileSync, readFileSync, rmSync, existsSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { findRepoRoot, ConsoleLauncher } from "../src/delivery/launcher.js";
@@ -51,6 +52,75 @@ describe("preTrust (worktree trust seeding)", () => {
   it("tolerates a corrupt state file without throwing", () => {
     writeFileSync(statePath, "{broken");
     expect(() => callPreTrust("C:\\dev\\x")).not.toThrow();
+  });
+});
+
+describe("pre-warmed spare worktree (real git)", () => {
+  const repo = join(fixture, "prewarm-repo");
+  const noopLog = { info: () => {}, warn: () => {}, debug: () => {} } as never;
+
+  function git(cwd: string, args: string[]): string {
+    return execFileSync("git", ["-C", cwd, ...args], { encoding: "utf8" }).trim();
+  }
+
+  function makeLauncher() {
+    return new ConsoleLauncher(
+      { all: () => [] } as never,
+      undefined as never,
+      "claude",
+      noopLog,
+      true,
+      30_000,
+      join(fixture, "prewarm-claude-state.json"),
+    );
+  }
+
+  beforeAll(() => {
+    mkdirSync(repo, { recursive: true });
+    git(repo, ["init", "-q", "-b", "main"]);
+    git(repo, ["config", "user.email", "t@example.com"]);
+    git(repo, ["config", "user.name", "t"]);
+    writeFileSync(join(repo, "a.txt"), "one\n");
+    git(repo, ["add", "-A"]);
+    git(repo, ["commit", "-qm", "first"]);
+  });
+
+  it("banks a spare, then claims it onto the CURRENT head under the new name", async () => {
+    const launcher = makeLauncher();
+    await launcher.prewarm(repo);
+    const spare = join(repo, ".claude", "worktrees", "_spare");
+    expect(existsSync(join(spare, ".git"))).toBe(true);
+    const spareHead = git(spare, ["rev-parse", "HEAD"]);
+
+    // The repo moves on while the spare sits idle — the whole hazard of
+    // pre-warming. Claiming must NOT hand back a tree on the stale base.
+    writeFileSync(join(repo, "b.txt"), "two\n");
+    git(repo, ["add", "-A"]);
+    git(repo, ["commit", "-qm", "second"]);
+    const head = git(repo, ["rev-parse", "HEAD"]);
+    expect(head).not.toBe(spareHead);
+
+    const dir = join(repo, ".claude", "worktrees", "brisk-otter");
+    expect(await launcher.claimSpare(repo, "brisk-otter", dir)).toBe(dir);
+    expect(existsSync(spare)).toBe(false); // moved, not copied
+    expect(git(dir, ["rev-parse", "HEAD"])).toBe(head); // re-cut on current head
+    expect(git(dir, ["rev-parse", "--abbrev-ref", "HEAD"])).toBe("deck/brisk-otter");
+    expect(existsSync(join(dir, "b.txt"))).toBe(true); // the newer commit's file
+  });
+
+  it("claiming with no spare banked returns null so the caller builds one", async () => {
+    const launcher = makeLauncher();
+    const dir = join(repo, ".claude", "worktrees", "keen-vole");
+    expect(await launcher.claimSpare(repo, "keen-vole", dir)).toBeNull();
+  });
+
+  it("re-banks after a claim, and banking twice is a no-op", async () => {
+    const launcher = makeLauncher();
+    await launcher.prewarm(repo);
+    const spare = join(repo, ".claude", "worktrees", "_spare");
+    expect(existsSync(join(spare, ".git"))).toBe(true);
+    await launcher.prewarm(repo); // must not throw or duplicate
+    expect(existsSync(join(spare, ".git"))).toBe(true);
   });
 });
 
