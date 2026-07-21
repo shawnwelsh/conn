@@ -23,9 +23,33 @@ export interface PermissionContext {
 
 export interface QuestionContext {
   sessionId: string;
-  question: string;
-  options: string[];
+  /**
+   * ALL questions in the AskUserQuestion call, not just the first. Claude
+   * routinely asks 2-4 at once; answering one and reverting silently
+   * abandoned the rest and left the console sitting on question 2 with no
+   * deck panel.
+   */
+  questions: Array<{ question: string; options: string[] }>;
+  /** Which question is on the keys right now. */
+  index: number;
+  /** Option page within the current question. */
   page: number;
+}
+
+/** The question currently on the keys. */
+export function currentQuestion(q: QuestionContext): { question: string; options: string[] } {
+  return q.questions[q.index] ?? { question: "", options: [] };
+}
+
+/**
+ * Step to the next question of a multi-question ask, resetting the option
+ * page. False means that was the last one and the layer should revert.
+ */
+export function advanceQuestion(q: QuestionContext): boolean {
+  if (q.index + 1 >= q.questions.length) return false;
+  q.index += 1;
+  q.page = 0;
+  return true;
 }
 
 /**
@@ -240,18 +264,30 @@ export function computeTiles(
     // down and the thumb follows. Row 3 is untouched.
     const asking = registry.get(morphSessionId);
     const queued = layer.row2 === "permission" ? (layer.permission?.depth ?? 1) : 1;
+    const qTotal = layer.row2 === "question" ? (layer.question?.questions.length ?? 1) : 1;
+    const qIndex = (layer.question?.index ?? 0) + 1;
     tiles.push({
       text: asking?.label ?? "session",
-      subtext: queued > 1 ? `${queued} pending` : undefined,
+      subtext:
+        queued > 1 ? `${queued} pending`
+        : qTotal > 1 ? `${qIndex} of ${qTotal}`
+        : undefined,
       state: asking?.status ?? "waiting",
       badge: asking?.windowKind === "console" ? "›_" : undefined,
       selected: flashPhase,
       dead: asking?.windowDead,
     });
-    const detail =
-      layer.row2 === "permission" && layer.permission
-        ? `${layer.permission.toolName} · ${layer.permission.summary}`
-        : (layer.question?.question ?? "");
+    let detail: string;
+    if (layer.row2 === "permission" && layer.permission) {
+      detail = `${layer.permission.toolName} · ${layer.permission.summary}`;
+    } else if (layer.question) {
+      const cur = currentQuestion(layer.question);
+      // Lead with the position when there are several — otherwise answering
+      // one and seeing another appear reads as the deck losing your answer.
+      detail = qTotal > 1 ? `${qIndex}/${qTotal} · ${cur.question}` : cur.question;
+    } else {
+      detail = "";
+    }
     for (let i = 0; i < MORPH_BANNER_SPAN; i++) {
       tiles.push({ text: detail, state: "answer", bannerSpan: MORPH_BANNER_SPAN, bannerIndex: i });
     }
@@ -381,8 +417,9 @@ export function computeTiles(
     );
   } else if (layer.row2 === "question" && layer.question) {
     const q = layer.question;
+    const options = currentQuestion(q).options;
     const start = q.page * QUESTION_OPTIONS_PER_PAGE;
-    const pageOptions = q.options.slice(start, start + QUESTION_OPTIONS_PER_PAGE);
+    const pageOptions = options.slice(start, start + QUESTION_OPTIONS_PER_PAGE);
     for (let i = 0; i < QUESTION_OPTIONS_PER_PAGE; i++) {
       const opt = pageOptions[i];
       tiles.push(
@@ -391,7 +428,7 @@ export function computeTiles(
           : { text: "", state: "blank" },
       );
     }
-    const pages = Math.ceil(q.options.length / QUESTION_OPTIONS_PER_PAGE);
+    const pages = Math.ceil(options.length / QUESTION_OPTIONS_PER_PAGE);
     tiles.push(
       pages > 1
         ? { text: `Page ${q.page + 1}/${pages}`, state: "command", subtext: "next page" }

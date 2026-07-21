@@ -8,7 +8,15 @@ import { BindingStore, restoreConsoleBindings } from "./bindings.js";
 import { DenyReasonFlow } from "./denyReason.js";
 import { readCcSessionNames, readCliSessions, CC_SESSIONS_DIR } from "./sessionMeta.js";
 import { DecisionStore } from "./decisions.js";
-import { computeTiles, initialControls, initialRow1, initialRow2Cmd, type DeckLayerState } from "./layers.js";
+import {
+  advanceQuestion,
+  computeTiles,
+  currentQuestion,
+  initialControls,
+  initialRow1,
+  initialRow2Cmd,
+  type DeckLayerState,
+} from "./layers.js";
 import { CommandStore } from "./commands.js";
 import { renderTile, renderBanner, toDataUri } from "./render/tile.js";
 import { DeckSocketServer } from "./ws/server.js";
@@ -164,13 +172,18 @@ function syncPermissionLayer(): void {
  * answering surface and reverts as soon as the session moves on. */
 function showQuestion(event: Parameters<typeof decisions.hold>[0]): void {
   const input = event.tool_input as AskUserQuestionInput | undefined;
-  const q = input?.questions?.[0];
-  if (!q?.options?.length) return;
+  // Take EVERY question in the call. Claude commonly asks several at once,
+  // and only ever showing questions[0] meant the deck answered one and
+  // abandoned the rest, leaving the console on question 2 with no panel.
+  const questions = (input?.questions ?? [])
+    .filter((q) => q?.options?.length)
+    .map((q) => ({ question: q.question, options: (q.options ?? []).map((o) => o.label) }));
+  if (!questions.length) return;
   layer.row2 = "question";
   layer.question = {
     sessionId: event.session_id,
-    question: q.question,
-    options: q.options.map((o) => o.label),
+    questions,
+    index: 0,
     page: 0,
   };
   registry.target(event.session_id);
@@ -249,10 +262,21 @@ controller.setHooks({
   onQuestionKey: (optionIndex) => {
     const q = layer.question;
     if (!q) return;
+    const options = currentQuestion(q).options;
     const absolute = q.page * QUESTION_OPTIONS_PER_PAGE + optionIndex;
-    if (absolute >= q.options.length) return;
+    if (absolute >= options.length) return;
     const session = registry.get(q.sessionId);
     if (!session) return revertQuestion();
+    // Advance the layer NOW, not after the keystrokes land. Claude Code has
+    // already rendered the next question by the time a human reaches for the
+    // next key, and leaving the answered one on screen invites a double press.
+    const more = advanceQuestion(q);
+    if (more) {
+      syncFlash(flashNeeded());
+      pushRender();
+    } else {
+      revertQuestion();
+    }
     void (async () => {
       // v1 keystroke model (verify live in Phase 3 exit test): focus the
       // session, type the option number, confirm with Enter.
@@ -260,19 +284,23 @@ controller.setHooks({
         (await delivery.focus(session)) &&
         (await delivery.sendKey(session, String(absolute + 1))) &&
         (await delivery.sendKey(session, "enter"));
-      log.info({ session: q.sessionId, option: q.options[absolute], ok }, "question answered from deck");
-      revertQuestion();
+      log.info(
+        { session: q.sessionId, option: options[absolute], remaining: q.questions.length - q.index - (more ? 1 : 0), ok },
+        "question answered from deck",
+      );
     })();
   },
   onQuestionPager: () => {
     const q = layer.question;
     if (!q) return;
-    const pages = Math.ceil(q.options.length / QUESTION_OPTIONS_PER_PAGE);
+    const pages = Math.ceil(currentQuestion(q).options.length / QUESTION_OPTIONS_PER_PAGE);
     if (pages > 1) {
       q.page = (q.page + 1) % pages;
       pushRender();
     } else {
-      // Single page → the key is "Cancel": hand back to the screen.
+      // Single page → the key is "Cancel": hand back to the screen. Cancels
+      // the WHOLE ask, remaining questions included — they're all still live
+      // in the console, which is exactly where you just chose to answer them.
       revertQuestion();
     }
   },

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { computeTiles, type DeckLayerState } from "../src/layers.js";
+import { advanceQuestion, computeTiles, type DeckLayerState } from "../src/layers.js";
 import { SessionRegistry } from "../src/registry.js";
 import type { DeckConfig } from "../src/config.js";
 
@@ -130,6 +130,22 @@ describe("row-1 paging", () => {
 });
 
 describe("permission panel legibility", () => {
+  function questionLayer(questions: string[]): DeckLayerState {
+    return {
+      row1: { mode: "agents", page: 0 },
+      row2: "question",
+      row2Cmd: { mode: "default", page: 0 },
+      row3Page: 0,
+      question: {
+        sessionId: "asking",
+        questions: questions.map((q) => ({ question: q, options: ["Yes", "No"] })),
+        index: 0,
+        page: 0,
+      },
+      controls: { planNext: "plan", modelNext: 1 },
+    };
+  }
+
   function permLayer(permission: NonNullable<DeckLayerState["permission"]>): DeckLayerState {
     return {
       row1: { mode: "agents", page: 0 },
@@ -197,23 +213,59 @@ describe("permission panel legibility", () => {
   it("banners the question text too — same problem, same fix", () => {
     const r = new SessionRegistry(5);
     start(r, "asking");
-    const layer: DeckLayerState = {
-      row1: { mode: "agents", page: 0 },
-      row2: "question",
-      row2Cmd: { mode: "default", page: 0 },
-      row3Page: 0,
-      question: {
-        sessionId: "asking",
-        question: "Which store should the always-allow rule be written to?",
-        options: ["Session only", "Project settings"],
-        page: 0,
-      },
-      controls: { planNext: "plan", modelNext: 1 },
-    };
-    const tiles = computeTiles(r, layer, cfg);
+    const tiles = computeTiles(r, questionLayer(["Which store should the always-allow rule be written to?"]), cfg);
     expect(tiles[0]!.text).toBe("asking");
     expect(tiles[1]!.bannerSpan).toBe(4);
     expect(tiles[1]!.text).toContain("always-allow rule");
+  });
+
+  it("says which of several questions you are on", () => {
+    // AskUserQuestion routinely carries 2-4 questions in ONE call — 14 of 21
+    // calls in the real log did. Answering one and reverting abandoned the
+    // rest, so the banner has to say there are more coming.
+    const r = new SessionRegistry(5);
+    start(r, "asking");
+    const layer = questionLayer(["First thing?", "Second thing?", "Third thing?"]);
+    layer.question!.index = 1;
+    const tiles = computeTiles(r, layer, cfg);
+    expect(tiles[1]!.text).toContain("Second thing?");
+    expect(tiles[1]!.text).toContain("2/3");
+    expect(tiles[0]!.subtext).toBe("2 of 3");
+  });
+
+  it("walks every question in the ask before letting the layer go", () => {
+    const q = {
+      sessionId: "asking",
+      questions: [
+        { question: "one?", options: ["a", "b"] },
+        { question: "two?", options: ["c", "d"] },
+        { question: "three?", options: ["e", "f"] },
+      ],
+      index: 0,
+      page: 2, // deep in the option pager of question 1
+    };
+    expect(advanceQuestion(q)).toBe(true);
+    expect(q.index).toBe(1);
+    expect(q.page).toBe(0); // fresh question, fresh option page
+    expect(advanceQuestion(q)).toBe(true);
+    expect(q.index).toBe(2);
+    // Last one: false tells the caller to revert rather than sit on a
+    // question that no longer exists.
+    expect(advanceQuestion(q)).toBe(false);
+    expect(q.index).toBe(2);
+  });
+
+  it("a single-question ask reverts immediately", () => {
+    const q = { sessionId: "s", questions: [{ question: "one?", options: ["a"] }], index: 0, page: 0 };
+    expect(advanceQuestion(q)).toBe(false);
+  });
+
+  it("does not clutter a single-question ask with counters", () => {
+    const r = new SessionRegistry(5);
+    start(r, "asking");
+    const tiles = computeTiles(r, questionLayer(["Only thing?"]), cfg);
+    expect(tiles[1]!.text).toBe("Only thing?");
+    expect(tiles[0]!.subtext).toBeUndefined();
   });
 
   it("a plan approval is not a tool permission", () => {
