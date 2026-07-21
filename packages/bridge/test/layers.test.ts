@@ -52,6 +52,43 @@ describe("row-1 stale dimming", () => {
     expect(tiles[stale.slot]!.dim).toBe(true);
   });
 
+  it("lifts a TARGETED idle session to a bright state so it stands out", () => {
+    // Idle's slate bg is nearly indistinguishable from a veiled thinking
+    // neighbour (dark navy). The one you're driving needs to win.
+    const r = new SessionRegistry(5);
+    const a = start(r, "a");
+    const b = start(r, "b");
+    r.setStatus(a, "idle");
+    r.setStatus(b, "idle");
+    r.target("a");
+    const layer: DeckLayerState = {
+      row1: { mode: "agents", page: 0 },
+      row2: "idle",
+      row2Cmd: { mode: "default", page: 0 },
+      row3Page: 0,
+      controls: { planNext: "plan", modelNext: 1 },
+    };
+    const tiles = computeTiles(r, layer, cfg);
+    expect(tiles[a.slot]!.state).toBe("idleActive"); // targeted → lifted
+    expect(tiles[b.slot]!.state).toBe("idle"); // the rest stay plain (and veiled)
+    expect(tiles[b.slot]!.veil).toBe(true);
+  });
+
+  it("only lifts idle — a busy targeted session keeps its own status colour", () => {
+    const r = new SessionRegistry(5);
+    const a = start(r, "a");
+    r.setStatus(a, "thinking");
+    r.target("a");
+    const layer: DeckLayerState = {
+      row1: { mode: "agents", page: 0 },
+      row2: "idle",
+      row2Cmd: { mode: "default", page: 0 },
+      row3Page: 0,
+      controls: { planNext: "plan", modelNext: 1 },
+    };
+    expect(computeTiles(r, layer, cfg)[a.slot]!.state).toBe("thinking");
+  });
+
   it("never dims the session holding an active permission morph", () => {
     const r = new SessionRegistry(5);
     const s = start(r, "asking");

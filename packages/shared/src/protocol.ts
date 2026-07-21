@@ -35,7 +35,9 @@ export type ClientMessage =
 export interface TileSpec {
   text: string;
   subtext?: string;
-  state: SessionStatus | "answer" | "command" | "blank";
+  /** "idleActive" is a render-only lift for the TARGETED idle session — idle's
+   * slate is too close to a veiled neighbour to win. Not a session status. */
+  state: SessionStatus | "idleActive" | "answer" | "command" | "blank";
   badge?: string;
   selected?: boolean;
   /**

@@ -376,13 +376,17 @@ export function computeTiles(
         continue;
       }
       const isMorphOrigin = session.sessionId === morphSessionId;
+      const isTarget = session.sessionId === targeted?.sessionId;
       const stale = !isMorphOrigin && now - session.lastEventAt > staleMs;
       tiles.push({
         text: session.label,
         // A morph re-lays this whole row (asking session + banner), so the
         // agents branch never renders the origin key while one is up.
         subtext: undefined,
-        state: session.status,
+        // The targeted idle session gets lifted to a bright cyan; plain idle
+        // is too near a veiled neighbour to read as "the one I'm driving".
+        // Only idle — a busy session's own colour already stands out unveiled.
+        state: isTarget && session.status === "idle" ? "idleActive" : session.status,
         // Status twice over — colour AND shape — so the row reads at a
         // glance. Console sessions (own window, fully targetable) also carry
         // a quiet ›_ in the opposite corner.

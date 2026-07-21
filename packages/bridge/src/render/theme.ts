@@ -22,6 +22,12 @@ const STATUS_THEMES: Record<SessionStatus, TileTheme> = {
 };
 
 const EXTRA_THEMES: Record<string, TileTheme> = {
+  // The TARGETED idle session. Plain idle is a dark slate that, sitting next
+  // to a veiled thinking neighbour (dark navy), doesn't read as "this is the
+  // one I'm driving". Cyan is bright enough to win against the black-washed
+  // rest and distinct in hue from thinking's royal blue, so it can't be
+  // mistaken for a busy session. Light text, like every other key.
+  idleActive: { bg: "#0891b2", fg: "#ecfeff", border: "#67e8f9", subFg: "#a5f3fc" },
   // Morph-layer answer buttons: light background, dark text — inverted from
   // everything else on the deck.
   answer: { bg: "#f8fafc", fg: "#0f172a", border: "#f97316", subFg: "#475569" },
