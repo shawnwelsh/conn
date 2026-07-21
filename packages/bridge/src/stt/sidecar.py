@@ -70,15 +70,46 @@ def main():
     device = None
     if args.device is not None:
         device = int(args.device) if args.device.isdigit() else args.device
-    stream = sd.RawInputStream(
-        samplerate=SAMPLE_RATE,
-        channels=1,
-        dtype="int16",
-        device=device,
-        callback=on_audio,
-    )
-    stream.start()
-    log(f"microphone open: {sd.query_devices(stream.device)['name']}")
+
+    # The microphone is opened ON DEMAND, not at startup. Holding an input
+    # stream open for the whole session lights the OS "in use" indicator and
+    # claims the headset all day for a feature used in bursts — on a machine
+    # whose owner is frequently on calls, that is not a reasonable default.
+    # The MODEL stays loaded (that's the ~4s cost); opening a device is not.
+    stream = None
+
+    def open_mic() -> int:
+        """Open + start the input stream. Returns ms taken."""
+        nonlocal stream
+        if stream is not None:
+            return 0
+        t0 = time.time()
+        s = sd.RawInputStream(
+            samplerate=SAMPLE_RATE,
+            channels=1,
+            dtype="int16",
+            device=device,
+            callback=on_audio,
+        )
+        s.start()
+        stream = s
+        ms = int((time.time() - t0) * 1000)
+        log(f"microphone open: {sd.query_devices(s.device)['name']} ({ms}ms)")
+        return ms
+
+    def close_mic() -> None:
+        nonlocal stream
+        if stream is None:
+            return
+        s, stream = stream, None
+        try:
+            s.stop()
+            s.close()
+        except Exception as e:  # noqa: BLE001
+            log(f"microphone close failed: {e}")
+        else:
+            log("microphone released")
+
     out({"event": "ready", "model": args.model})
 
     def transcribe(pcm: bytes) -> str:
@@ -114,15 +145,27 @@ def main():
         elif cmd == "start":
             with lock:
                 chunks.clear()
+            # Open BEFORE replying: the deck only shows REC once this returns,
+            # so the key can't invite speech into a device that isn't live yet.
+            try:
+                open_ms = open_mic()
+            except Exception as e:  # noqa: BLE001
+                log(f"microphone open failed: {e}")
+                out({"ok": False, "error": "mic unavailable"})
+                continue
             recording.set()
-            out({"ok": True})
+            out({"ok": True, "openMs": open_ms})
         elif cmd == "cancel":
             recording.clear()
+            close_mic()
             with lock:
                 chunks.clear()
             out({"ok": True})
         elif cmd == "stop":
             recording.clear()
+            # Release the device before transcribing — transcription takes far
+            # longer than recording, and nothing needs the mic during it.
+            close_mic()
             with lock:
                 pcm = b"".join(chunks)
                 chunks.clear()

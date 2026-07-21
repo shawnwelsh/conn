@@ -117,11 +117,18 @@ export class SttSidecar implements SttEngine {
 
   async start(): Promise<boolean> {
     if (this._status !== "ready") return false;
+    // The sidecar opens the microphone inside this call and only answers once
+    // it is live, so "recording" on the key is never a promise the device
+    // hasn't kept. openMs is logged to show what that costs in practice.
     const reply = await this.command({ cmd: "start" }, CMD_TIMEOUT_MS);
     if (reply?.ok === true) {
       this.setStatus("recording");
+      if (typeof reply.openMs === "number") {
+        this.log.info({ openMs: reply.openMs }, "stt: microphone opened on demand");
+      }
       return true;
     }
+    this.log.warn({ err: reply?.error }, "stt: could not open the microphone");
     return false;
   }
 
