@@ -212,18 +212,31 @@ export function renderTile(spec: TileSpec): Buffer {
     ctx.fillText(spec.badge, cx - bw / 2, cy);
   }
 
-  // Stale overlay: darken the whole tile (drawn last, under nothing).
+  // Stale: drain the COLOUR, keep the brightness. Darkening it would say the
+  // same thing as "not targeted" and the two states would be unreadable
+  // together; a grey key among coloured ones says "old news" on its own.
   if (spec.dim) {
-    ctx.fillStyle = "rgba(0, 0, 0, 0.55)";
+    ctx.save();
+    ctx.globalCompositeOperation = "saturation";
+    ctx.fillStyle = "hsl(0, 0%, 50%)";
+    ctx.fillRect(0, 0, S, S);
+    ctx.restore();
+  }
+
+  // Not the targeted session: veil it, so the single key that keystrokes and
+  // dictation actually reach is the only bright one in the row.
+  if (spec.veil) {
+    ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
     ctx.fillRect(0, 0, S, S);
   }
 
-  // Dead session: heavy darken + drawn skull-and-crossbones (vector, so it
-  // can never fall back to a missing-glyph box).
+  // Dead session: INVERTED — black on white with a drawn skull. Its own
+  // channel entirely, because a dead key that merely looked dim was
+  // indistinguishable from one that was simply not selected.
   if (spec.dead) {
-    ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
+    ctx.fillStyle = "rgba(255, 255, 255, 0.92)";
     ctx.fillRect(0, 0, S, S);
-    drawSkull(ctx, S / 2, S / 2 + 6, 34);
+    drawSkull(ctx, S / 2, S / 2 + 6, 34, "#0f172a");
   }
 
   const buf = canvas.toBuffer("image/png");
@@ -530,10 +543,10 @@ function drawPromptMark(ctx: SKRSContext2D, cx: number, cy: number, r: number, c
   ctx.restore();
 }
 
-function drawSkull(ctx: SKRSContext2D, cx: number, cy: number, r: number): void {
+function drawSkull(ctx: SKRSContext2D, cx: number, cy: number, r: number, color = "#f8fafc"): void {
   ctx.save();
-  ctx.strokeStyle = "#f8fafc";
-  ctx.fillStyle = "#f8fafc";
+  ctx.strokeStyle = color;
+  ctx.fillStyle = color;
   ctx.lineCap = "round";
 
   // Crossed bones behind the skull.

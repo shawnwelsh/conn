@@ -110,8 +110,11 @@ describe("dictation toggle (tap → record, tap → stop & type)", () => {
   });
 
   it("the Send key advertises the shortcut only while WE hold the mic", async () => {
+    // Plain Send carries no subtext: "enter" was a caption on a paper plane.
+    // The compound behaviour is the only thing worth spending the line on.
     const tiles = () => computeTiles(registry, layer, cfg, [], false);
-    expect(tiles()[11]).toMatchObject({ text: "Send", subtext: "enter", state: "command" });
+    expect(tiles()[11]).toMatchObject({ text: "Send", state: "command" });
+    expect(tiles()[11]!.subtext).toBeUndefined();
 
     tapMic(controller);
     await vi.advanceTimersByTimeAsync(0);
@@ -120,15 +123,25 @@ describe("dictation toggle (tap → record, tap → stop & type)", () => {
 
     await tapKey(controller, 11);
     expect(layer.talkActive).toBeUndefined();
-    expect(tiles()[11]).toMatchObject({ subtext: "enter", state: "command" });
+    expect(tiles()[11]!.subtext).toBeUndefined();
   });
 
   it("a rename or deny-reason recording leaves Send looking like plain Enter", async () => {
     // Send really is a plain Enter during those — the key must not lie.
     layer.ptt = "recording";
     layer.permissionRec = { deadline: Date.now() + 10_000 };
-    expect(computeTiles(registry, layer, cfg, [], false)[11]).toMatchObject({ subtext: "enter" });
+    expect(computeTiles(registry, layer, cfg, [], false)[11]!.subtext).toBeUndefined();
     layer.permissionRec = undefined;
+    layer.ptt = undefined;
+  });
+
+  it("the mic key says WHERE the words will go", () => {
+    // The reason voice landed in the wrong session: the destination lived a
+    // row away, behind a 2px-on-glass border, and you read it while talking.
+    layer.ptt = "ready";
+    const mic = computeTiles(registry, layer, cfg, [], false)[10]!;
+    expect(mic.text).toBe("Talk");
+    expect(mic.subtext).toBe(`→ ${registry.targetedSession!.label}`);
     layer.ptt = undefined;
   });
 

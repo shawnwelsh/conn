@@ -38,9 +38,19 @@ export interface TileSpec {
   state: SessionStatus | "answer" | "command" | "blank";
   badge?: string;
   selected?: boolean;
-  /** Render dimmed — used for stale agent slots (no events for a while). */
+  /**
+   * Not the targeted session — render behind a veil so the ONE key that
+   * keystrokes and dictation will reach stays the bright one. Brightness,
+   * staleness and death are deliberately three different channels:
+   * veil = not targeted, desaturated = stale, inverted = dead. A border alone
+   * couldn't carry targeting; at 144px it lands as 2px on the 72px panel and
+   * gets missed, which is how dictation ends up in the wrong session.
+   */
+  veil?: boolean;
+  /** Stale slot (no events for a while) — drained of colour, not darkened, so
+   * it can't be confused with "not targeted". */
   dim?: boolean;
-  /** Session's bound window is gone (dead console) — skull-and-crossbones. */
+  /** Session's bound window is gone (dead console) — inverted, with a skull. */
   dead?: boolean;
   /** Vector icon drawn above the label (row-3 globals etc.). */
   icon?: "mic" | "send" | "esc" | "new" | "page" | "menu" | "resume" | "fork" | "branch";

@@ -216,14 +216,22 @@ export function commandTile(
 /** Mic-key face per sidecar state (absent = offline). It's a toggle, not
  * push-to-talk: tap to start, tap to stop; Send mid-recording stops AND
  * submits. Hence "Talk", not "PTT". */
-export function pttTile(ptt: DeckLayerState["ptt"], flashPhase: boolean): TileSpec {
+/**
+ * The mic key — and, when it's ready or listening, WHERE the words will land.
+ *
+ * Dictation goes to whichever session is targeted on row 1, so the deck used
+ * to make you look up a row, spot a border and start talking. Naming the
+ * destination on the key that does the sending puts the fact where the action
+ * is; "tap to start" was a caption on a microphone.
+ */
+export function pttTile(ptt: DeckLayerState["ptt"], flashPhase: boolean, target?: string): TileSpec {
   switch (ptt) {
     case "recording":
-      return { text: "REC", subtext: "tap to stop", state: "error", icon: "mic", selected: flashPhase };
+      return { text: "REC", subtext: target ?? "tap to stop", state: "error", icon: "mic", selected: flashPhase };
     case "transcribing":
       return { text: "Talk", subtext: "transcribing…", state: "waiting", icon: "mic", selected: flashPhase };
     case "ready":
-      return { text: "Talk", subtext: "tap to start", state: "command", icon: "mic" };
+      return { text: "Talk", subtext: target ? `→ ${target}` : "tap to start", state: "command", icon: "mic" };
     case "loading":
       return { text: "Talk", subtext: "loading…", state: "blank", icon: "mic" };
     default:
@@ -379,6 +387,10 @@ export function computeTiles(
         statusMark: session.status,
         promptMark: session.windowKind === "console",
         selected: isMorphOrigin ? flashPhase : session.sessionId === targeted?.sessionId,
+        // Everything that ISN'T the target recedes. Dictation and commands go
+        // to exactly one session, and a 2px border on glass was not enough to
+        // say which — voice landed in the wrong window more than once.
+        veil: Boolean(targeted) && !isMorphOrigin && session.sessionId !== targeted?.sessionId,
         dim: stale,
         dead: session.windowDead,
       });
@@ -549,26 +561,29 @@ export function computeTiles(
     tiles.push(
       layer.launching
         ? { text: "Resume", subtext: "spawning…", state: "waiting", icon: "resume", selected: flashPhase }
-        : { text: "Resume", subtext: "pick session", state: "command", icon: "resume" },
-      { text: "Fork", subtext: "copy aside", state: "command", icon: "fork" },
-      { text: "Branch", subtext: "split here", state: "command", icon: "branch" },
+        : { text: "Resume", state: "command", icon: "resume" },
+      { text: "Fork", state: "command", icon: "fork" },
+      { text: "Branch", state: "command", icon: "branch" },
       { text: "", state: "blank" },
-      { text: "Page", subtext: "back", state: "command", icon: "page" },
+      { text: "Page", state: "command", icon: "page" },
     );
   } else {
+    // Row 3's subtexts were captions on their own icons ("enter", "interrupt",
+    // "worktree") — read once, never again, and they cost the space the label
+    // needs. The exceptions earn it: they say something the key face can't.
     tiles.push(
-      pttTile(layer.ptt, flashPhase),
+      pttTile(layer.ptt, flashPhase, targeted?.label),
       // Mid-dictation Send is a compound: stop, type, submit. Keep the plane
       // (that's how the key is found by shape) but light it up and say so.
       layer.talkActive
         ? { text: "Send", subtext: "stop + send", state: "answer", icon: "send" }
-        : { text: "Send", subtext: "enter", state: "command", icon: "send" },
-      { text: "Esc", subtext: "interrupt", state: "command", icon: "esc" },
+        : { text: "Send", state: "command", icon: "send" },
+      { text: "Esc", state: "command", icon: "esc" },
       layer.launching
         ? { text: "New", subtext: "spawning…", state: "waiting", icon: "new", selected: flashPhase }
-        : { text: "New", subtext: "worktree", state: "command", icon: "new" },
+        : { text: "New", state: "command", icon: "new" },
       HAS_GLOBALS_PAGE2
-        ? { text: "Page", subtext: "more", state: "command", icon: "page" }
+        ? { text: "Page", state: "command", icon: "page" }
         : { text: "", state: "blank" },
     );
   }
