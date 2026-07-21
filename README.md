@@ -94,6 +94,14 @@ badger"). Non-git dirs or git failures fall back to spawning in place (with a
 loud shared-working-tree warning). Worktrees aren't auto-removed; clean up
 with `git worktree remove` when a feature is done.
 
+`git worktree add` costs 19–32s on a real repo — effectively the whole cost of
+New — so the deck **pre-warms the next one**. After each launch it banks a
+spare at `.claude/worktrees/_spare`; the next New moves that into place and
+re-cuts its branch at the repo's current head (`git switch -C`), which both
+renames it to the new codename and rebuilds it on top of anything committed
+while it sat idle. That's ~660ms instead of half a minute. A missing or broken
+spare just falls back to building one.
+
 Consoles open as **Windows Terminal** tabs (full copy/paste and proper
 rendering), and the bridge binds the console's *process* to the session that
 starts there, marking it `windowKind: "console"` with a `›_` badge on its key.
@@ -133,7 +141,11 @@ surfacing the wrong one is worse than surfacing nothing.
 ## Key layout
 
 - **Row 1** — agent slots (feature-name labels, status colors, targeting,
-  long-press move, Pager at ≥6 sessions).
+  long-press move). At ≥6 sessions the last key becomes **Page** and the row
+  pages in place: pressing a session uses it and leaves you on the page you
+  were reading — nothing is promoted or reshuffled. Nothing is yanked into
+  view either; when a session on another page needs you, the Page key turns
+  yellow and counts them.
 - **Row 2** — actions for the *targeted* session: the command lineup from
   `commands.json` (`"mode"`/`"model"` builtins plus slash commands sent as
   type+Enter; as many as you like — the pager, not the key count, is the
