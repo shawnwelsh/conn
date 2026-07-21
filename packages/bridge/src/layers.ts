@@ -91,13 +91,9 @@ export interface DeckLayerState {
   controls: DeckControls;
 }
 
-/** What the flashing origin key says under the session name while a permission
- * is up. Leads with the backlog so a press visibly changes something. */
-export function permissionSubtext(p: PermissionContext): string {
-  const queued = p.depth ?? 1;
-  const prefix = queued > 1 ? `${queued} pending · ` : "";
-  return `${prefix}${p.toolName}: ${p.summary}`;
-}
+/** Keys 2-5 of row 1 while a morph is up: one wide image spelling out what is
+ * actually being decided. */
+export const MORPH_BANNER_SPAN = 4;
 
 export function initialControls(): DeckControls {
   return { planNext: "plan", modelNext: 1 };
@@ -221,7 +217,30 @@ export function computeTiles(
   const pagerSlot = cfg.slots - 1; // last slot hosts the pager when active
 
   // Row 1 — depends on the row-1 mode.
-  if (layer.row1.mode === "pager") {
+  if (morphSessionId && layer.row1.mode === "agents") {
+    // Deciding requires READING. A 144px subtext under a session name cannot
+    // hold a real command, so while a morph is up the top row becomes: who is
+    // asking (key 1, flashing) + what they're asking (keys 2-5 as one wide
+    // banner). Row 2 keeps the answers directly underneath, so the eye reads
+    // down and the thumb follows. Row 3 is untouched.
+    const asking = registry.get(morphSessionId);
+    const queued = layer.row2 === "permission" ? (layer.permission?.depth ?? 1) : 1;
+    tiles.push({
+      text: asking?.label ?? "session",
+      subtext: queued > 1 ? `${queued} pending` : undefined,
+      state: asking?.status ?? "waiting",
+      badge: asking?.windowKind === "console" ? "›_" : undefined,
+      selected: flashPhase,
+      dead: asking?.windowDead,
+    });
+    const detail =
+      layer.row2 === "permission" && layer.permission
+        ? `${layer.permission.toolName} · ${layer.permission.summary}`
+        : (layer.question?.question ?? "");
+    for (let i = 0; i < MORPH_BANNER_SPAN; i++) {
+      tiles.push({ text: detail, state: "answer", bannerSpan: MORPH_BANNER_SPAN, bannerIndex: i });
+    }
+  } else if (layer.row1.mode === "pager") {
     // Browse overflow sessions, `slots-1` per page; last key advances/closes.
     const entries = registry.overflowEntries();
     const perPage = cfg.slots - 1;
@@ -286,9 +305,9 @@ export function computeTiles(
       const stale = !isMorphOrigin && now - session.lastEventAt > staleMs;
       tiles.push({
         text: session.label,
-        subtext: isMorphOrigin && layer.row2 === "permission"
-          ? permissionSubtext(layer.permission!)
-          : undefined,
+        // A morph re-lays this whole row (asking session + banner), so the
+        // agents branch never renders the origin key while one is up.
+        subtext: undefined,
         state: session.status,
         // Console sessions (own window, fully targetable) get a ›_ badge.
         badge: session.windowKind === "console" ? "›_" : undefined,
@@ -301,7 +320,13 @@ export function computeTiles(
 
   // Row 2 — morphing layer
   if (layer.row2 === "permission" && layer.permission) {
+    // A plan approval arrives down the same pipe as a tool permission, but it
+    // is a different question: approve this plan, or send it back for more
+    // thinking. "Always allow" means nothing for a plan. Key POSITIONS are
+    // held constant so muscle memory survives the relabelling.
+    const isPlan = layer.permission.toolName === "ExitPlanMode";
     const rec = layer.permissionRec;
+    const denyLabel = isPlan ? "Keep planning" : "Deny";
     const denyReasonTile: TileSpec = rec
       ? {
           // The countdown IS the key face: a big ticking number (re-rendered
@@ -312,22 +337,26 @@ export function computeTiles(
           selected: flashPhase,
         }
       : layer.ptt === "transcribing"
-        ? { text: "Deny + reason", subtext: "transcribing…", state: "waiting", icon: "mic", selected: flashPhase }
+        ? { text: denyLabel, subtext: "transcribing…", state: "waiting", icon: "mic", selected: flashPhase }
         : {
-            text: "Deny + reason",
+            text: denyLabel,
             state: "answer",
             icon: "mic",
             // Honest affordance: without a ready sidecar the key is a canned deny.
-            subtext: layer.ptt === "ready" ? "dictate" : "canned",
+            subtext: layer.ptt === "ready" ? (isPlan ? "say why" : "dictate") : "canned",
           };
     const queued = layer.permission.depth ?? 1;
     tiles.push(
-      // The count rides on Allow because that's where the thumb goes: press it
-      // and the number ticks down, proving the press landed even though the
-      // next request lands on the identical face.
-      { text: "Allow", state: "answer", badge: queued > 1 ? String(queued) : undefined },
-      { text: "Always allow", state: "answer" },
-      { text: "Deny", state: "answer", subtext: "" },
+      // The count rides on the affirmative key because that's where the thumb
+      // goes: press it and the number ticks down, proving the press landed
+      // even though the next request lands on the identical face.
+      {
+        text: isPlan ? "Approve plan" : "Allow",
+        state: "answer",
+        badge: queued > 1 ? String(queued) : undefined,
+      },
+      isPlan ? { text: "", state: "blank" } : { text: "Always allow", state: "answer" },
+      { text: denyLabel, state: "answer", subtext: isPlan ? "back to plan" : "" },
       denyReasonTile,
       // This key hands the request back to the screen — and so does the
       // timeout, silently. Showing the deadline here makes the automatic

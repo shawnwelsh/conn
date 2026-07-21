@@ -162,6 +162,54 @@ describe("always-allow rule derivation stays narrow", () => {
   });
 });
 
+describe("plan approvals are not tool permissions", () => {
+  it("summarises a plan by its title, not as escaped JSON", () => {
+    // Verbatim shape from bridge.log: tool_input is {plan, planFilePath} and
+    // plan is a whole markdown doc. The old path fell through to
+    // JSON.stringify and put {"plan":"# Pre-Con… on the key face.
+    const summary = summarizeToolInput({
+      session_id: "s1",
+      cwd: "C:\\dev\\x",
+      hook_event_name: "PermissionRequest",
+      tool_name: "ExitPlanMode",
+      tool_input: {
+        plan: "# Pre-Contracted Renewal Baseline Exclusion — SFDC automation\n\n## Context\n\nFinance's renewal…",
+        planFilePath: "C:\\Users\\swelsh\\.claude\\plans\\okay-so-in-our-curious-walrus.md",
+      },
+    });
+    expect(summary).toBe("Pre-Contracted Renewal Baseline Exclusion — SFDC automation");
+  });
+
+  it("rejecting a plan reads as 'keep planning', not 'denied'", async () => {
+    const store = makeStore();
+    const held = store.hold({
+      session_id: "s1",
+      cwd: "C:\\dev\\x",
+      hook_event_name: "PermissionRequest",
+      tool_name: "ExitPlanMode",
+      tool_input: {},
+    });
+    store.decide("deny");
+    const body = (await held) as any;
+    expect(body.hookSpecificOutput.decision.behavior).toBe("deny");
+    expect(body.hookSpecificOutput.decision.message).toBe("Not approved from belay — keep planning.");
+  });
+
+  it("a dictated reason still wins over the canned message", async () => {
+    const store = makeStore();
+    const held = store.hold({
+      session_id: "s1",
+      cwd: "C:\\dev\\x",
+      hook_event_name: "PermissionRequest",
+      tool_name: "ExitPlanMode",
+      tool_input: {},
+    });
+    store.decide("deny-reason", { message: "split phase 2 out first" });
+    const body = (await held) as any;
+    expect(body.hookSpecificOutput.decision.message).toBe("split phase 2 out first");
+  });
+});
+
 describe("queue depth", () => {
   it("reports how many requests are stacked behind the visible one", () => {
     // Observed live: 10:59:03 held #1, then 10:59:15 held #2 while #1 was

@@ -95,7 +95,7 @@ describe("permission panel legibility", () => {
 
   it("shows the backlog when a session and its subagent both ask at once", () => {
     const r = new SessionRegistry(5);
-    const s = start(r, "asking");
+    start(r, "asking");
     const tiles = computeTiles(
       r,
       permLayer({ sessionId: "asking", toolName: "Bash", summary: "echo x", depth: 2 }),
@@ -103,7 +103,76 @@ describe("permission panel legibility", () => {
     );
     expect(tiles[5]!.text).toBe("Allow");
     expect(tiles[5]!.badge).toBe("2");
-    expect(tiles[s.slot]!.subtext).toBe("2 pending · Bash: echo x");
+    // The count belongs on the asking session's key; the command itself has a
+    // banner now and no longer has to fit in a 144px subtext.
+    expect(tiles[0]!.subtext).toBe("2 pending");
+  });
+
+  it("banners WHAT is being approved across row 1 keys 2-5", () => {
+    // The whole point of the morph is deciding, and you cannot decide what you
+    // cannot read. Key 1 keeps the asking session; the rest is one wide image.
+    const r = new SessionRegistry(5);
+    start(r, "asking");
+    start(r, "other");
+    const tiles = computeTiles(
+      r,
+      permLayer({
+        sessionId: "asking",
+        toolName: "Bash",
+        summary: 'cd "C:/dev/revops-platform/.claude/worktrees/quiet-vole" && npm run build',
+        depth: 1,
+      }),
+      cfg,
+    );
+    expect(tiles[0]!.text).toBe("asking");
+    for (let i = 1; i <= 4; i++) {
+      expect(tiles[i]!.bannerSpan).toBe(4);
+      expect(tiles[i]!.bannerIndex).toBe(i - 1);
+      expect(tiles[i]!.text).toContain("npm run build");
+      expect(tiles[i]!.text).toContain("Bash");
+    }
+  });
+
+  it("banners the question text too — same problem, same fix", () => {
+    const r = new SessionRegistry(5);
+    start(r, "asking");
+    const layer: DeckLayerState = {
+      row1: { mode: "agents", pagerPage: 0 },
+      row2: "question",
+      row2Cmd: { mode: "default", page: 0 },
+      row3Page: 0,
+      question: {
+        sessionId: "asking",
+        question: "Which store should the always-allow rule be written to?",
+        options: ["Session only", "Project settings"],
+        page: 0,
+      },
+      controls: { planNext: "plan", modelNext: 1 },
+    };
+    const tiles = computeTiles(r, layer, cfg);
+    expect(tiles[0]!.text).toBe("asking");
+    expect(tiles[1]!.bannerSpan).toBe(4);
+    expect(tiles[1]!.text).toContain("always-allow rule");
+  });
+
+  it("a plan approval is not a tool permission", () => {
+    // ExitPlanMode arrives through PermissionRequest, but "Always allow" is
+    // meaningless for a plan and "Allow/Deny" is the wrong vocabulary. Key
+    // POSITIONS stay put so muscle memory survives: 0 affirmative, 2 negative,
+    // 3 negative-with-dictated-reason, 4 hand back to the screen.
+    const r = new SessionRegistry(5);
+    start(r, "asking");
+    const tiles = computeTiles(
+      r,
+      permLayer({ sessionId: "asking", toolName: "ExitPlanMode", summary: "{}", depth: 1 }),
+      cfg,
+    );
+    expect(tiles[5]!.text).toBe("Approve plan");
+    expect(tiles[6]!.state).toBe("blank"); // no "always allow" for a plan
+    expect(tiles[7]!.text).toBe("Keep planning");
+    expect(tiles[8]!.text).toBe("Keep planning");
+    expect(tiles[8]!.icon).toBe("mic");
+    expect(tiles[9]!.text).toBe("Show on screen");
   });
 
   it("stays quiet when only one request is in flight", () => {
@@ -111,6 +180,6 @@ describe("permission panel legibility", () => {
     const s = start(r, "asking");
     const tiles = computeTiles(r, permLayer({ sessionId: "asking", toolName: "Bash", summary: "echo x", depth: 1 }), cfg);
     expect(tiles[5]!.badge).toBeUndefined();
-    expect(tiles[s.slot]!.subtext).toBe("Bash: echo x");
+    expect(tiles[s.slot]!.subtext).toBeUndefined();
   });
 });

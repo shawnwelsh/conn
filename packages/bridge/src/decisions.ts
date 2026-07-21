@@ -155,6 +155,9 @@ export function summarizeToolInput(event: AnyHookEvent): string {
   const input = (event.tool_input ?? {}) as Record<string, unknown>;
   const tool = String(event.tool_name ?? "");
   if (typeof input["command"] === "string") return input["command"];
+  // A plan is a whole markdown document; JSON.stringify would put escaped
+  // newlines on the key face. Its title is the one line worth showing.
+  if (typeof input["plan"] === "string") return planHeadline(input["plan"]);
   if (typeof input["file_path"] === "string") return input["file_path"];
   if (typeof input["url"] === "string") return input["url"];
   const json = JSON.stringify(input);
@@ -211,14 +214,30 @@ function buildDecisionBody(
       });
     }
     case "deny":
-      return decision({ behavior: "deny", message: message ?? "Denied from belay" });
     case "deny-reason":
       // The dictated reason reaches Claude as structured feedback through the
       // still-held hook response; no/empty transcription → the canned deny.
-      return decision({ behavior: "deny", message: message ?? "Denied from belay" });
+      // A rejected PLAN isn't a refused action — it's "go think more", and the
+      // message is what Claude reads next, so it has to say the right thing.
+      return decision({ behavior: "deny", message: message ?? cannedDenial(pending) });
     case "show-on-screen":
       return {}; // defer → Claude Code's normal dialog appears
   }
+}
+
+/** First meaningful line of a plan, minus its markdown heading marks. */
+export function planHeadline(plan: string): string {
+  const line = plan
+    .split("\n")
+    .map((l) => l.trim())
+    .find((l) => l.length > 0);
+  return line ? line.replace(/^#+\s*/, "") : "(empty plan)";
+}
+
+function cannedDenial(pending: PendingPermission): string {
+  return pending.toolName === "ExitPlanMode"
+    ? "Not approved from belay — keep planning."
+    : "Denied from belay";
 }
 
 function decision(body: Record<string, unknown>): unknown {

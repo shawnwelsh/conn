@@ -141,6 +141,15 @@ export class DeckController {
         if (slot === last) return this.pagerAdvanceOrClose();
         return this.pagerPick(slot);
       default: // agents
+        // While a morph is up, keys 2-5 are one wide banner spelling out what
+        // is being decided — NOT sessions. Sending them through slot logic
+        // would retarget, or long-press-move, whoever happens to sit there.
+        // A tap brings the asking session forward instead: the deck can only
+        // show so much, and "let me go read it" is the honest next move.
+        if (this.morphSessionId() && slot > 0) {
+          if (gesture === "tap" || gesture === "double") void this.focusMorphSession();
+          return;
+        }
         if (this.registry.pagerActive() && slot === last) {
           if (gesture !== "long") this.openPager();
           return;
@@ -155,6 +164,21 @@ export class DeckController {
         if (gesture === "double") return void this.row1DoubleTap(slot);
         return this.row1Tap(slot);
     }
+  }
+
+  /** The session behind the active morph layer, if any. */
+  private morphSessionId(): string | undefined {
+    if (this.layer.row2 === "permission") return this.layer.permission?.sessionId;
+    if (this.layer.row2 === "question") return this.layer.question?.sessionId;
+    return undefined;
+  }
+
+  private async focusMorphSession(): Promise<void> {
+    const id = this.morphSessionId();
+    const session = id ? this.registry.get(id) : undefined;
+    if (!session) return;
+    const ok = await this.delivery.focus(session);
+    this.log.info({ session: session.sessionId, ok }, "banner tap → focus asking session");
   }
 
   private row1Tap(slot: Slot): void {

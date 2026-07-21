@@ -24,6 +24,57 @@ function press(c: DeckController, slot: number) {
   c.up(slot);
 }
 
+describe("row-1 banner keys during a morph", () => {
+  let r: SessionRegistry;
+  let layer: DeckLayerState;
+  let c: DeckController;
+  let focused: string[];
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    r = new SessionRegistry(5);
+    seed(r, ["a", "b", "c", "d"]);
+    layer = {
+      row1: initialRow1(),
+      row2: "permission",
+      row2Cmd: initialRow2Cmd(),
+      row3Page: 0,
+      permission: { sessionId: "d", toolName: "Bash", summary: "rm -rf build" },
+      controls: { planNext: "plan", modelNext: 1 },
+    };
+    focused = [];
+    const delivery = new NoopAdapter(() => {});
+    delivery.focus = async (s) => {
+      focused.push(s.sessionId);
+      return true;
+    };
+    c = new DeckController(r, layer, delivery, cfg, noopLog, () => {});
+  });
+  afterEach(() => vi.useRealTimers());
+
+  it("does not target the session that happens to sit under a banner key", async () => {
+    // Keys 2-5 are one wide image, not sessions. Treating them as slots would
+    // retarget — or worse, long-press-move — whoever occupied that slot.
+    r.target("a");
+    press(c, 2);
+    await vi.advanceTimersByTimeAsync(400); // let the tap escape the double-tap window
+    expect(r.targetedSession?.sessionId).toBe("a");
+  });
+
+  it("tapping the banner focuses the asking session, so you can go read it", async () => {
+    press(c, 3);
+    await vi.advanceTimersByTimeAsync(400);
+    expect(focused).toEqual(["d"]);
+  });
+
+  it("long-pressing a banner key never starts a move", () => {
+    c.down(1);
+    vi.advanceTimersByTime(600);
+    c.up(1);
+    expect(layer.row1.mode).toBe("agents");
+  });
+});
+
 describe("pager + long-press move (row-1 modes)", () => {
   let r: SessionRegistry;
   let layer: DeckLayerState;
