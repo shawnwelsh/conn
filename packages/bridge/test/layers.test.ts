@@ -67,3 +67,50 @@ describe("row-1 stale dimming", () => {
     expect(tiles[s.slot]!.dim).toBeFalsy();
   });
 });
+
+describe("permission panel legibility", () => {
+  function permLayer(permission: NonNullable<DeckLayerState["permission"]>): DeckLayerState {
+    return {
+      row1: { mode: "agents", pagerPage: 0 },
+      row2: "permission",
+      row2Cmd: { mode: "default", page: 0 },
+      row3Page: 0,
+      permission,
+      controls: { planNext: "plan", modelNext: 1 },
+    };
+  }
+
+  it("counts down to the hand-back so the panel never just vanishes", () => {
+    const r = new SessionRegistry(5);
+    start(r, "asking");
+    const tiles = computeTiles(
+      r,
+      permLayer({ sessionId: "asking", toolName: "Bash", summary: "echo x", expiresAt: Date.now() + 12_600 }),
+      cfg,
+    );
+    // Key 9 = "Show on screen" — the countdown is a countdown to exactly that.
+    expect(tiles[9]!.text).toBe("Show on screen");
+    expect(tiles[9]!.subtext).toMatch(/^auto 1[23]s$/);
+  });
+
+  it("shows the backlog when a session and its subagent both ask at once", () => {
+    const r = new SessionRegistry(5);
+    const s = start(r, "asking");
+    const tiles = computeTiles(
+      r,
+      permLayer({ sessionId: "asking", toolName: "Bash", summary: "echo x", depth: 2 }),
+      cfg,
+    );
+    expect(tiles[5]!.text).toBe("Allow");
+    expect(tiles[5]!.badge).toBe("2");
+    expect(tiles[s.slot]!.subtext).toBe("2 pending · Bash: echo x");
+  });
+
+  it("stays quiet when only one request is in flight", () => {
+    const r = new SessionRegistry(5);
+    const s = start(r, "asking");
+    const tiles = computeTiles(r, permLayer({ sessionId: "asking", toolName: "Bash", summary: "echo x", depth: 1 }), cfg);
+    expect(tiles[5]!.badge).toBeUndefined();
+    expect(tiles[s.slot]!.subtext).toBe("Bash: echo x");
+  });
+});

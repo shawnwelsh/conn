@@ -13,6 +13,12 @@ export interface PermissionContext {
   sessionId: string;
   toolName: string;
   summary: string;
+  /** How many requests are held in total, this one included. Requests stack up
+   * faster than a human answers them, and the next one lands on the same keys
+   * looking near-identical — without a count, answering reads as a no-op. */
+  depth?: number;
+  /** Epoch ms at which this falls through to Claude Code's own dialog. */
+  expiresAt?: number;
 }
 
 export interface QuestionContext {
@@ -83,6 +89,14 @@ export interface DeckLayerState {
   permission?: PermissionContext;
   question?: QuestionContext;
   controls: DeckControls;
+}
+
+/** What the flashing origin key says under the session name while a permission
+ * is up. Leads with the backlog so a press visibly changes something. */
+export function permissionSubtext(p: PermissionContext): string {
+  const queued = p.depth ?? 1;
+  const prefix = queued > 1 ? `${queued} pending · ` : "";
+  return `${prefix}${p.toolName}: ${p.summary}`;
 }
 
 export function initialControls(): DeckControls {
@@ -273,7 +287,7 @@ export function computeTiles(
       tiles.push({
         text: session.label,
         subtext: isMorphOrigin && layer.row2 === "permission"
-          ? `${layer.permission!.toolName}: ${layer.permission!.summary}`
+          ? permissionSubtext(layer.permission!)
           : undefined,
         state: session.status,
         // Console sessions (own window, fully targetable) get a ›_ badge.
@@ -306,12 +320,25 @@ export function computeTiles(
             // Honest affordance: without a ready sidecar the key is a canned deny.
             subtext: layer.ptt === "ready" ? "dictate" : "canned",
           };
+    const queued = layer.permission.depth ?? 1;
     tiles.push(
-      { text: "Allow", state: "answer" },
+      // The count rides on Allow because that's where the thumb goes: press it
+      // and the number ticks down, proving the press landed even though the
+      // next request lands on the identical face.
+      { text: "Allow", state: "answer", badge: queued > 1 ? String(queued) : undefined },
       { text: "Always allow", state: "answer" },
       { text: "Deny", state: "answer", subtext: "" },
       denyReasonTile,
-      { text: "Show on screen", state: "answer", subtext: "release" },
+      // This key hands the request back to the screen — and so does the
+      // timeout, silently. Showing the deadline here makes the automatic
+      // version legible instead of the panel just disappearing on you.
+      {
+        text: "Show on screen",
+        state: "answer",
+        subtext: layer.permission.expiresAt
+          ? `auto ${Math.max(0, Math.ceil((layer.permission.expiresAt - now) / 1000))}s`
+          : "release",
+      },
     );
   } else if (layer.row2 === "question" && layer.question) {
     const q = layer.question;

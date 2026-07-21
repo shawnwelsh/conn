@@ -41,6 +41,9 @@ export interface PendingPermission {
   sessionId: string;
   toolName: string;
   summary: string;
+  /** When this request falls through to Claude Code's own dialog. The panel
+   * counts down to it — a morph that vanishes unexplained reads as a bug. */
+  expiresAt: number;
   event: AnyHookEvent;
 }
 
@@ -67,6 +70,14 @@ export class DecisionStore {
     return this.queue[0]?.pending;
   }
 
+  /** How many requests are held, including the visible one. Requests arrive
+   * faster than a human answers them, so the panel has to say "1 of 3" —
+   * otherwise the next one takes the same spot and the press reads as a
+   * no-op. */
+  get depth(): number {
+    return this.queue.length;
+  }
+
   /** Park a PermissionRequest until decision/timeout. Resolves with the hook
    * response body. */
   hold(event: AnyHookEvent): Promise<unknown> {
@@ -88,6 +99,7 @@ export class DecisionStore {
         sessionId: event.session_id,
         toolName: String(event.tool_name ?? "unknown"),
         summary: summarizeToolInput(event),
+        expiresAt: Date.now() + this.timeoutMs,
         event,
       };
       const held: Held = {

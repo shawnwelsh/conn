@@ -25,8 +25,13 @@ export function nextStatus(current: SessionStatus, event: AnyHookEvent): Session
       switch (event.notification_type) {
         case "permission_prompt":
           return "waiting";
+        // "Claude is waiting for your input" — the session is BLOCKED ON THE
+        // HUMAN, which is the one thing a fleet surface exists to show. This
+        // used to map to done (green), and done never calls trySurface or sets
+        // pagerFlash, so an off-page session sitting on an unanswered question
+        // stayed silent. Stop still means "turn over"; this means "your move".
         case "idle_prompt":
-          return current === "error" ? null : "done";
+          return current === "error" ? null : "waiting";
         default:
           return null;
       }
@@ -35,4 +40,16 @@ export function nextStatus(current: SessionStatus, event: AnyHookEvent): Session
     default:
       return null;
   }
+}
+
+/**
+ * Does this event mean the session that asked a question has moved past it?
+ *
+ * Notification is deliberately excluded. Claude Code emits it ~6s AFTER a
+ * prompt appears ("Claude needs your permission", "Claude is waiting for your
+ * input") and it means the human is STILL needed. Treating it as movement made
+ * the deck tear down its own answer panel seconds after raising it.
+ */
+export function endsPendingQuestion(eventName: string): boolean {
+  return eventName !== "Notification";
 }

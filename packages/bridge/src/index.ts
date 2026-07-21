@@ -21,6 +21,7 @@ import { SttSidecar } from "./stt/sidecar.js";
 import { registerHookRoutes } from "./http/hooks.js";
 import { registerApiRoutes } from "./http/api.js";
 import { livenessSweep } from "./liveness.js";
+import { endsPendingQuestion } from "./status.js";
 import { QUESTION_OPTIONS_PER_PAGE } from "./layers.js";
 import type { AskUserQuestionInput } from "./hookTypes.js";
 import type { KeyRender } from "@belay/shared";
@@ -147,6 +148,8 @@ function syncPermissionLayer(): void {
       sessionId: current.sessionId,
       toolName: current.toolName,
       summary: current.summary,
+      depth: decisions.depth,
+      expiresAt: current.expiresAt,
     };
     registry.target(current.sessionId); // auto-target the requester
   } else if (layer.row2 === "permission") {
@@ -331,9 +334,11 @@ registerHookRoutes(app, registry, log, {
   onPermissionRequest: (event) => decisions.hold(event),
   onSessionEnd: (sessionId) => decisions.releaseSession(sessionId),
   onQuestion: (event) => showQuestion(event),
-  onAnyEvent: (sessionId) => {
-    // Any further activity from the asking session means the question was
-    // answered (on screen or via the deck) or abandoned.
+  onAnyEvent: (sessionId, eventName) => {
+    // Real activity from the asking session means the question was answered
+    // (on screen or via the deck) or abandoned. Notification is NOT activity —
+    // see endsPendingQuestion.
+    if (!endsPendingQuestion(eventName)) return;
     if (layer.row2 === "question" && layer.question?.sessionId === sessionId) revertQuestion();
   },
 });

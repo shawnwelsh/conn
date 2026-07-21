@@ -155,9 +155,28 @@ describe("always-allow rule derivation stays narrow", () => {
         sessionId: "s",
         toolName: "Edit",
         summary: "",
+        expiresAt: 0,
         event: { session_id: "s", cwd: "", hook_event_name: "PermissionRequest", tool_input: { file_path: "C:\\x\\y.ts" } },
       }),
     ).toEqual({ toolName: "Edit", ruleContent: "Edit(C:\\x\\y.ts)" });
+  });
+});
+
+describe("queue depth", () => {
+  it("reports how many requests are stacked behind the visible one", () => {
+    // Observed live: 10:59:03 held #1, then 10:59:15 held #2 while #1 was
+    // still on screen. Answering one instantly promotes the next — same tool,
+    // same-looking command — so the panel appears never to have dismissed.
+    // The deck has to be able to say "1 of 2" or the press reads as a no-op.
+    const store = makeStore();
+    expect(store.depth).toBe(0);
+    void store.hold(permEvent("s1", "git status"));
+    expect(store.depth).toBe(1);
+    void store.hold(permEvent("s1", "git diff"));
+    expect(store.depth).toBe(2);
+    store.decide("allow");
+    expect(store.depth).toBe(1);
+    expect(store.current?.summary).toBe("git diff");
   });
 });
 
