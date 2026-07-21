@@ -151,10 +151,72 @@ describe("pager + long-press move (row-1 modes)", () => {
     expect(r.snapshot().working).toEqual(["a", "b", "c", "d"]); // unchanged
   });
 
-  it("Cancel key (last slot) aborts a pending move", () => {
-    longPress(0);
+  it("Cancel key (last slot) aborts a pending move when targets fit on one page", () => {
+    // Few enough sessions that the drop targets need no paging, so the last
+    // key is still a plain Cancel.
+    const r2 = new SessionRegistry(5);
+    seed(r2, ["a", "b", "c", "d"]);
+    const layer2: DeckLayerState = {
+      row1: initialRow1(),
+      row2: "idle",
+      row2Cmd: initialRow2Cmd(),
+      row3Page: 0,
+      controls: { planNext: "plan", modelNext: 1 },
+    };
+    const c2 = new DeckController(r2, layer2, new NoopAdapter(() => {}), cfg, noopLog, () => {});
+    c2.down(0);
+    vi.advanceTimersByTime(cfg.longPressMs + 5);
+    c2.up(0);
+    expect(layer2.row1.mode).toBe("move");
+    press(c2, 4);
+    vi.advanceTimersByTime(cfg.doubleTapMs + 5);
+    expect(layer2.row1.mode).toBe("agents");
+    expect(r2.snapshot().working).toEqual(["a", "b", "c", "d"]);
+  });
+
+  it("a move always starts its drop targets on page 1, wherever you grabbed from", () => {
+    // Grabbing from page 2 and only being offered page 2's slots makes the
+    // move useless for its main job: pulling something to the front.
+    tap(4); // → page 2
+    expect(layer.row1.page).toBe(1);
+    longPress(1); // grab "f" from page 2
+    expect(layer.row1.mode).toBe("move");
+    expect(layer.row1.page).toBe(0); // drop targets start at the front
+  });
+
+  it("can carry a session from page 2 to the very first slot", () => {
     tap(4);
+    longPress(1); // "f"
+    tap(0); // first drop target on page 1
     expect(layer.row1.mode).toBe("agents");
-    expect(r.snapshot().working).toEqual(["a", "b", "c", "d"]);
+    expect(r.orderedEntries().map((s) => s.sessionId)).toEqual(["f", "a", "b", "c", "d", "e"]);
+  });
+
+  it("the last key pages through drop targets during a move, and rearms the timer", () => {
+    longPress(0); // grab "a"
+    expect(layer.row1.page).toBe(0);
+    vi.advanceTimersByTime(cfg.moveCancelSeconds * 1000 - 1000); // most of the way
+    tap(4); // page the drop targets
+    expect(layer.row1.mode).toBe("move"); // still placing
+    expect(layer.row1.page).toBe(1);
+    // Well past the ORIGINAL deadline. Only a rearm keeps the move alive —
+    // hunting for the right page must not cost you the thing you grabbed.
+    vi.advanceTimersByTime(cfg.moveCancelSeconds * 1000 - 500);
+    expect(layer.row1.mode).toBe("move");
+  });
+
+  it("a session lands on the key you pressed, even on a later page", () => {
+    longPress(0); // grab "a" → [b,c,d,e,f] remain
+    tap(4); // → drop page 2, showing e and f at keys 1 and 2
+    tap(1); // drop onto the second key of page 2 = position 6
+    expect(r.orderedEntries().map((s) => s.sessionId)).toEqual(["b", "c", "d", "e", "f", "a"]);
+  });
+
+  it("holding the page key cancels, since it displaced Cancel", () => {
+    longPress(0);
+    expect(layer.row1.mode).toBe("move");
+    longPress(4);
+    expect(layer.row1.mode).toBe("agents");
+    expect(r.orderedEntries().map((s) => s.sessionId)).toEqual(["a", "b", "c", "d", "e", "f"]);
   });
 });

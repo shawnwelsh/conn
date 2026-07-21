@@ -144,8 +144,16 @@ export class DeckController {
   private row1(slot: Slot, gesture: Gesture): void {
     const { paged, size } = this.row1Layout();
     if (this.layer.row1.mode === "move") {
-      if (gesture === "long") return; // ignore long-press while placing
-      if (slot === this.cfg.slots - 1) return this.cancelMove();
+      const last = this.cfg.slots - 1;
+      if (slot === last) {
+        // With more positions than fit, this key has to page — otherwise a
+        // move can only ever shuffle within the page you grabbed from, which
+        // is useless for the thing you actually want (carry it to the front).
+        // Cancel moves onto the hold, and the auto-cancel timer is the net.
+        if (this.movePages() > 1 && gesture !== "long") return this.pageMoveTargets();
+        return this.cancelMove();
+      }
+      if (gesture === "long") return; // ignore long-press on a drop target
       return this.completeMove(slot);
     }
     // agents
@@ -226,11 +234,27 @@ export class DeckController {
 
   private beginMove(sessionId: string | undefined): void {
     if (!sessionId) return;
-    // Stay on the page the move started from — the drop targets you're shown
-    // have to be the sessions you were just looking at.
-    this.layer.row1 = { mode: "move", page: this.layer.row1.page, moveSource: sessionId };
+    // Drop targets always start at the FRONT, whichever page you grabbed
+    // from. The common move is "bring this forward", and starting on the page
+    // you grabbed from puts that destination out of reach.
+    this.layer.row1 = { mode: "move", page: 0, moveSource: sessionId };
     this.armMoveTimer();
     this.log.info({ session: sessionId }, "move: begin");
+    this.onLayerChanged();
+  }
+
+  /** Pages of drop targets. Move mode always shows slots-1 targets (the last
+   * key is Page/Cancel), so it can address positions the agents row can't —
+   * with 5 sessions there IS a fifth position, and this is how you reach it. */
+  private movePages(): number {
+    const size = this.cfg.slots - 1;
+    return Math.max(1, Math.ceil(this.registry.orderedEntries().length / size));
+  }
+
+  private pageMoveTargets(): void {
+    this.layer.row1.page = (this.layer.row1.page + 1) % this.movePages();
+    this.armMoveTimer(); // paging is intent, not idleness — restart the clock
+    this.log.info({ page: this.layer.row1.page }, "move: paged drop targets");
     this.onLayerChanged();
   }
 

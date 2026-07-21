@@ -297,20 +297,37 @@ export function computeTiles(
     // so a session can be dragged across a page boundary.
     const src = layer.row1.moveSource ? registry.get(layer.row1.moveSource) : undefined;
     const ordered = registry.orderedEntries();
-    // Always slots-1 targets + Cancel, whether or not row 1 is paged — the
-    // last key has to stay Cancel.
+    // Always slots-1 targets + a Page/Cancel key. Paginating the targets by 4
+    // (rather than by the agents row's layout) means every position is
+    // reachable, including the 5th when only five sessions exist.
     const size = cfg.slots - 1;
-    const page = layer.row1.page;
+    const pages = Math.max(1, Math.ceil(ordered.length / size));
+    const page = ((layer.row1.page % pages) + pages) % pages;
     for (let slot = 0; slot < size; slot++) {
-      const cur = ordered[page * size + slot];
-      tiles.push({
-        text: cur?.label ?? "empty",
-        subtext: "drop here",
-        state: "answer",
-        badge: String(page * size + slot + 1),
-      });
+      const abs = page * size + slot;
+      const cur = ordered[abs];
+      // Exactly one "end" key — the append position just past the last
+      // session. Anything beyond that isn't a position, so it stays blank
+      // rather than offering the same drop twice.
+      const isSource = cur && cur.sessionId === layer.row1.moveSource;
+      tiles.push(
+        // The one you're carrying is marked wherever it appears. The Cancel
+        // key used to name it, but the Page key took that slot and a move can
+        // now span pages — "which one am I holding?" needs an answer on the
+        // session itself.
+        isSource ? { text: cur.label, subtext: "moving", state: "waiting", badge: String(abs + 1) }
+        : cur ? { text: cur.label, subtext: "drop here", state: "answer", badge: String(abs + 1) }
+        : abs === ordered.length ? { text: "end", subtext: "drop here", state: "answer", badge: String(abs + 1) }
+        : { text: "", state: "blank" },
+      );
     }
-    tiles.push({ text: "Cancel", subtext: src ? `moving ${src.label}` : "move", state: "command" });
+    tiles.push(
+      pages > 1
+        ? // No page counter: the drop targets are numbered with their absolute
+          // positions, which says where you are more precisely than "2/3".
+          { text: "Page", subtext: "hold cancels", state: "command", icon: "page" }
+        : { text: "Cancel", subtext: src ? `moving ${src.label}` : "move", state: "command" },
+    );
   } else {
     // agents mode — a page of sessions, last key pages when there are more.
     const ordered = registry.orderedEntries();
