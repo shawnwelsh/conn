@@ -275,42 +275,35 @@ describe("working-set + pager model", () => {
     expect(r.snapshot().working).toEqual(["a", "b", "c", "d"]);
   });
 
-  it("surfaces a single waiting overflow session into slot #4", () => {
+  it("a waiting session is NOT yanked onto the visible page", () => {
+    // Auto-surfacing rearranged the page you were reading, under your thumb.
+    // The Page key announces off-page attention instead (see layers).
     const r = new SessionRegistry(5);
-    fill(r, ["a", "b", "c", "d", "e", "f"]); // working [a,b,c,d], overflow [e,f]
+    fill(r, ["a", "b", "c", "d", "e", "f"]); // page 1 [a,b,c,d], rest [e,f]
     r.setStatus(r.get("e")!, "waiting");
-    expect(r.snapshot().working).toEqual(["a", "b", "c", "e"]);
-    expect(r.snapshot().overflow).toContain("d");
-    expect(r.pagerFlashing()).toBe(false);
+    expect(r.snapshot().working).toEqual(["a", "b", "c", "d"]);
+    expect(r.snapshot().overflow).toContain("e");
   });
 
-  it("flashes the pager when a second overflow session needs attention", () => {
-    const r = new SessionRegistry(5);
-    fill(r, ["a", "b", "c", "d", "e", "f", "g"]); // working [a,b,c,d], overflow [e,f,g]
-    r.setStatus(r.get("e")!, "waiting"); // surfaces e → slot 3
-    r.setStatus(r.get("f")!, "waiting"); // slot 3 busy → flash
-    expect(r.pagerFlashing()).toBe(true);
-    expect(r.snapshot().working).toContain("e"); // e stayed surfaced
-    expect(r.snapshot().overflow).toContain("f");
-    // Resolving the overflow waiter clears the flash.
-    r.setStatus(r.get("f")!, "thinking");
-    expect(r.pagerFlashing()).toBe(false);
-  });
-
-  it("promoteToFront brings a session to slot #1 and shifts the rest", () => {
+  it("orderedEntries is the single list row 1 pages through", () => {
     const r = new SessionRegistry(5);
     fill(r, ["a", "b", "c", "d", "e", "f"]);
-    r.promoteToFront("f");
-    expect(r.snapshot().working).toEqual(["f", "a", "b", "c"]);
-    expect(r.snapshot().overflow).toContain("d");
-    expect(r.targetedSession?.sessionId).toBe("f");
+    expect(r.orderedEntries().map((s) => s.sessionId)).toEqual(["a", "b", "c", "d", "e", "f"]);
   });
 
-  it("moveToSlot inserts before the target: ABCD move A→2 = BCAD", () => {
+  it("moveToIndex inserts before the target: ABCD move A→2 = BCAD", () => {
     const r = new SessionRegistry(5);
-    fill(r, ["a", "b", "c", "d"]); // working [a,b,c,d], no pager
-    r.moveToSlot("a", 2);
-    expect(r.snapshot().working).toEqual(["b", "c", "a", "d"]);
+    fill(r, ["a", "b", "c", "d"]); // no paging
+    r.moveToIndex("a", 2);
+    expect(r.orderedEntries().map((s) => s.sessionId)).toEqual(["b", "c", "a", "d"]);
+  });
+
+  it("moveToIndex can pull a session across a page boundary onto page 1", () => {
+    const r = new SessionRegistry(5);
+    fill(r, ["a", "b", "c", "d", "e", "f"]); // page 1 [a,b,c,d], page 2 [e,f]
+    r.moveToIndex("f", 0);
+    expect(r.orderedEntries().map((s) => s.sessionId)).toEqual(["f", "a", "b", "c", "d", "e"]);
+    expect(r.snapshot().working).toEqual(["f", "a", "b", "c"]);
   });
 
   it("caps tracked sessions at maxSessions, dropping LRU overflow", () => {

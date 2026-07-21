@@ -39,7 +39,7 @@ describe("row-1 stale dimming", () => {
     stale.lastEventAt = Date.now() - 61 * 60_000; // 61 min ago
 
     const layer: DeckLayerState = {
-      row1: { mode: "agents", pagerPage: 0 },
+      row1: { mode: "agents", page: 0 },
       row2: "idle",
       row2Cmd: { mode: "default", page: 0 },
       row3Page: 0,
@@ -56,7 +56,7 @@ describe("row-1 stale dimming", () => {
     const s = start(r, "asking");
     s.lastEventAt = Date.now() - 120 * 60_000; // very old
     const layer: DeckLayerState = {
-      row1: { mode: "agents", pagerPage: 0 },
+      row1: { mode: "agents", page: 0 },
       row2: "permission",
       row2Cmd: { mode: "default", page: 0 },
       row3Page: 0,
@@ -68,10 +68,71 @@ describe("row-1 stale dimming", () => {
   });
 });
 
+describe("row-1 paging", () => {
+  function agentsLayer(page = 0): DeckLayerState {
+    return {
+      row1: { mode: "agents", page },
+      row2: "idle",
+      row2Cmd: { mode: "default", page: 0 },
+      row3Page: 0,
+      controls: { planNext: "plan", modelNext: 1 },
+    };
+  }
+
+  it("uses all five keys for sessions when they all fit", () => {
+    const r = new SessionRegistry(5);
+    for (const id of ["a", "b", "c", "d", "e"]) start(r, id);
+    const tiles = computeTiles(r, agentsLayer(), cfg);
+    expect(tiles.slice(0, 5).map((t) => t.text)).toEqual(["a", "b", "c", "d", "e"]);
+  });
+
+  it("hands the last key to Page once there are more, with the paging icon", () => {
+    const r = new SessionRegistry(5);
+    for (const id of ["a", "b", "c", "d", "e", "f"]) start(r, id);
+    const tiles = computeTiles(r, agentsLayer(), cfg);
+    expect(tiles.slice(0, 4).map((t) => t.text)).toEqual(["a", "b", "c", "d"]);
+    expect(tiles[4]!.text).toBe("Page");
+    expect(tiles[4]!.icon).toBe("page"); // matches the row-2/row-3 paging keys
+    expect(tiles[4]!.subtext).toBe("1/2");
+    expect(tiles[4]!.state).toBe("command");
+  });
+
+  it("page 2 shows the remainder", () => {
+    const r = new SessionRegistry(5);
+    for (const id of ["a", "b", "c", "d", "e", "f"]) start(r, id);
+    const tiles = computeTiles(r, agentsLayer(1), cfg);
+    expect(tiles[0]!.text).toBe("e");
+    expect(tiles[1]!.text).toBe("f");
+    expect(tiles[2]!.state).toBe("blank");
+  });
+
+  it("the Page key goes yellow and counts sessions waiting on another page", () => {
+    // This REPLACES auto-surfacing: nothing jumps onto your page, so the key
+    // has to say that someone off-page needs you.
+    const r = new SessionRegistry(5);
+    for (const id of ["a", "b", "c", "d", "e", "f"]) start(r, id);
+    r.setStatus(r.get("e")!, "waiting");
+    r.setStatus(r.get("f")!, "waiting");
+    const tiles = computeTiles(r, agentsLayer(0), cfg);
+    expect(tiles[4]!.state).toBe("waiting");
+    expect(tiles[4]!.badge).toBe("2");
+    expect(tiles[4]!.subtext).toBe("2 waiting");
+  });
+
+  it("stays calm about a waiting session you can already see", () => {
+    const r = new SessionRegistry(5);
+    for (const id of ["a", "b", "c", "d", "e", "f"]) start(r, id);
+    r.setStatus(r.get("a")!, "waiting"); // on page 1, visible
+    const tiles = computeTiles(r, agentsLayer(0), cfg);
+    expect(tiles[4]!.state).toBe("command");
+    expect(tiles[4]!.badge).toBeUndefined();
+  });
+});
+
 describe("permission panel legibility", () => {
   function permLayer(permission: NonNullable<DeckLayerState["permission"]>): DeckLayerState {
     return {
-      row1: { mode: "agents", pagerPage: 0 },
+      row1: { mode: "agents", page: 0 },
       row2: "permission",
       row2Cmd: { mode: "default", page: 0 },
       row3Page: 0,
@@ -137,7 +198,7 @@ describe("permission panel legibility", () => {
     const r = new SessionRegistry(5);
     start(r, "asking");
     const layer: DeckLayerState = {
-      row1: { mode: "agents", pagerPage: 0 },
+      row1: { mode: "agents", page: 0 },
       row2: "question",
       row2Cmd: { mode: "default", page: 0 },
       row3Page: 0,

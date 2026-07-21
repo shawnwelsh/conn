@@ -107,13 +107,13 @@ const decisions = new DecisionStore(
   cfg.alwaysAllowDestination,
 );
 
-/** Anything that needs the 2Hz flash: a held permission, a question morph, or
- * the pager signalling multiple sessions need attention. */
+/** Anything that needs the 2Hz flash: a held permission, a question morph, a
+ * launch in flight, or a live dictation. Off-page attention is deliberately
+ * NOT here — it colours the Page key instead of strobing it forever. */
 function flashNeeded(): boolean {
   return (
     decisions.current !== undefined ||
     layer.row2 === "question" ||
-    registry.pagerFlashing() ||
     layer.launching === true ||
     layer.ptt === "recording" ||
     layer.ptt === "transcribing"

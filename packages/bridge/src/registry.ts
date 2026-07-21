@@ -68,22 +68,22 @@ export interface RegistrySnapshot {
 }
 
 /**
- * Owns the deck's session model:
- *  - `working`: the visible agent slots, in slot order. Stable — targeting or
- *    using a working session never reorders them.
- *  - `overflow`: everything else, most-recently-used first, browsed via the
- *    pager. Capped at `maxTracked` total sessions (LRU-evicted beyond that).
+ * Owns the deck's session model as ONE ordered list, split for storage:
+ *  - `working`: page 1, in slot order. Stable — targeting or using a session
+ *    never reorders them.
+ *  - `overflow`: pages 2+, most-recently-used first. Capped at `maxTracked`
+ *    total sessions (LRU-evicted beyond that).
  *
- * When >slotCount sessions are tracked, the last slot becomes the Pager and
- * the working set shrinks by one (slotCount-1). A single overflow session that
- * needs attention surfaces into slot #4; multiple set `pagerFlash`.
+ * When >slotCount sessions are tracked the last key becomes the Page key and
+ * each page holds slotCount-1 sessions. Nothing auto-promotes: a session that
+ * needs attention stays where it is and says so on the Page key, because a
+ * deck that rearranges itself under your thumb can't be used by muscle memory.
  */
 export class SessionRegistry extends EventEmitter {
   private sessions = new Map<string, SessionEntry>();
   private working: string[] = [];
   private overflow: string[] = []; // MRU: index 0 = most recent
   private targeted: string | null = null;
-  private pagerFlash = false;
   private pendingLaunches: PendingLaunch[] = [];
 
   constructor(
@@ -102,13 +102,9 @@ export class SessionRegistry extends EventEmitter {
     return [...this.sessions.values()];
   }
 
-  /** True when the pager occupies the last slot (more sessions than slots). */
+  /** True when the Page key occupies the last slot (more sessions than slots). */
   pagerActive(): boolean {
     return this.sessions.size > this.slotCount;
-  }
-
-  pagerFlashing(): boolean {
-    return this.pagerFlash;
   }
 
   /** Working-set size: one fewer than slotCount while the pager is shown. */
@@ -124,6 +120,15 @@ export class SessionRegistry extends EventEmitter {
   /** Overflow entries in MRU order (for the pager). */
   overflowEntries(): SessionEntry[] {
     return this.overflow.map((id) => this.sessions.get(id)!).filter(Boolean);
+  }
+
+  /**
+   * Every session in display order — row 1 pages through this. `working` is
+   * simply page 1; overflow is pages 2+. Nothing here reorders on use, so a
+   * page you're looking at stays put under your thumb.
+   */
+  orderedEntries(): SessionEntry[] {
+    return [...this.working, ...this.overflow].map((id) => this.sessions.get(id)!).filter(Boolean);
   }
 
   get targetedSession(): SessionEntry | undefined {
@@ -396,10 +401,10 @@ export class SessionRegistry extends EventEmitter {
   setStatus(entry: SessionEntry, status: SessionStatus): void {
     if (entry.status === status) return;
     entry.status = status;
-    if (status === "waiting") this.trySurface(entry.sessionId);
-    // Flash the pager iff an overflow session is still waiting — i.e. one that
-    // couldn't surface because the attention slot is already busy.
-    this.pagerFlash = this.overflow.some((id) => this.sessions.get(id)?.status === "waiting");
+    // Deliberately does NOT reshuffle the deck. A session that needs you used
+    // to be yanked onto the visible page, which fights "press to use, stay on
+    // that page" — the page you were reading would rearrange under your
+    // thumb. Off-page attention is announced on the Page key instead.
     this.emit("changed");
   }
 
@@ -425,34 +430,21 @@ export class SessionRegistry extends EventEmitter {
     return entry;
   }
 
-  /** Pager browse-pick: bring a session to slot #1 and target it. */
-  promoteToFront(sessionId: string): void {
+  /**
+   * Insert-before against the FULL ordered list, so a move can cross a page
+   * boundary — you can drag a session from page 2 onto page 1 and it stays
+   * where you put it.
+   */
+  moveToIndex(sessionId: string, targetIndex: number): void {
     if (!this.sessions.has(sessionId)) return;
-    this.working = this.working.filter((s) => s !== sessionId);
-    this.overflow = this.overflow.filter((s) => s !== sessionId);
-    this.working.unshift(sessionId);
-    this.targeted = sessionId;
-    this.rebalance();
+    const order = [...this.working, ...this.overflow].filter((s) => s !== sessionId);
+    const idx = Math.max(0, Math.min(targetIndex, order.length));
+    order.splice(idx, 0, sessionId);
+    const cap = this.capacity();
+    this.working = order.slice(0, cap);
+    this.overflow = order.slice(cap);
+    this.syncSlots();
     this.emit("changed");
-  }
-
-  /** Long-press move: place a session at a working slot, insert-before style.
-   * e.g. moveToSlot(A, 2) on [A,B,C,D] → [B,C,A,D]. */
-  moveToSlot(sessionId: string, targetIndex: number): void {
-    if (!this.sessions.has(sessionId)) return;
-    this.working = this.working.filter((s) => s !== sessionId);
-    this.overflow = this.overflow.filter((s) => s !== sessionId);
-    const idx = Math.max(0, Math.min(targetIndex, this.working.length));
-    this.working.splice(idx, 0, sessionId);
-    this.rebalance();
-    this.emit("changed");
-  }
-
-  clearPagerFlash(): void {
-    if (this.pagerFlash) {
-      this.pagerFlash = false;
-      this.emit("changed");
-    }
   }
 
   /** The session's window died: skull it, demote it to the END of the
@@ -488,7 +480,7 @@ export class SessionRegistry extends EventEmitter {
       working: [...this.working],
       overflow: [...this.overflow],
       pagerActive: this.pagerActive(),
-      pagerFlash: this.pagerFlash,
+      pagerFlash: false, // retired: attention is announced on the Page key
     };
   }
 
@@ -499,28 +491,6 @@ export class SessionRegistry extends EventEmitter {
     this.rebalance();
   }
 
-  /** Surface a waiting overflow session into the attention slot (#4) — unless
-   * that slot already holds a different waiting session, in which case it
-   * stays in overflow and the pager flashes (handled by the caller). */
-  private trySurface(sessionId: string): void {
-    if (!this.overflow.includes(sessionId)) return;
-    const idx = this.capacity() - 1;
-    const slot4 = this.working[idx];
-    const slot4Busy = slot4 !== undefined && slot4 !== sessionId && this.sessions.get(slot4)?.status === "waiting";
-    if (!slot4Busy) this.surfaceToLastSlot(sessionId);
-  }
-
-  private surfaceToLastSlot(sessionId: string): void {
-    this.overflow = this.overflow.filter((s) => s !== sessionId);
-    const idx = this.capacity() - 1;
-    if (this.working.length > idx) {
-      this.overflow.unshift(this.working[idx]!); // displaced → overflow front
-      this.working[idx] = sessionId;
-    } else {
-      this.working.push(sessionId);
-    }
-    this.rebalance();
-  }
 
   /** Enforce capacity, fill freed slots from overflow, cap total, sync slots. */
   private rebalance(): void {

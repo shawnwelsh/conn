@@ -105,15 +105,32 @@ describe("pager + long-press move (row-1 modes)", () => {
     c.up(slot);
   }
 
-  it("tap Pager opens the picker; tapping a listed session promotes it to slot #1", () => {
-    tap(4); // pager slot
-    expect(layer.row1.mode).toBe("pager");
-    // overflow is [e,f] (or MRU); pick slot 0 → the first overflow entry
-    const firstOverflow = r.overflowEntries()[0]!.sessionId;
-    tap(0);
-    expect(layer.row1.mode).toBe("agents");
-    expect(r.snapshot().working[0]).toBe(firstOverflow);
-    expect(r.targetedSession?.sessionId).toBe(firstOverflow);
+  it("the Page key cycles pages in place — no separate browse mode", () => {
+    // 6 sessions, 4 per page → 2 pages.
+    expect(layer.row1.page).toBe(0);
+    tap(4);
+    expect(layer.row1.mode).toBe("agents"); // never leaves the session row
+    expect(layer.row1.page).toBe(1);
+    tap(4);
+    expect(layer.row1.page).toBe(0); // wraps
+  });
+
+  it("using a session on page 2 leaves you on page 2, and does not reorder", () => {
+    // The old pager promoted the picked session to slot #1 and closed itself,
+    // so the row rearranged and you lost your place. Press = use, nothing else.
+    const orderBefore = r.orderedEntries().map((s) => s.sessionId);
+    tap(4); // → page 2, showing [e, f]
+    tap(0); // use "e"
+    expect(r.targetedSession?.sessionId).toBe("e");
+    expect(layer.row1.page).toBe(1);
+    expect(r.orderedEntries().map((s) => s.sessionId)).toEqual(orderBefore);
+  });
+
+  it("long-press on page 2 moves that session, not whoever sits in page 1's slot", () => {
+    tap(4); // → page 2: [e, f]
+    longPress(1); // "f"
+    expect(layer.row1.mode).toBe("move");
+    expect(layer.row1.moveSource).toBe("f");
   });
 
   it("long-press a working session then tap a slot performs an insert-before move", () => {

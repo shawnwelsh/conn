@@ -2,7 +2,7 @@ import type { Slot } from "@belay/shared";
 import { gitBranch, type SessionRegistry, type SessionEntry } from "./registry.js";
 import { slugifyName, isDeckBranch, renameDeckBranch } from "./rename.js";
 import type { DeckLayerState } from "./layers.js";
-import { COMMANDS_PER_PAGE, QUESTION_OPTIONS_PER_PAGE, HAS_GLOBALS_PAGE2 } from "./layers.js";
+import { COMMANDS_PER_PAGE, QUESTION_OPTIONS_PER_PAGE, HAS_GLOBALS_PAGE2, row1Pagination } from "./layers.js";
 import type { DeliveryAdapter } from "./delivery/adapter.js";
 import type { DeckConfig } from "./config.js";
 import type { Logger } from "./log.js";
@@ -128,42 +128,59 @@ export class DeckController {
     return void this.row3(slot - 10);
   }
 
+  /** Row 1's current page: which sessions sit on which keys right now. */
+  private row1Layout() {
+    const ordered = this.registry.orderedEntries();
+    return { ordered, ...row1Pagination(ordered.length, this.cfg.slots, this.layer.row1.page) };
+  }
+
+  /** The session under a row-1 key on the CURRENT page. */
+  private row1Entry(slot: Slot): SessionEntry | undefined {
+    const { ordered, size, page } = this.row1Layout();
+    return slot < size ? ordered[page * size + slot] : undefined;
+  }
+
   /** Row-1 gesture routing, dependent on the current row-1 mode. */
   private row1(slot: Slot, gesture: Gesture): void {
-    const last = this.cfg.slots - 1; // last physical key = pager/control slot
-    switch (this.layer.row1.mode) {
-      case "move":
-        if (gesture === "long") return; // ignore long-press while placing
-        if (slot === last) return this.cancelMove();
-        return this.completeMove(slot);
-      case "pager":
-        if (gesture === "long" && slot < last) return this.beginMoveFromPager(slot);
-        if (slot === last) return this.pagerAdvanceOrClose();
-        return this.pagerPick(slot);
-      default: // agents
-        // While a morph is up, keys 2-5 are one wide banner spelling out what
-        // is being decided — NOT sessions. Sending them through slot logic
-        // would retarget, or long-press-move, whoever happens to sit there.
-        // A tap brings the asking session forward instead: the deck can only
-        // show so much, and "let me go read it" is the honest next move.
-        if (this.morphSessionId() && slot > 0) {
-          if (gesture === "tap" || gesture === "double") void this.focusMorphSession();
-          return;
-        }
-        if (this.registry.pagerActive() && slot === last) {
-          if (gesture !== "long") this.openPager();
-          return;
-        }
-        // A rename is listening on this very key (it counts down there) —
-        // any press stops it, which is where the hand already is.
-        if (this.layer.renameRec && this.layer.renameRec.sessionId === this.registry.bySlot(slot)?.sessionId) {
-          return void this.renameFinish();
-        }
-        if (gesture === "long") return this.beginMove(this.registry.bySlot(slot)?.sessionId);
-        if (gesture === "triple") return void this.row1TripleTap(slot);
-        if (gesture === "double") return void this.row1DoubleTap(slot);
-        return this.row1Tap(slot);
+    const { paged, size } = this.row1Layout();
+    if (this.layer.row1.mode === "move") {
+      if (gesture === "long") return; // ignore long-press while placing
+      if (slot === this.cfg.slots - 1) return this.cancelMove();
+      return this.completeMove(slot);
     }
+    // agents
+    // While a morph is up, keys 2-5 are one wide banner spelling out what is
+    // being decided — NOT sessions. Sending them through slot logic would
+    // retarget, or long-press-move, whoever happens to sit there. A tap brings
+    // the asking session forward instead: the deck can only show so much, and
+    // "let me go read it" is the honest next move.
+    if (this.morphSessionId() && slot > 0) {
+      if (gesture === "tap" || gesture === "double") void this.focusMorphSession();
+      return;
+    }
+    // Paging happens in place: the row keeps showing sessions, so a press
+    // still uses one and leaves you exactly where you were reading.
+    if (paged && slot === size) {
+      if (gesture !== "long") this.pageRow1();
+      return;
+    }
+    const entry = this.row1Entry(slot);
+    // A rename is listening on this very key (it counts down there) — any
+    // press stops it, which is where the hand already is.
+    if (this.layer.renameRec && this.layer.renameRec.sessionId === entry?.sessionId) {
+      return void this.renameFinish();
+    }
+    if (gesture === "long") return this.beginMove(entry?.sessionId);
+    if (gesture === "triple") return void this.row1TripleTap(entry);
+    if (gesture === "double") return void this.row1DoubleTap(entry);
+    return this.row1Tap(entry);
+  }
+
+  private pageRow1(): void {
+    const { pages } = this.row1Layout();
+    this.layer.row1.page = (this.layer.row1.page + 1) % pages;
+    this.log.info({ page: this.layer.row1.page }, "row1: page");
+    this.onLayerChanged();
   }
 
   /** The session behind the active morph layer, if any. */
@@ -181,81 +198,49 @@ export class DeckController {
     this.log.info({ session: session.sessionId, ok }, "banner tap → focus asking session");
   }
 
-  private row1Tap(slot: Slot): void {
-    const session = this.registry.targetSlot(slot);
-    this.log.info({ slot, session: session?.sessionId }, "target");
+  /** Tap = target, and NOTHING moves. The session stays on the key you pressed
+   * so the next press lands where your hand already is. */
+  private row1Tap(session: SessionEntry | undefined): void {
+    if (!session) return;
+    this.registry.target(session.sessionId);
+    this.log.info({ session: session.sessionId }, "target");
   }
 
-  private async row1DoubleTap(slot: Slot): Promise<void> {
-    const session = this.registry.targetSlot(slot);
+  private async row1DoubleTap(session: SessionEntry | undefined): Promise<void> {
     if (!session) return;
+    this.registry.target(session.sessionId);
     const ok = await this.delivery.focus(session);
-    this.log.info({ slot, session: session.sessionId, ok }, "focus");
+    this.log.info({ session: session.sessionId, ok }, "focus");
   }
 
   /** Triple-tap a session key = the final say on its name. Rare gesture for a
    * rare act; the double-tap focus it rides in on is a harmless side effect. */
-  private async row1TripleTap(slot: Slot): Promise<void> {
-    const session = this.registry.targetSlot(slot);
+  private async row1TripleTap(session: SessionEntry | undefined): Promise<void> {
     if (!session) return;
-    this.log.info({ slot, session: session.sessionId }, "rename: triple-tap");
+    this.registry.target(session.sessionId);
+    this.log.info({ session: session.sessionId }, "rename: triple-tap");
     await this.renameToggle(session);
-  }
-
-  // --- Pager (browse overflow → pick into slot #1) ---
-
-  private openPager(): void {
-    this.layer.row1 = { mode: "pager", pagerPage: 0 };
-    this.registry.clearPagerFlash();
-    this.onLayerChanged();
-  }
-
-  private closePager(): void {
-    this.layer.row1 = { mode: "agents", pagerPage: 0 };
-    this.onLayerChanged();
-  }
-
-  private pagerPick(slot: Slot): void {
-    const perPage = this.cfg.slots - 1;
-    const entry = this.registry.overflowEntries()[this.layer.row1.pagerPage * perPage + slot];
-    if (entry) {
-      this.registry.promoteToFront(entry.sessionId);
-      this.log.info({ session: entry.sessionId }, "pager pick → slot 1");
-    }
-    this.closePager();
-  }
-
-  private pagerAdvanceOrClose(): void {
-    const perPage = this.cfg.slots - 1;
-    const pages = Math.max(1, Math.ceil(this.registry.overflowEntries().length / perPage));
-    if (pages > 1) {
-      this.layer.row1.pagerPage = (this.layer.row1.pagerPage + 1) % pages;
-      this.onLayerChanged();
-    } else {
-      this.closePager();
-    }
   }
 
   // --- Move (long-press a session, then tap its landing slot) ---
 
   private beginMove(sessionId: string | undefined): void {
     if (!sessionId) return;
-    this.layer.row1 = { mode: "move", pagerPage: 0, moveSource: sessionId };
+    // Stay on the page the move started from — the drop targets you're shown
+    // have to be the sessions you were just looking at.
+    this.layer.row1 = { mode: "move", page: this.layer.row1.page, moveSource: sessionId };
     this.armMoveTimer();
     this.log.info({ session: sessionId }, "move: begin");
     this.onLayerChanged();
   }
 
-  private beginMoveFromPager(slot: Slot): void {
-    const perPage = this.cfg.slots - 1;
-    const entry = this.registry.overflowEntries()[this.layer.row1.pagerPage * perPage + slot];
-    this.beginMove(entry?.sessionId);
-  }
-
-  private completeMove(targetIndex: number): void {
+  /** `slot` is a key on the current page; the drop lands at that position in
+   * the full ordered list, so a move can cross pages. */
+  private completeMove(slot: number): void {
     const src = this.layer.row1.moveSource;
     if (src) {
-      this.registry.moveToSlot(src, targetIndex);
+      const targetIndex = this.layer.row1.page * (this.cfg.slots - 1) + slot;
+      this.registry.moveToIndex(src, targetIndex);
       this.log.info({ session: src, targetIndex }, "move: placed");
     }
     this.endMove();
@@ -269,7 +254,7 @@ export class DeckController {
   private endMove(): void {
     if (this.moveTimer) clearTimeout(this.moveTimer);
     this.moveTimer = null;
-    this.layer.row1 = { mode: "agents", pagerPage: 0 };
+    this.layer.row1 = { mode: "agents", page: this.layer.row1.page };
     this.onLayerChanged();
   }
 

@@ -42,12 +42,14 @@ export interface DeckControls {
 }
 
 /** Row-1 interaction mode:
- *  - "agents": normal slots (+ pager key when active).
- *  - "pager": browsing overflow sessions to pick one into slot #1.
- *  - "move": a long-press is pending; slots show numbered drop targets. */
+ *  - "agents": a page of session keys (+ Page key when there are more).
+ *  - "move": a long-press is pending; slots show numbered drop targets.
+ * There is no separate browse mode: paging happens IN PLACE, so pressing a
+ * session uses it and leaves you on the page you were reading. */
 export interface Row1State {
-  mode: "agents" | "pager" | "move";
-  pagerPage: number;
+  mode: "agents" | "move";
+  /** Which page of sessions row 1 is showing. */
+  page: number;
   /** Session being relocated while in "move" mode. */
   moveSource?: string;
 }
@@ -95,12 +97,25 @@ export interface DeckLayerState {
  * actually being decided. */
 export const MORPH_BANNER_SPAN = 4;
 
+/**
+ * Row-1 pagination — the same shape as the row-2 command pager, because rows
+ * that page differently can't be learned. With <= slots sessions every key is
+ * a session; beyond that the last key becomes Page and each page holds
+ * slots-1. `page` wraps, so the key always does something.
+ */
+export function row1Pagination(total: number, slots: number, page: number) {
+  const paged = total > slots;
+  const size = paged ? slots - 1 : slots;
+  const pages = Math.max(1, Math.ceil(total / size));
+  return { paged, size, pages, page: ((page % pages) + pages) % pages };
+}
+
 export function initialControls(): DeckControls {
   return { planNext: "plan", modelNext: 1 };
 }
 
 export function initialRow1(): Row1State {
-  return { mode: "agents", pagerPage: 0 };
+  return { mode: "agents", page: 0 };
 }
 
 export function initialRow2Cmd(): Row2CmdState {
@@ -240,52 +255,47 @@ export function computeTiles(
     for (let i = 0; i < MORPH_BANNER_SPAN; i++) {
       tiles.push({ text: detail, state: "answer", bannerSpan: MORPH_BANNER_SPAN, bannerIndex: i });
     }
-  } else if (layer.row1.mode === "pager") {
-    // Browse overflow sessions, `slots-1` per page; last key advances/closes.
-    const entries = registry.overflowEntries();
-    const perPage = cfg.slots - 1;
-    const pages = Math.max(1, Math.ceil(entries.length / perPage));
-    const page = Math.min(layer.row1.pagerPage, pages - 1);
-    for (let slot = 0; slot < perPage; slot++) {
-      const e = entries[page * perPage + slot];
-      tiles.push(
-        e
-          ? {
-              text: e.label,
-              subtext: e.windowDead ? "window gone" : e.status,
-              state: "answer",
-              badge: String(page * perPage + slot + 1),
-              dead: e.windowDead,
-            }
-          : { text: "", state: "blank" },
-      );
-    }
-    tiles.push(
-      pages > 1
-        ? { text: `Page ${page + 1}/${pages}`, subtext: "next", state: "command" }
-        : { text: "Close", subtext: "pager", state: "command" },
-    );
   } else if (layer.row1.mode === "move") {
-    // Numbered drop targets (insert-before); last key cancels.
+    // Numbered drop targets (insert-before) on the CURRENT page; last cancels,
+    // so a session can be dragged across a page boundary.
     const src = layer.row1.moveSource ? registry.get(layer.row1.moveSource) : undefined;
-    for (let slot = 0; slot < cfg.slots - 1; slot++) {
-      const cur = registry.bySlot(slot);
-      tiles.push({ text: cur?.label ?? "empty", subtext: "drop here", state: "answer", badge: String(slot + 1) });
+    const ordered = registry.orderedEntries();
+    // Always slots-1 targets + Cancel, whether or not row 1 is paged — the
+    // last key has to stay Cancel.
+    const size = cfg.slots - 1;
+    const page = layer.row1.page;
+    for (let slot = 0; slot < size; slot++) {
+      const cur = ordered[page * size + slot];
+      tiles.push({
+        text: cur?.label ?? "empty",
+        subtext: "drop here",
+        state: "answer",
+        badge: String(page * size + slot + 1),
+      });
     }
     tiles.push({ text: "Cancel", subtext: src ? `moving ${src.label}` : "move", state: "command" });
   } else {
-    // agents mode — normal slots, last slot becomes the Pager when active.
+    // agents mode — a page of sessions, last key pages when there are more.
+    const ordered = registry.orderedEntries();
+    const { paged, size, pages, page } = row1Pagination(ordered.length, cfg.slots, layer.row1.page);
     for (let slot = 0; slot < 5; slot++) {
-      if (pagerActive && slot === pagerSlot) {
+      if (paged && slot === size) {
+        // Nothing yanks an off-page session into view any more, so this key
+        // has to carry the news: it goes yellow and counts how many sessions
+        // are waiting on you somewhere else.
+        const offPageWaiting = ordered.filter(
+          (s, i) => Math.floor(i / size) !== page && s.status === "waiting",
+        ).length;
         tiles.push({
-          text: "Pager",
-          subtext: `+${registry.overflowEntries().length} more`,
-          state: "command",
-          selected: registry.pagerFlashing() ? flashPhase : false,
+          text: "Page",
+          subtext: offPageWaiting ? `${offPageWaiting} waiting` : `${page + 1}/${pages}`,
+          state: offPageWaiting ? "waiting" : "command",
+          icon: "page",
+          badge: offPageWaiting ? String(offPageWaiting) : undefined,
         });
         continue;
       }
-      const session = slot < cfg.slots ? registry.bySlot(slot) : undefined;
+      const session = slot < size ? ordered[page * size + slot] : undefined;
       if (!session) {
         tiles.push({ text: "", state: "blank" });
         continue;
