@@ -133,8 +133,11 @@ export class ConsoleLauncher {
     }
   }
 
-  /** Run a git command; true on a clean exit. */
-  private git(cwd: string, args: string[], timeoutMs = this.worktreeTimeoutMs): Promise<boolean> {
+  /** Run a git command; true on a clean exit. `quiet` suppresses the failure
+   * log for calls whose failure is a normal outcome (see the spare-branch
+   * pre-clean) — a log line saying "failed" for the expected path is a trap
+   * for whoever reads it next. */
+  private git(cwd: string, args: string[], timeoutMs = this.worktreeTimeoutMs, quiet = false): Promise<boolean> {
     return new Promise((res) => {
       const git = spawn("git", ["-C", cwd, ...args], {
         stdio: ["ignore", "ignore", "pipe"],
@@ -149,7 +152,7 @@ export class ConsoleLauncher {
       }, timeoutMs);
       git.on("exit", (code) => {
         clearTimeout(timer);
-        if (code !== 0) this.log.warn({ args, err: err.trim() }, "launcher: git failed");
+        if (code !== 0 && !quiet) this.log.warn({ args, err: err.trim() }, "launcher: git failed");
         res(code === 0);
       });
     });
@@ -202,8 +205,9 @@ export class ConsoleLauncher {
     if (existsSync(join(dir, ".git"))) return; // one is already banked
     this.prewarming.add(root);
     try {
-      // A stale branch from a half-finished claim would block the add.
-      await this.git(root, ["branch", "-D", `deck/${SPARE_NAME}`], 15_000);
+      // A stale branch from a half-finished claim would block the add. Not
+      // finding one is the normal case, so it must not log as a failure.
+      await this.git(root, ["branch", "-D", `deck/${SPARE_NAME}`], 15_000, true);
       const ok = await this.git(root, ["worktree", "add", dir, "-b", `deck/${SPARE_NAME}`]);
       if (ok) {
         this.preTrust(dir);
