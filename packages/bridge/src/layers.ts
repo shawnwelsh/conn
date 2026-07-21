@@ -1,7 +1,7 @@
 import type { TileSpec, Row2Layer } from "@belay/shared";
 import type { SessionRegistry, SessionEntry } from "./registry.js";
 import type { DeckConfig } from "./config.js";
-import { activeSuggestion, isChoiceQuestion } from "./suggestions.js";
+import { activeSuggestion, needsSpokenAnswer } from "./suggestions.js";
 import type { CommandEntry } from "./commands.js";
 
 /**
@@ -459,7 +459,7 @@ export function computeTiles(
     // Suggestion layer: the targeted console session finished with a
     // "pre-produced option" — Accept on key 6, the text bannered across 7-10.
     const s = activeSuggestion(registry, layer)!;
-    if (isChoiceQuestion(s.text)) {
+    if (needsSpokenAnswer(s.text)) {
       // Either/or: there's no button that answers it, so spend the whole row
       // on reading it. Any key starts dictation (see the controller).
       for (let i = 0; i < 5; i++) {

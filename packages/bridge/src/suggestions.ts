@@ -7,9 +7,9 @@ import type { DeckLayerState } from "./layers.js";
  * offer/question ("Want me to also wire the tests?"), the deck surfaces it —
  * the text bannered across row-2 keys 7-10, Accept on key 6.
  *
- * Either/or questions ("…, or leave it?") can't be answered by a button, so
- * they take the whole row as a reading surface and you speak the answer —
- * see isChoiceQuestion.
+ * Questions a canned "yes" can't answer — either/or ("…, or leave it?") and
+ * open ones ("which fields do you want?") — take the whole row as a reading
+ * surface and you speak the answer instead. See needsSpokenAnswer.
  */
 
 const MAX_SUGGESTION_CHARS = 220;
@@ -39,21 +39,34 @@ export function extractSuggestion(message: string | undefined): string | null {
 }
 
 /**
- * Is this an either/or question rather than a yes/no offer?
+ * Would a canned "yes" actually answer this?
  *
- * "Want me to also wire the tests?" has an Accept key: one press sends "yes".
- * "Run that as a separate cleanup, or leave it?" does not — "yes" answers
- * neither branch, so offering an Accept key there invites a meaningless
- * reply. Those get the whole row as a reading surface and are answered by
- * voice instead.
+ * "Want me to also wire the tests?" — yes. One press sends it.
+ * "Run that as a separate cleanup, or leave it?" — no; "yes" picks neither
+ * branch. "Which context fields do you want in the line?" — no; "yes" is not
+ * a list of fields. Both of those take the whole row as a reading surface and
+ * are answered by voice.
  *
- * "…or not?" stays a yes/no despite the "or".
+ * Two families are unanswerable:
+ *  - alternatives: an "or" that isn't "…or not?"
+ *  - open (wh-) questions, detected by the LEADING word of the question, not
+ *    by the word appearing anywhere. "Want me to check what changed?" is an
+ *    offer with a subordinate clause and keeps its Accept key.
  */
-export function isChoiceQuestion(text: string): boolean {
+const WH_WORDS = /^(which|what|how|who|whom|whose|when|where|why)\b/;
+/** Discourse lead-ins that can precede the real interrogative. */
+const LEAD_INS = /^(?:so|and|but|ok|okay|now|then|well|also|finally)\b[\s,:—-]*/;
+
+export function needsSpokenAnswer(text: string): boolean {
   const t = text.toLowerCase();
   if (!t.includes("?")) return false;
-  if (/\bor not\b/.test(t)) return false;
-  return /\bor\b/.test(t);
+  if (/\bor\b/.test(t) && !/\bor not\b/.test(t)) return true;
+  // Look at the last question sentence: earlier sentences aren't the ask.
+  const lastQuestion = t.split(/(?<=[.!?])\s+/).filter((s) => s.includes("?")).at(-1) ?? t;
+  let head = lastQuestion.replace(/^[^a-z]+/, "");
+  // Strip any number of stacked lead-ins ("so, and now which…").
+  for (let i = 0; i < 3 && LEAD_INS.test(head); i++) head = head.replace(LEAD_INS, "");
+  return WH_WORDS.test(head);
 }
 
 /**

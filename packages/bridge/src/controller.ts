@@ -8,7 +8,7 @@ import type { DeckConfig } from "./config.js";
 import type { Logger } from "./log.js";
 import { GestureRecognizer, type Gesture } from "./gestures.js";
 import type { ConsoleLauncher } from "./delivery/launcher.js";
-import { activeSuggestion, isChoiceQuestion } from "./suggestions.js";
+import { activeSuggestion, needsSpokenAnswer } from "./suggestions.js";
 import { isAwaitingInput, CC_SESSIONS_DIR } from "./sessionMeta.js";
 import type { CommandSource, CommandEntry } from "./commands.js";
 import type { SttEngine } from "./stt/sidecar.js";
@@ -298,7 +298,7 @@ export class DeckController {
     // session so you can read the context before deciding.
     const suggestion = activeSuggestion(this.registry, this.layer);
     if (suggestion) {
-      if (isChoiceQuestion(suggestion.text)) {
+      if (needsSpokenAnswer(suggestion.text)) {
         // No button answers "A, or B?" — the whole row is the question, and
         // any key talks. Tap, speak, tap to stop (or press Send to stop,
         // type, and submit in one motion).

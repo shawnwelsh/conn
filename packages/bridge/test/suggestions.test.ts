@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeEach } from "vitest";
-import { extractSuggestion, activeSuggestion, isChoiceQuestion } from "../src/suggestions.js";
+import { extractSuggestion, activeSuggestion, needsSpokenAnswer } from "../src/suggestions.js";
 import { SessionRegistry } from "../src/registry.js";
 import { DeckController } from "../src/controller.js";
 import { initialRow1, initialRow2Cmd, initialControls, computeTiles, type DeckLayerState } from "../src/layers.js";
@@ -33,13 +33,32 @@ describe("extractSuggestion", () => {
   });
 });
 
-describe("isChoiceQuestion (either/or vs yes/no)", () => {
+describe("needsSpokenAnswer (can a canned 'yes' answer this?)", () => {
   it("spots a real choice, and leaves yes/no offers alone", () => {
-    expect(isChoiceQuestion("Run that as a separate cleanup, or leave it?")).toBe(true);
-    expect(isChoiceQuestion("Should I use Postgres, MySQL, or SQLite?")).toBe(true);
-    expect(isChoiceQuestion("Want me to also wire the tests?")).toBe(false);
-    expect(isChoiceQuestion("Should I check whether it exists or not?")).toBe(false);
-    expect(isChoiceQuestion("Shall I refactor the orchestrator?")).toBe(false); // "or" inside a word
+    expect(needsSpokenAnswer("Run that as a separate cleanup, or leave it?")).toBe(true);
+    expect(needsSpokenAnswer("Should I use Postgres, MySQL, or SQLite?")).toBe(true);
+    expect(needsSpokenAnswer("Want me to also wire the tests?")).toBe(false);
+    expect(needsSpokenAnswer("Should I check whether it exists or not?")).toBe(false);
+    expect(needsSpokenAnswer("Shall I refactor the orchestrator?")).toBe(false); // "or" inside a word
+  });
+
+  it("an open question is not a yes/no, even with no 'or' in it", () => {
+    // Both verbatim from bridge.log. The deck offered "Yes" to each, which
+    // answers neither — "yes" is not a list of fields.
+    expect(needsSpokenAnswer("Which context fields do you want in the line?")).toBe(true);
+    expect(needsSpokenAnswer("So: which fields are we cloning the pattern for?")).toBe(true);
+    expect(needsSpokenAnswer("What should the threshold be?")).toBe(true);
+    expect(needsSpokenAnswer("How far back should the batch recompute?")).toBe(true);
+    expect(needsSpokenAnswer("Who owns that decision?")).toBe(true);
+    expect(needsSpokenAnswer("Where should the rule live?")).toBe(true);
+  });
+
+  it("keeps the Accept key when a wh-word is only buried inside an offer", () => {
+    // These ARE answerable by "yes" — the wh-word is a subordinate clause,
+    // not the ask. Matching wh-words anywhere would break every one of them.
+    expect(needsSpokenAnswer("Want me to check what changed?")).toBe(false);
+    expect(needsSpokenAnswer("Shall I document how it works?")).toBe(false);
+    expect(needsSpokenAnswer("Should I look at which tests cover it?")).toBe(false);
   });
 });
 
