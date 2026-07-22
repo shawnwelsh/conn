@@ -230,13 +230,14 @@ export function renderTile(spec: TileSpec): Buffer {
     ctx.fillRect(0, 0, S, S);
   }
 
-  // Dead session: INVERTED — black on white with a drawn skull. Its own
-  // channel entirely, because a dead key that merely looked dim was
-  // indistinguishable from one that was simply not selected.
+  // Dead session: a white skull on near-black — its own channel entirely, so
+  // "gone" can't be read as merely dim (not targeted) or grey (stale). The
+  // wash is heavy so the label recedes and the skull is the whole message.
   if (spec.dead) {
-    ctx.fillStyle = "rgba(255, 255, 255, 0.92)";
+    const bg = "#0a0a0a";
+    ctx.fillStyle = "rgba(0, 0, 0, 0.9)";
     ctx.fillRect(0, 0, S, S);
-    drawSkull(ctx, S / 2, S / 2 + 6, 34, "#0f172a");
+    drawSkull(ctx, S / 2, S / 2 + 4, 32, "#f8fafc", bg);
   }
 
   const buf = canvas.toBuffer("image/png");
@@ -543,14 +544,14 @@ function drawPromptMark(ctx: SKRSContext2D, cx: number, cy: number, r: number, c
   ctx.restore();
 }
 
-function drawSkull(ctx: SKRSContext2D, cx: number, cy: number, r: number, color = "#f8fafc"): void {
+function drawSkull(ctx: SKRSContext2D, cx: number, cy: number, r: number, color = "#f8fafc", hollow = "#0a0a0a"): void {
   ctx.save();
   ctx.strokeStyle = color;
   ctx.fillStyle = color;
   ctx.lineCap = "round";
 
   // Crossed bones behind the skull.
-  ctx.lineWidth = r * 0.28;
+  ctx.lineWidth = r * 0.26;
   const b = r * 1.55;
   for (const [x1, y1, x2, y2] of [
     [cx - b, cy - b * 0.55, cx + b, cy + b * 0.55],
@@ -560,44 +561,57 @@ function drawSkull(ctx: SKRSContext2D, cx: number, cy: number, r: number, color 
     ctx.moveTo(x1, y1);
     ctx.lineTo(x2, y2);
     ctx.stroke();
-    // Bone knobs at each end.
+    // Two knobs at each end, splayed PERPENDICULAR to the bone (a femur's
+    // epiphysis) — offsetting them in y made the pair vertical no matter which
+    // way the bone ran.
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+    const len = Math.hypot(dx, dy) || 1;
+    const px = -dy / len; // unit normal to the bone's axis
+    const py = dx / len;
+    const off = r * 0.18;
     for (const [ex, ey] of [[x1, y1], [x2, y2]] as const) {
-      ctx.beginPath();
-      ctx.arc(ex, ey - r * 0.14, r * 0.16, 0, Math.PI * 2);
-      ctx.arc(ex, ey + r * 0.14, r * 0.16, 0, Math.PI * 2);
-      ctx.fill();
+      for (const s of [-1, 1] as const) {
+        ctx.beginPath();
+        ctx.arc(ex + px * off * s, ey + py * off * s, r * 0.15, 0, Math.PI * 2);
+        ctx.fill();
+      }
     }
   }
 
-  // Cranium + jaw.
+  // Cranium — an upright oval (egg), taller than wide, not a dome; the jaw is
+  // a narrower bump tucked under it.
   ctx.beginPath();
-  ctx.arc(cx, cy - r * 0.15, r, Math.PI * 0.95, Math.PI * 2.05);
+  ctx.ellipse(cx, cy - r * 0.05, r * 0.8, r * 1.02, 0, 0, Math.PI * 2);
   ctx.fill();
   ctx.beginPath();
-  ctx.ellipse(cx, cy + r * 0.35, r * 0.62, r * 0.55, 0, 0, Math.PI * 2);
+  ctx.moveTo(cx - r * 0.5, cy + r * 0.5);
+  ctx.quadraticCurveTo(cx - r * 0.5, cy + r * 0.98, cx, cy + r * 0.98);
+  ctx.quadraticCurveTo(cx + r * 0.5, cy + r * 0.98, cx + r * 0.5, cy + r * 0.5);
+  ctx.closePath();
   ctx.fill();
 
   // Eyes + nose (cut out of the skull).
-  ctx.fillStyle = "#0a0a0a";
-  for (const dx of [-0.42, 0.42]) {
+  ctx.fillStyle = hollow;
+  for (const dx of [-0.4, 0.4]) {
     ctx.beginPath();
-    ctx.ellipse(cx + dx * r, cy - r * 0.12, r * 0.22, r * 0.28, 0, 0, Math.PI * 2);
+    ctx.ellipse(cx + dx * r, cy - r * 0.15, r * 0.24, r * 0.3, 0, 0, Math.PI * 2);
     ctx.fill();
   }
   ctx.beginPath();
-  ctx.moveTo(cx, cy + r * 0.12);
-  ctx.lineTo(cx - r * 0.12, cy + r * 0.38);
-  ctx.lineTo(cx + r * 0.12, cy + r * 0.38);
+  ctx.moveTo(cx, cy + r * 0.08);
+  ctx.lineTo(cx - r * 0.12, cy + r * 0.34);
+  ctx.lineTo(cx + r * 0.12, cy + r * 0.34);
   ctx.closePath();
   ctx.fill();
 
   // Teeth lines.
-  ctx.strokeStyle = "#0a0a0a";
+  ctx.strokeStyle = hollow;
   ctx.lineWidth = r * 0.07;
-  for (const dx of [-0.2, 0, 0.2]) {
+  for (const dx of [-0.22, 0, 0.22]) {
     ctx.beginPath();
-    ctx.moveTo(cx + dx * r, cy + r * 0.62);
-    ctx.lineTo(cx + dx * r, cy + r * 0.86);
+    ctx.moveTo(cx + dx * r, cy + r * 0.56);
+    ctx.lineTo(cx + dx * r, cy + r * 0.92);
     ctx.stroke();
   }
   ctx.restore();
