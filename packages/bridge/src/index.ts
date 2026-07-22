@@ -317,11 +317,10 @@ controller.setHooks({
     // Advance the layer NOW, not after the keystrokes land. Claude Code has
     // already rendered the next question by the time a human reaches for the
     // next key, and leaving the answered one on screen invites a double press.
-    const multi = q.questions.length > 1;
     const more = advanceQuestion(q);
-    // Last answer of a MULTI-question form → also press its "Submit answers"
-    // step, which the per-question Enter only lands on.
-    const submitAfter = multi && !more;
+    // Only the LAST question's answer carries the submitting Enter; the number
+    // alone advances Claude past every earlier one.
+    const isLast = !more;
     if (more) {
       syncFlash(flashNeeded());
       pushRender();
@@ -329,9 +328,9 @@ controller.setHooks({
       revertQuestion();
     }
     void (async () => {
-      const ok = await deliverQuestionAnswer(delivery, session, absolute + 1, submitAfter);
+      const ok = await deliverQuestionAnswer(delivery, session, absolute + 1, isLast);
       log.info(
-        { session: q.sessionId, option: options[absolute], submitAfter, ok },
+        { session: q.sessionId, option: options[absolute], isLast, ok },
         "question answered from deck",
       );
     })();
