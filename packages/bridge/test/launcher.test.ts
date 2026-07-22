@@ -108,6 +108,21 @@ describe("pre-warmed spare worktree (real git)", () => {
     expect(existsSync(join(dir, "b.txt"))).toBe(true); // the newer commit's file
   });
 
+  it("redirects a non-git cwd to the configured root, keeps a git cwd", () => {
+    const launcher = makeLauncher();
+    const nonGit = join(fixture, "notgit"); // exists, not a repo (created above)
+    // Desktop-app home dir / any non-git folder → fall back to the root.
+    expect(launcher.resolveLaunchDir(nonGit, repo)).toBe(repo);
+    // A real repo target is kept — New branches off what you're pointed at.
+    expect(launcher.resolveLaunchDir(repo, join(fixture, "prewarm-repo"))).toBe(repo);
+    // A stale/absent cwd also redirects.
+    expect(launcher.resolveLaunchDir(join(fixture, "gone"), repo)).toBe(repo);
+    // No fallback configured → cwd stands, even if non-git (spawn-in-place).
+    expect(launcher.resolveLaunchDir(nonGit, undefined)).toBe(nonGit);
+    // Never redirect a git repo, even with a fallback.
+    expect(launcher.resolveLaunchDir(repo, repo)).toBe(repo);
+  });
+
   it("claiming with no spare banked returns null so the caller builds one", async () => {
     const launcher = makeLauncher();
     const dir = join(repo, ".claude", "worktrees", "keen-vole");

@@ -290,6 +290,26 @@ export class ConsoleLauncher {
     return dir;
   }
 
+  /**
+   * Where a new session should actually spawn. Prefer `cwd` — New branches off
+   * whatever you're pointed at — but a desktop session runs from the home dir,
+   * and neither that nor any non-git (or stale) folder can host a worktree or
+   * a sensible resume. In that case fall back to the configured root rather
+   * than dumping a session somewhere useless. No fallback → cwd stands.
+   */
+  resolveLaunchDir(cwd: string, fallbackDir?: string): string {
+    if (
+      fallbackDir &&
+      fallbackDir !== cwd &&
+      existsSync(fallbackDir) &&
+      !findRepoRoot(cwd) &&
+      findRepoRoot(fallbackDir)
+    ) {
+      return fallbackDir;
+    }
+    return cwd;
+  }
+
   /** Launch a new console session for the targeted session's repo. With
    * worktrees enabled, the session gets its own fresh working tree on
    * branch deck/<codename>; otherwise (or on any git failure) it spawns
@@ -302,10 +322,18 @@ export class ConsoleLauncher {
       /** Resuming belongs to work that already exists — a fresh worktree
        * would be the wrong place to pick up an old session. */
       worktree?: boolean;
+      /** Configured root to use when `cwd` can't host a session (non-git,
+       * the desktop app's home dir, or gone). */
+      fallbackDir?: string;
     } = {},
   ): Promise<boolean> {
     const command = opts.command ?? this.command;
     const useWorktrees = opts.worktree ?? this.useWorktrees;
+    const resolved = this.resolveLaunchDir(cwd, opts.fallbackDir);
+    if (resolved !== cwd) {
+      this.log.info({ from: cwd, to: resolved }, "launcher: cwd can't host a session — using the configured root");
+      cwd = resolved;
+    }
     if (!existsSync(cwd)) {
       this.log.warn({ cwd }, "launcher: cwd does not exist");
       return false;

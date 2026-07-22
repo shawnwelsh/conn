@@ -859,7 +859,7 @@ export class DeckController {
         this.layer.launching = true;
         this.onLayerChanged();
         try {
-          const ok = (await this.launcher?.launch(dir)) ?? false;
+          const ok = (await this.launcher?.launch(dir, { fallbackDir: this.cfg.newSessionDir })) ?? false;
           this.log.info({ key: "New", cwd: dir, ok }, "row3 command");
         } finally {
           this.layer.launching = false;
@@ -893,6 +893,7 @@ export class DeckController {
         (await this.launcher?.launch(dir, {
           command: `${this.cfg.newSessionCommand} --resume`,
           worktree: false,
+          fallbackDir: this.cfg.newSessionDir,
         })) ?? false;
       this.log.info({ key: "Resume", cwd: dir, ok }, "row3 command");
     } finally {
