@@ -309,13 +309,22 @@ denyReason = new DenyReasonFlow(
       void (async () => {
         await delivery.focus(session);
         await delivery.sendKey(session, "escape"); // reject → back to plan mode
+        let typed = false;
         if (text) {
-          await delivery.sendText(session, text);
-          await new Promise((r) => setTimeout(r, 150));
-          await delivery.sendKey(session, "enter"); // send the refinement
+          // Let the console leave the plan menu and re-render its prompt before
+          // typing — an immediate sendText lands in the transient rejection
+          // state and is dropped (the reason never reaches Claude).
+          await new Promise((r) => setTimeout(r, 350));
+          typed =
+            (await delivery.sendText(session, text)) &&
+            (await new Promise<boolean>((r) => setTimeout(() => r(true), 150))) &&
+            (await delivery.sendKey(session, "enter")); // send the refinement
         }
         decisions.decide("show-on-screen"); // release the moot hook, dismiss the panel
-        log.info({ session: session.sessionId, chars: text?.length ?? 0 }, "plan kept with dictated reason");
+        log.info(
+          { session: session.sessionId, chars: text?.length ?? 0, typed },
+          text ? "plan kept with dictated reason" : "plan kept — empty transcription, no reason typed",
+        );
       })();
       return;
     }
