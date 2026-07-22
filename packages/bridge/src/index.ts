@@ -287,10 +287,41 @@ if (cfg.ptt.enabled) {
   void stt.ensureStarted();
 }
 
-denyReason = new DenyReasonFlow(decisions, stt ?? undefined, layer, cfg.ptt.reasonMaxSeconds, log, () => {
-  syncFlash(flashNeeded());
-  pushRender();
-});
+denyReason = new DenyReasonFlow(
+  decisions,
+  stt ?? undefined,
+  layer,
+  cfg.ptt.reasonMaxSeconds,
+  log,
+  () => {
+    syncFlash(flashNeeded());
+    pushRender();
+  },
+  // How the dictated reason is resolved. A normal permission denies through
+  // the still-held hook; a console PLAN can't (its hook is ignored once the
+  // menu shows), so it rejects the menu with Esc and types the reason instead
+  // — same recording UI, different last step.
+  (text) => {
+    const pending = decisions.current;
+    if (!pending) return;
+    const session = registry.get(pending.sessionId);
+    if (pending.toolName === "ExitPlanMode" && session?.windowKind === "console") {
+      void (async () => {
+        await delivery.focus(session);
+        await delivery.sendKey(session, "escape"); // reject → back to plan mode
+        if (text) {
+          await delivery.sendText(session, text);
+          await new Promise((r) => setTimeout(r, 150));
+          await delivery.sendKey(session, "enter"); // send the refinement
+        }
+        decisions.decide("show-on-screen"); // release the moot hook, dismiss the panel
+        log.info({ session: session.sessionId, chars: text?.length ?? 0 }, "plan kept with dictated reason");
+      })();
+      return;
+    }
+    decisions.decide("deny-reason", text ? { message: text } : undefined);
+  },
+);
 
 controller.setHooks({
   onPermissionKey: (index) => {

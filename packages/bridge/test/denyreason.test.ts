@@ -73,6 +73,30 @@ describe("deny-with-dictated-reason", () => {
   });
   afterEach(() => vi.useRealTimers());
 
+  it("an injected resolver receives the transcription (the plan 'say why' path)", async () => {
+    // A plan can't deny through the hook, so index.ts injects a resolver that
+    // types the reason instead. Same recording UI — different last step.
+    const got: Array<string | null> = [];
+    const planFlow = new DenyReasonFlow(store, stt, layer, 10, noopLog, () => {}, (text) => got.push(text));
+    store.hold(permissionEvent("s1"));
+    planFlow.press();
+    await flush();
+    expect(layer.permissionRec).toBeDefined(); // the SAME countdown UI as deny-reason
+    planFlow.press(); // stop early
+    await flush();
+    expect(got).toEqual(["because that touches prod"]);
+  });
+
+  it("the injected resolver gets null when the sidecar can't record", async () => {
+    const got: Array<string | null> = [];
+    stt.status = "offline";
+    const planFlow = new DenyReasonFlow(store, stt, layer, 10, noopLog, () => {}, (text) => got.push(text));
+    store.hold(permissionEvent("s1"));
+    planFlow.press();
+    await flush();
+    expect(got).toEqual([null]); // no mic → resolver still fires, with no reason
+  });
+
   it("press → record → press again → deny resolves with the dictated reason", async () => {
     const resolved = store.hold(permissionEvent("s1"));
     flow.press();

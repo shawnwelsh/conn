@@ -28,6 +28,14 @@ export class DenyReasonFlow {
     private readonly maxSeconds: number,
     private readonly log: Logger,
     private readonly onChange: () => void,
+    /**
+     * Resolve the recorded reason. Default = the classic hook deny. Injected so
+     * a plan (whose hook is ignored — see the plan-keystroke path) can instead
+     * reject the menu and type the reason, while REUSING this exact recording
+     * UI (the countdown key). `text` is null for the canned/no-mic path.
+     */
+    private readonly resolve: (text: string | null) => void = (text) =>
+      this.decisions.decide("deny-reason", text ? { message: text } : undefined),
   ) {}
 
   get recording(): boolean {
@@ -45,14 +53,14 @@ export class DenyReasonFlow {
     if (!pending) return;
     if (!this.stt || this.stt.status !== "ready") {
       this.log.info({ stt: this.stt?.status ?? "absent" }, "deny-reason: sidecar not ready — canned deny");
-      this.decisions.decide("deny-reason");
+      this.resolve(null);
       return;
     }
     const decisionId = pending.id;
     void this.stt.start().then((ok) => {
       if (!ok) {
         // Mic didn't open — behave exactly like the stub did.
-        if (this.decisions.current?.id === decisionId) this.decisions.decide("deny-reason");
+        if (this.decisions.current?.id === decisionId) this.resolve(null);
         return;
       }
       if (this.decisions.current?.id !== decisionId) {
@@ -95,7 +103,7 @@ export class DenyReasonFlow {
       this.log.info({ why }, "deny-reason: decision already settled — transcription discarded");
       return;
     }
-    this.decisions.decide("deny-reason", text ? { message: text } : undefined);
+    this.resolve(text || null);
     this.log.info({ why, chars: text.length }, "deny-reason: denied with dictated reason");
   }
 }
