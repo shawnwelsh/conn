@@ -38,6 +38,10 @@ export class DeckController {
       onPermissionKey?: (keyIndex: number) => void;
       onQuestionKey?: (optionIndex: number) => void;
       onQuestionPager?: () => void;
+      /** Release the held decision with {} (defer) — used after a plan is
+       * answered by keystroke, so the panel dismisses instead of waiting out
+       * the timeout. */
+      onPermissionDefer?: () => void;
     } = {},
     /** Optional: the "New" key spawns console sessions through this. */
     private launcher?: ConsoleLauncher,
@@ -206,6 +210,36 @@ export class DeckController {
     this.log.info({ session: session.sessionId, ok }, "banner tap → focus asking session");
   }
 
+  /**
+   * Answer a console plan-approval menu with a keystroke, then release the
+   * held hook so the panel dismisses. Key positions mirror the plan panel:
+   *   0 Approve plan          → "1" (Claude's first menu option = auto mode)
+   *   2 Keep planning         → Esc (cancel the exit, stay in plan mode)
+   *   3 Keep planning + reason→ Esc, then dictate the refinement into the input
+   *   4 Show on screen        → just focus (already done)
+   * The digit-then-Enter is the same delivery the question layer proved works
+   * on these consoles. Auto mode is the user's pick — the deck goes quiet
+   * during execution, which is the accepted trade for a hands-off plan.
+   */
+  private async answerPlan(session: SessionEntry, index: number): Promise<void> {
+    if (index === 1) return; // blank key on the plan panel — inert
+    await this.delivery.focus(session);
+    if (index === 0) {
+      await this.delivery.sendKey(session, "1");
+      await new Promise((r) => setTimeout(r, CONSOLE_SUBMIT_GAP_MS));
+      await this.delivery.sendKey(session, "enter");
+      this.log.info({ session: session.sessionId }, "plan approved from deck (auto mode)");
+    } else if (index === 2 || index === 3) {
+      await this.delivery.sendKey(session, "escape");
+      this.log.info({ session: session.sessionId, reason: index === 3 }, "plan kept from deck");
+    }
+    // Release the moot hook decision so the morph layer clears immediately.
+    this.hooks.onPermissionDefer?.();
+    // "Keep planning + say why": now dictate the refinement into the input the
+    // Esc left ready. Kept last so the panel is already dismissed.
+    if (index === 3) await this.pttToggle();
+  }
+
   /** Tap = target, and NOTHING moves. The session stays on the key you pressed
    * so the next press lands where your hand already is. */
   private row1Tap(session: SessionEntry | undefined): void {
@@ -291,7 +325,19 @@ export class DeckController {
 
   private row2(index: number, gesture: Gesture = "tap"): void {
     if (this.layer.row2 === "permission") {
-      if (gesture === "tap" || gesture === "double") this.hooks.onPermissionKey?.(index);
+      if (gesture !== "tap" && gesture !== "double") return;
+      const perm = this.layer.permission;
+      const session = perm ? this.registry.get(perm.sessionId) : undefined;
+      // A plan approval on a console can't be driven by the hook: Claude Code
+      // renders its interactive plan menu and ignores a decision that arrives
+      // after (we hold the request so you can READ the plan, which is always
+      // after). Answer the menu by keystroke instead — the same path the
+      // question layer uses — and release the moot hook to dismiss the panel.
+      if (perm?.toolName === "ExitPlanMode" && session?.windowKind === "console") {
+        void this.answerPlan(session, index);
+        return;
+      }
+      this.hooks.onPermissionKey?.(index);
       return;
     }
     // Suggestion layer (derived): Accept on key 6, banner keys focus the

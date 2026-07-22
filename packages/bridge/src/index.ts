@@ -299,6 +299,12 @@ controller.setHooks({
       if (session) void delivery.focus(session);
     }
   },
+  onPermissionDefer: () => {
+    // A console plan was answered by keystroke; release the held request with
+    // {} so the morph layer dismisses. The decision is moot — Claude already
+    // exited (or stayed in) plan mode via the menu.
+    decisions.decide("show-on-screen");
+  },
   onQuestionKey: (optionIndex) => {
     const q = layer.question;
     if (!q) return;

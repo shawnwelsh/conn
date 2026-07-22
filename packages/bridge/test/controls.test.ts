@@ -347,3 +347,67 @@ describe("row 3 globals", () => {
     expect(layer.launching).toBe(false);
   });
 });
+
+describe("plan approval answers the console menu by keystroke, not the hook", () => {
+  function setup(windowKind: "console" | "desktop") {
+    const registry = new SessionRegistry(5);
+    const s = registry.ensure({ session_id: "plan1", cwd: "C:\dev\p", hook_event_name: "SessionStart" });
+    s.windowKind = windowKind;
+    const layer: DeckLayerState = {
+      row1: initialRow1(),
+      row2: "permission",
+      row2Cmd: initialRow2Cmd(),
+      row3Page: 0,
+      permission: { sessionId: "plan1", toolName: "ExitPlanMode", summary: "{}" },
+      controls: initialControls(),
+    };
+    const delivery = new RecordingAdapter();
+    const hookCalls: string[] = [];
+    const controller = new DeckController(registry, layer, delivery, cfg, noopLog, () => {}, {
+      onPermissionKey: () => hookCalls.push("permKey"),
+      onPermissionDefer: () => hookCalls.push("defer"),
+    });
+    return { registry, layer, delivery, controller, hookCalls };
+  }
+
+  it("Approve plan on a console sends '1' + Enter and releases the hook", async () => {
+    const { controller, delivery, hookCalls } = setup("console");
+    (controller as any).row2(0);
+    await flush();
+    // Focus, then the auto-mode digit, then Enter — the question-layer path.
+    expect(delivery.calls).toEqual([
+      { m: "focus", chords: [] },
+      { m: "sendKey", chords: ["1"] },
+      { m: "sendKey", chords: ["enter"] },
+    ]);
+    expect(hookCalls).toEqual(["defer"]); // released the panel, never used the hook decision
+  });
+
+  it("Keep planning on a console sends Esc, not a hook deny", async () => {
+    const { controller, delivery, hookCalls } = setup("console");
+    (controller as any).row2(2);
+    await flush();
+    expect(delivery.calls).toEqual([
+      { m: "focus", chords: [] },
+      { m: "sendKey", chords: ["escape"] },
+    ]);
+    expect(hookCalls).toEqual(["defer"]);
+  });
+
+  it("a DESKTOP plan still goes through the hook (no keystroke path there)", async () => {
+    const { controller, delivery, hookCalls } = setup("desktop");
+    (controller as any).row2(0);
+    await flush();
+    expect(delivery.calls).toEqual([]); // nothing typed
+    expect(hookCalls).toEqual(["permKey"]); // ordinary hook decision
+  });
+
+  it("an ordinary (non-plan) permission still goes through the hook", async () => {
+    const { layer, controller, delivery, hookCalls } = setup("console");
+    layer.permission = { sessionId: "plan1", toolName: "Bash", summary: "ls" };
+    (controller as any).row2(0);
+    await flush();
+    expect(delivery.calls).toEqual([]);
+    expect(hookCalls).toEqual(["permKey"]);
+  });
+});
