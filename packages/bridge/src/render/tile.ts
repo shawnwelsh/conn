@@ -45,15 +45,16 @@ function tryLayout(
   fontPx: number,
   maxWidth: number,
   maxLines: number,
+  /** Break an over-long single token character-wise instead of giving up.
+   * ONLY the command banner wants this — tiles/labels keep the original
+   * word-only wrap, so a long token there still just shrinks the font. */
+  breakWords = false,
 ): Line[] | null {
   ctx.font = `600 ${fontPx}px ${FONT_FAMILY}`;
   const fits = (s: string) => ctx.measureText(s).width <= maxWidth;
   const lines: string[] = [];
   let line = "";
   for (const word of text.split(/\s+/).filter(Boolean)) {
-    // A word too long to fit on its own line (a file path, a `&&`-joined
-    // command) is broken CHARACTER-wise across lines rather than forcing the
-    // whole banner down to a tiny font just so the token fits on one line.
     let rest = word;
     while (rest) {
       const candidate = line ? `${line} ${rest}` : rest;
@@ -68,9 +69,10 @@ function tryLayout(
         line = "";
         continue;
       }
-      // Fresh line and the word alone overflows — take the largest prefix that
-      // fits and carry the remainder to the next line (no space inserted, so a
-      // path never gets a gap mid-token).
+      // Fresh line and the word alone overflows.
+      if (!breakWords) return null; // original behaviour: let fitText shrink the font
+      // Banner only: break the token, taking the largest prefix that fits and
+      // carrying the remainder to the next line (no space inserted mid-token).
       let fit = 1;
       let lo = 1;
       let hi = rest.length;
@@ -104,13 +106,14 @@ export function fitText(
   maxLines: number,
   minPx = 14,
   maxPx = 40,
+  breakWords = false,
 ): { fontPx: number; lines: Line[] } {
   let lo = minPx;
   let hi = maxPx;
   let best: { fontPx: number; lines: Line[] } | null = null;
   while (lo <= hi) {
     const mid = Math.floor((lo + hi) / 2);
-    const lines = tryLayout(ctx, text, mid, maxWidth, maxLines);
+    const lines = tryLayout(ctx, text, mid, maxWidth, maxLines, breakWords);
     if (lines) {
       best = { fontPx: mid, lines };
       lo = mid + 1;
@@ -302,7 +305,9 @@ export function renderBanner(text: string, span: number, state: string): Buffer[
   ctx.strokeRect(2, 2, W - 4, S - 4);
 
   const pad = 16;
-  const { fontPx, lines } = fitText(ctx, text, W - pad * 2, 3, 14, 34);
+  // breakWords: the banner shows commands with long space-less tokens (paths,
+  // `&&` chains); break them across lines rather than shrink to a tiny font.
+  const { fontPx, lines } = fitText(ctx, text, W - pad * 2, 3, 14, 34, true);
   ctx.font = `600 ${fontPx}px ${FONT_FAMILY}`;
   ctx.fillStyle = theme.fg;
   ctx.textBaseline = "middle";

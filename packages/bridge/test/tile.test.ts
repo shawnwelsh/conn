@@ -45,30 +45,41 @@ describe("tile renderer", () => {
   });
 });
 
-describe("fitText wraps long unbreakable tokens instead of shrinking to fit", () => {
+describe("fitText breakWords is opt-in: banner wraps long tokens, tiles don't", () => {
   const ctx = createCanvas(2, 2).getContext("2d");
+  const path = "C:/dev/revops-platform/.claude/worktrees/quiet-vole/node_modules/.cache";
 
-  it("breaks a space-less path across lines, no ellipsis, larger than the floor", () => {
-    // A bash path is one long 'word' — the old layout shrank the whole banner
-    // to whatever font let that token sit on one line (tiny). Now it wraps.
-    const path = "C:/dev/revops-platform/.claude/worktrees/quiet-vole/node_modules/.cache";
-    const { fontPx, lines } = fitText(ctx, path, 240, 3, 14, 34);
-    expect(lines.length).toBeGreaterThan(1); // the token was broken across lines
-    expect(lines.map((l) => l.text).join("")).toBe(path); // chunks reassemble exactly
-    expect(lines.some((l) => l.text.includes("…"))).toBe(false); // nothing truncated
-    expect(fontPx).toBeGreaterThan(14); // and it isn't pinned at the minimum
+  it("with breakWords (the banner): a space-less path breaks across lines, no ellipsis", () => {
+    const { fontPx, lines } = fitText(ctx, path, 240, 3, 14, 34, true);
+    expect(lines.length).toBeGreaterThan(1); // token broken across lines
+    expect(lines.map((l) => l.text).join("")).toBe(path); // reassembles exactly
+    expect(lines.some((l) => l.text.includes("…"))).toBe(false);
+    expect(fontPx).toBeGreaterThan(14); // not pinned at the floor
   });
 
-  it("still wraps a normal command on spaces", () => {
-    const { lines } = fitText(ctx, "npm run build --workspace bridge", 240, 3, 14, 34);
-    expect(lines.length).toBeGreaterThanOrEqual(1);
-    // Space-joined words keep their spaces; reassembling with spaces matches.
-    expect(lines.map((l) => l.text).join(" ")).toBe("npm run build --workspace bridge");
+  it("WITHOUT breakWords (tiles/buttons): the token is NEVER broken — it shrinks or ellipsizes", () => {
+    // This is the regression the user caught: buttons/labels must keep the
+    // original word-only wrap, so a long token stays intact.
+    const { lines } = fitText(ctx, path, 240, 3, 14, 34, false);
+    // Either a single (possibly ellipsized) line, or space-split — but no
+    // line is a bare mid-token fragment of the path.
+    for (const l of lines) {
+      const isFragment = path.includes(l.text) && l.text !== path && !l.text.includes("…");
+      expect(isFragment).toBe(false);
+    }
   });
 
-  it("a single token far too long for even maxLines still returns (truncated), never throws", () => {
-    const huge = "x".repeat(4000);
-    const { lines } = fitText(ctx, huge, 240, 3, 14, 34);
-    expect(lines.length).toBeGreaterThan(0);
+  it("normal command wraps on spaces regardless of breakWords", () => {
+    for (const bw of [false, true]) {
+      const { lines } = fitText(ctx, "npm run build --workspace bridge", 240, 3, 14, 34, bw);
+      expect(lines.map((l) => l.text).join(" ")).toBe("npm run build --workspace bridge");
+    }
+  });
+
+  it("a pathological token still returns without throwing (both modes)", () => {
+    for (const bw of [false, true]) {
+      const { lines } = fitText(ctx, "x".repeat(4000), 240, 3, 14, 34, bw);
+      expect(lines.length).toBeGreaterThan(0);
+    }
   });
 });
