@@ -120,6 +120,13 @@ export class AhkAdapter implements DeliveryAdapter {
     return this.withWindow(session, async (query) => this.command(`focus|${query}`));
   }
 
+  async setWindowState(session: SessionRef, state: "maximize" | "restore"): Promise<boolean> {
+    // Needs a real window — a pid-only adopted terminal has none to resize.
+    if (session.pid && !session.hwnd) return false;
+    const arg = state === "maximize" ? "max" : "restore";
+    return this.withWindow(session, async (query) => this.command(`winstate|${query}|${arg}`));
+  }
+
   async sendText(session: SessionRef, text: string): Promise<boolean> {
     const safe = text.replace(/\r?\n/g, " ");
     if (session.pid) return this.conWrite(session, safe);

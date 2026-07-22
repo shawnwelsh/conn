@@ -183,9 +183,31 @@ export class DeckController {
       return void this.renameFinish();
     }
     if (gesture === "long") return this.beginMove(entry?.sessionId);
+    if (gesture === "doubleLong") return void this.row1FocusMaximize(entry);
     if (gesture === "triple") return void this.row1TripleTap(entry);
     if (gesture === "double") return void this.row1DoubleTap(entry);
     return this.row1Tap(entry);
+  }
+
+  /** Sessions we've maximised, so the next double-tap-hold restores instead.
+   * Best-effort belief — if you resize by hand it just re-syncs on the next
+   * press. */
+  private readonly maximized = new Set<string>();
+
+  /** Double-tap-hold a session: focus it and toggle full-screen. The "…and
+   * stay big" gesture — blot out distractions when you know you'll be a
+   * while, again to drop back to normal size. */
+  private async row1FocusMaximize(session: SessionEntry | undefined): Promise<void> {
+    if (!session) return;
+    this.registry.target(session.sessionId);
+    await this.delivery.focus(session);
+    const goFull = !this.maximized.has(session.sessionId);
+    const ok = (await this.delivery.setWindowState?.(session, goFull ? "maximize" : "restore")) ?? false;
+    if (ok) {
+      if (goFull) this.maximized.add(session.sessionId);
+      else this.maximized.delete(session.sessionId);
+    }
+    this.log.info({ session: session.sessionId, state: goFull ? "maximize" : "restore", ok }, "focus + window state");
   }
 
   private pageRow1(): void {

@@ -8,9 +8,11 @@ import type { Slot } from "@belay/shared";
  * - long-press: still held longPressMs after down → fires WHILE held (so the
  *   deck can enter "move" mode and await the target press).
  * - double-tap: a second tap on the same slot within doubleTapMs.
+ * - double-long: a double-tap whose SECOND press is held (tap, then press-and-
+ *   hold) → fires while held. "…and stay" modifier on the double-tap.
  * - tap: a short press that isn't the first half of a double-tap.
  */
-export type Gesture = "tap" | "double" | "triple" | "long";
+export type Gesture = "tap" | "double" | "triple" | "long" | "doubleLong";
 
 interface SlotState {
   downAt: number | null;
@@ -48,13 +50,28 @@ export class GestureRecognizer {
 
   down(slot: Slot): void {
     const s = this.state(slot);
-    s.downAt = this.now();
+    const at = this.now();
+    s.downAt = at;
     s.longFired = false;
+    // Is this the second press of a double — i.e. one prior tap, still inside
+    // the window? Then a hold means double-long, not a fresh long-press.
+    const chained = s.tapCount === 1 && at - s.lastTapAt <= this.cfg.doubleTapMs;
+    if (chained && s.singleTimer) {
+      // Cancel the pending single-tap: this press upgrades it to a double(-long).
+      clearTimeout(s.singleTimer);
+      s.singleTimer = null;
+    }
     if (s.longTimer) clearTimeout(s.longTimer);
     s.longTimer = setTimeout(() => {
       s.longFired = true;
       s.longTimer = null;
-      this.emit(slot, "long");
+      if (chained) {
+        s.tapCount = 0;
+        s.lastTapAt = 0;
+        this.emit(slot, "doubleLong");
+      } else {
+        this.emit(slot, "long");
+      }
     }, this.cfg.longPressMs);
   }
 

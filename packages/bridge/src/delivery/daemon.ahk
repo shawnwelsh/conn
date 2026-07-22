@@ -160,6 +160,20 @@ loop {
           respond("err|gone")
         else
           respond(activateHwnd(hwnd) = "ok" ? "ok" : "err|noactivate")
+      case "winstate":
+        ; Full-screen a terminal to blot out distractions, or restore it.
+        ; Activates too, so "focus + maximize" is one round-trip.
+        hwnd := resolveWin(parts[2])
+        if (!hwnd)
+          respond("err|gone")
+        else {
+          if (parts[3] = "max")
+            WinMaximize(hwnd)
+          else
+            WinRestore(hwnd)
+          WinActivate(hwnd)
+          respond("ok")
+        }
       case "findpid":
         ; Resolve a process id to its VISIBLE top-level window (0 if none yet).
         ; Never enable DetectHiddenWindows here: console processes own hidden

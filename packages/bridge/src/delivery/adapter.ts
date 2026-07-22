@@ -24,6 +24,9 @@ export interface SessionRef {
 export interface DeliveryAdapter {
   /** Bring the session's window to the foreground. */
   focus(session: SessionRef): Promise<boolean>;
+  /** Maximise (full-screen) or restore the session's window. Optional — the
+   * degraded adapters can't, and the caller no-ops gracefully. */
+  setWindowState?(session: SessionRef, state: "maximize" | "restore"): Promise<boolean>;
   /** Type literal text into the session (does not press Enter). */
   sendText(session: SessionRef, text: string): Promise<boolean>;
   /** Press a key chord, e.g. "enter", "escape", "shift+tab", "2". */

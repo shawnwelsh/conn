@@ -68,6 +68,32 @@ describe("GestureRecognizer", () => {
     expect(events).toEqual([{ slot: 0, g: "double" }, { slot: 0, g: "tap" }]);
   });
 
+  it("tap then press-and-hold → double-long (fires while held), no double or tap", () => {
+    const { r, events } = setup();
+    r.down(0); vi.advanceTimersByTime(80); r.up(0); // first tap
+    vi.advanceTimersByTime(100); // within the double window
+    r.down(0); // second press — held
+    vi.advanceTimersByTime(500); // past longPressMs while held
+    expect(events).toEqual([{ slot: 0, g: "doubleLong" }]);
+    r.up(0);
+    vi.advanceTimersByTime(400);
+    expect(events).toEqual([{ slot: 0, g: "doubleLong" }]); // no stray tap/double
+  });
+
+  it("a quick second press is still a plain double, not double-long", () => {
+    const { r, events } = setup();
+    r.down(0); vi.advanceTimersByTime(80); r.up(0);
+    vi.advanceTimersByTime(100);
+    r.down(0); vi.advanceTimersByTime(80); r.up(0); // released before longPressMs
+    expect(events).toEqual([{ slot: 0, g: "double" }]);
+  });
+
+  it("a first-press hold is still a plain long, not double-long", () => {
+    const { r, events } = setup();
+    r.down(0); vi.advanceTimersByTime(500); // held with no prior tap
+    expect(events).toEqual([{ slot: 0, g: "long" }]);
+  });
+
   it("keeps slots independent", () => {
     const { r, events } = setup();
     r.down(0); vi.advanceTimersByTime(500); // slot 0 long

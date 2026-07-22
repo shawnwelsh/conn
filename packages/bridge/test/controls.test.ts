@@ -27,6 +27,10 @@ class RecordingAdapter implements DeliveryAdapter {
   }
   async findWindowByPid(): Promise<number | null> { return null; }
   async checkWindow(): Promise<boolean | null> { return null; }
+  async setWindowState(_s: SessionRef, state: "maximize" | "restore"): Promise<boolean> {
+    this.calls.push({ m: "setWindowState", chords: [state] });
+    return true;
+  }
   async dispose(): Promise<void> {}
 }
 
@@ -409,5 +413,45 @@ describe("plan approval answers the console menu by keystroke, not the hook", ()
     await flush();
     expect(delivery.calls).toEqual([]);
     expect(hookCalls).toEqual(["permKey"]);
+  });
+});
+
+describe("double-tap-hold a session focuses and toggles full-screen", () => {
+  function setup() {
+    const registry = new SessionRegistry(5);
+    const s = registry.ensure({ session_id: "m1", cwd: "C:\dev\m", hook_event_name: "SessionStart" });
+    s.windowKind = "console";
+    const layer: DeckLayerState = {
+      row1: initialRow1(), row2: "idle", row2Cmd: initialRow2Cmd(), row3Page: 0, controls: initialControls(),
+    };
+    const delivery = new RecordingAdapter();
+    const controller = new DeckController(registry, layer, delivery, cfg, noopLog, () => {});
+    return { registry, controller, delivery };
+  }
+
+  it("first double-long maximises, second restores — same key", async () => {
+    const { controller, delivery } = setup();
+    (controller as any).row1(0, "doubleLong");
+    await flush();
+    expect(delivery.calls).toEqual([
+      { m: "focus", chords: [] },
+      { m: "setWindowState", chords: ["maximize"] },
+    ]);
+    delivery.calls.length = 0;
+    (controller as any).row1(0, "doubleLong");
+    await flush();
+    expect(delivery.calls).toEqual([
+      { m: "focus", chords: [] },
+      { m: "setWindowState", chords: ["restore"] },
+    ]);
+  });
+
+  it("targets the session too, like the other row-1 gestures", async () => {
+    const { registry, controller } = setup();
+    registry.ensure({ session_id: "m2", cwd: "C:\dev\m2", hook_event_name: "SessionStart" });
+    registry.target("m2");
+    (controller as any).row1(0, "doubleLong"); // slot 0 = m1
+    await flush();
+    expect(registry.targetedSession?.sessionId).toBe("m1");
   });
 });
