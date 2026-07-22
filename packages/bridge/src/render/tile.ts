@@ -223,13 +223,6 @@ export function renderTile(spec: TileSpec): Buffer {
     ctx.restore();
   }
 
-  // Not the targeted session: veil it, so the single key that keystrokes and
-  // dictation actually reach is the only bright one in the row.
-  if (spec.veil) {
-    ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
-    ctx.fillRect(0, 0, S, S);
-  }
-
   // Dead session: a white skull on near-black — its own channel entirely, so
   // "gone" can't be read as merely dim (not targeted) or grey (stale). The
   // wash is heavy so the label recedes and the skull is the whole message.
@@ -238,6 +231,14 @@ export function renderTile(spec: TileSpec): Buffer {
     ctx.fillStyle = "rgba(0, 0, 0, 0.9)";
     ctx.fillRect(0, 0, S, S);
     drawSkull(ctx, S / 2, S / 2 + 4, 32, "#f8fafc", bg);
+  }
+
+  // Not the targeted session: veil it. LAST, so it dims the skull too — a
+  // dead session you aren't pointed at should recede like every other
+  // non-target, not glow brighter than the live one you're driving.
+  if (spec.veil) {
+    ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
+    ctx.fillRect(0, 0, S, S);
   }
 
   const buf = canvas.toBuffer("image/png");
