@@ -208,10 +208,16 @@ async function readTurnOptions(sessionId: string, lastMessage: string): Promise<
   if (!cfg.optionReader.enabled) return;
   const session = registry.get(sessionId);
   if (!session || session.windowKind !== "console") return;
-  if (!session.suggestion) return; // nothing was offered
+  // Capture the specific offer we're reading, by VALUE. The read takes ~15-25s,
+  // and the earlier guard compared the live entry's suggestion to ITSELF (same
+  // object) — always true — so options attached even after you answered on
+  // screen and moved on, dropping a stale list under a live session.
+  const forSuggestion = session.suggestion;
+  if (!forSuggestion) return; // nothing was offered
   if (!looksEnumerated(lastMessage)) return;
   session.optionsPending = true;
   pushRender();
+  const stillThisTurn = () => registry.get(sessionId)?.suggestion === forSuggestion;
   try {
     const found = await readOptions(lastMessage, {
       cwd: ensureSidecarDir(),
@@ -219,15 +225,17 @@ async function readTurnOptions(sessionId: string, lastMessage: string): Promise<
       timeoutMs: cfg.optionReader.timeoutSeconds * 1000,
       log,
     });
-    // The turn may have moved on during the ~10s read — a new prompt clears
-    // `suggestion`, and attaching options to a superseded turn would put stale
-    // buttons under a live session.
-    if (found && registry.get(sessionId)?.suggestion === session.suggestion) {
-      session.suggestionOptions = found;
+    if (!found) return;
+    if (stillThisTurn()) {
+      registry.get(sessionId)!.suggestionOptions = found;
       log.info({ session: sessionId, options: found.options, viewInWindow: found.viewInWindow }, "option reader");
+    } else {
+      log.info({ session: sessionId }, "option reader: turn moved on during the read — options discarded");
     }
   } finally {
-    session.optionsPending = false;
+    // Only clear OUR pending flag; a newer turn (answered on screen, or a fresh
+    // Stop) already cleared it and may have started its own read.
+    if (stillThisTurn()) registry.get(sessionId)!.optionsPending = false;
     pushRender();
   }
 }
