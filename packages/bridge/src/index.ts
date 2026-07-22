@@ -31,6 +31,7 @@ import { registerApiRoutes } from "./http/api.js";
 import { livenessSweep } from "./liveness.js";
 import { endsPendingQuestion } from "./status.js";
 import { ensureSidecarDir, looksEnumerated, readOptions } from "./optionReader.js";
+import { deliverQuestionAnswer } from "./questionKeys.js";
 import { QUESTION_OPTIONS_PER_PAGE } from "./layers.js";
 import type { AskUserQuestionInput } from "./hookTypes.js";
 import type { KeyRender } from "@belay/shared";
@@ -316,7 +317,11 @@ controller.setHooks({
     // Advance the layer NOW, not after the keystrokes land. Claude Code has
     // already rendered the next question by the time a human reaches for the
     // next key, and leaving the answered one on screen invites a double press.
+    const multi = q.questions.length > 1;
     const more = advanceQuestion(q);
+    // Last answer of a MULTI-question form → also press its "Submit answers"
+    // step, which the per-question Enter only lands on.
+    const submitAfter = multi && !more;
     if (more) {
       syncFlash(flashNeeded());
       pushRender();
@@ -324,14 +329,9 @@ controller.setHooks({
       revertQuestion();
     }
     void (async () => {
-      // v1 keystroke model (verify live in Phase 3 exit test): focus the
-      // session, type the option number, confirm with Enter.
-      const ok =
-        (await delivery.focus(session)) &&
-        (await delivery.sendKey(session, String(absolute + 1))) &&
-        (await delivery.sendKey(session, "enter"));
+      const ok = await deliverQuestionAnswer(delivery, session, absolute + 1, submitAfter);
       log.info(
-        { session: q.sessionId, option: options[absolute], remaining: q.questions.length - q.index - (more ? 1 : 0), ok },
+        { session: q.sessionId, option: options[absolute], submitAfter, ok },
         "question answered from deck",
       );
     })();
