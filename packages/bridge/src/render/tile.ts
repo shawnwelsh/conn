@@ -47,31 +47,57 @@ function tryLayout(
   maxLines: number,
 ): Line[] | null {
   ctx.font = `600 ${fontPx}px ${FONT_FAMILY}`;
-  const words = text.split(/\s+/).filter(Boolean);
-  const lines: Line[] = [];
-  let current = "";
-  for (const word of words) {
-    const candidate = current ? `${current} ${word}` : word;
-    if (ctx.measureText(candidate).width <= maxWidth) {
-      current = candidate;
-      continue;
+  const fits = (s: string) => ctx.measureText(s).width <= maxWidth;
+  const lines: string[] = [];
+  let line = "";
+  for (const word of text.split(/\s+/).filter(Boolean)) {
+    // A word too long to fit on its own line (a file path, a `&&`-joined
+    // command) is broken CHARACTER-wise across lines rather than forcing the
+    // whole banner down to a tiny font just so the token fits on one line.
+    let rest = word;
+    while (rest) {
+      const candidate = line ? `${line} ${rest}` : rest;
+      if (fits(candidate)) {
+        line = candidate;
+        break;
+      }
+      if (line) {
+        // Close this line and retry the word fresh on the next one.
+        lines.push(line);
+        if (lines.length === maxLines) return null;
+        line = "";
+        continue;
+      }
+      // Fresh line and the word alone overflows — take the largest prefix that
+      // fits and carry the remainder to the next line (no space inserted, so a
+      // path never gets a gap mid-token).
+      let fit = 1;
+      let lo = 1;
+      let hi = rest.length;
+      while (lo <= hi) {
+        const mid = (lo + hi) >> 1;
+        if (fits(rest.slice(0, mid))) {
+          fit = mid;
+          lo = mid + 1;
+        } else {
+          hi = mid - 1;
+        }
+      }
+      lines.push(rest.slice(0, fit));
+      if (lines.length === maxLines) return null;
+      rest = rest.slice(fit);
     }
-    if (!current) return null; // single word wider than the tile at this size
-    lines.push({ text: current, width: ctx.measureText(current).width });
-    if (lines.length === maxLines) return null;
-    current = word;
-    if (ctx.measureText(current).width > maxWidth) return null;
   }
-  if (current) {
+  if (line) {
     if (lines.length === maxLines) return null;
-    lines.push({ text: current, width: ctx.measureText(current).width });
+    lines.push(line);
   }
-  return lines.length ? lines : null;
+  return lines.length ? lines.map((t) => ({ text: t, width: ctx.measureText(t).width })) : null;
 }
 
 /** Binary-search the largest font size whose wrap fits maxLines; falls back
- * to minimum size + ellipsis. */
-function fitText(
+ * to minimum size + ellipsis. Exported for wrap tests. */
+export function fitText(
   ctx: SKRSContext2D,
   text: string,
   maxWidth: number,

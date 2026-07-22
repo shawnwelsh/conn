@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { renderTile, renderBanner } from "../src/render/tile.js";
+import { createCanvas } from "@napi-rs/canvas";
+import { renderTile, renderBanner, fitText } from "../src/render/tile.js";
 
 const PNG_MAGIC = Buffer.from([0x89, 0x50, 0x4e, 0x47]);
 
@@ -41,5 +42,33 @@ describe("tile renderer", () => {
     const parts = renderBanner("A long command being approved across keys", 3, "waiting");
     expect(parts).toHaveLength(3);
     for (const p of parts) expect(p.subarray(0, 4).equals(PNG_MAGIC)).toBe(true);
+  });
+});
+
+describe("fitText wraps long unbreakable tokens instead of shrinking to fit", () => {
+  const ctx = createCanvas(2, 2).getContext("2d");
+
+  it("breaks a space-less path across lines, no ellipsis, larger than the floor", () => {
+    // A bash path is one long 'word' — the old layout shrank the whole banner
+    // to whatever font let that token sit on one line (tiny). Now it wraps.
+    const path = "C:/dev/revops-platform/.claude/worktrees/quiet-vole/node_modules/.cache";
+    const { fontPx, lines } = fitText(ctx, path, 240, 3, 14, 34);
+    expect(lines.length).toBeGreaterThan(1); // the token was broken across lines
+    expect(lines.map((l) => l.text).join("")).toBe(path); // chunks reassemble exactly
+    expect(lines.some((l) => l.text.includes("…"))).toBe(false); // nothing truncated
+    expect(fontPx).toBeGreaterThan(14); // and it isn't pinned at the minimum
+  });
+
+  it("still wraps a normal command on spaces", () => {
+    const { lines } = fitText(ctx, "npm run build --workspace bridge", 240, 3, 14, 34);
+    expect(lines.length).toBeGreaterThanOrEqual(1);
+    // Space-joined words keep their spaces; reassembling with spaces matches.
+    expect(lines.map((l) => l.text).join(" ")).toBe("npm run build --workspace bridge");
+  });
+
+  it("a single token far too long for even maxLines still returns (truncated), never throws", () => {
+    const huge = "x".repeat(4000);
+    const { lines } = fitText(ctx, huge, 240, 3, 14, 34);
+    expect(lines.length).toBeGreaterThan(0);
   });
 });
