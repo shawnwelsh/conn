@@ -161,12 +161,13 @@ export class DeckController {
       return this.completeMove(slot);
     }
     // agents
-    // While a morph is up, keys 2-5 are one wide banner spelling out what is
-    // being decided — NOT sessions. Sending them through slot logic would
-    // retarget, or long-press-move, whoever happens to sit there. A tap brings
-    // the asking session forward instead: the deck can only show so much, and
-    // "let me go read it" is the honest next move.
-    if (this.morphSessionId() && slot > 0) {
+    // While a morph is up ALL of row 1 belongs to the asking session: key 0 is
+    // that session (flashing), keys 1-4 are one wide banner of what's being
+    // decided. NONE are the normal session slots, so a tap anywhere focuses the
+    // asking session. Without covering key 0, it fell through to slot logic and
+    // acted on whoever sat in registry position 0 — focusing the wrong window
+    // when you tapped the very session the deck was showing you.
+    if (this.morphSessionId()) {
       if (gesture === "tap" || gesture === "double") void this.focusMorphSession();
       return;
     }

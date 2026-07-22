@@ -67,6 +67,22 @@ describe("row-1 banner keys during a morph", () => {
     expect(focused).toEqual(["d"]);
   });
 
+  it("KEY 0 (the asking session, flashing) focuses THAT session, not registry slot 0", async () => {
+    // The asking session "d" sits at registry position 3 but the morph shows
+    // it on key 0. Key 0 must act on "d" — it was falling through to slot logic
+    // and focusing "a" (ordered[0]), popping up the wrong window.
+    press(c, 0);
+    await vi.advanceTimersByTimeAsync(400);
+    expect(focused).toEqual(["d"]);
+  });
+
+  it("double-tapping key 0 also focuses the asking session, never slot 0", async () => {
+    c.down(0); c.up(0); c.down(0); c.up(0); // double-tap
+    await vi.advanceTimersByTimeAsync(400);
+    expect(focused).toEqual(["d"]);
+    expect(focused).not.toContain("a");
+  });
+
   it("long-pressing a banner key never starts a move", () => {
     c.down(1);
     vi.advanceTimersByTime(600);
