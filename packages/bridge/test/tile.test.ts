@@ -76,6 +76,15 @@ describe("fitText breakWords is opt-in: banner wraps long tokens, tiles don't", 
     }
   });
 
+  it("a command too long for maxLines FILLS the lines and ellipsizes the last", () => {
+    // Regression: a ~500-char bash command collapsed to a single 90-char line
+    // instead of using all 3. Now it wraps across every line it's given.
+    const long = Array.from({ length: 40 }, (_, i) => `token${i}-with-some-length`).join(" ");
+    const { lines } = fitText(ctx, long, 240, 3, 14, 34, true);
+    expect(lines.length).toBe(3); // used every line, not one
+    expect(lines[2]!.text.endsWith("…")).toBe(true); // and marked truncated
+  });
+
   it("a pathological token still returns without throwing (both modes)", () => {
     for (const bw of [false, true]) {
       const { lines } = fitText(ctx, "x".repeat(4000), 240, 3, 14, 34, bw);

@@ -123,14 +123,29 @@ export function fitText(
   }
   if (best) return best;
 
-  // Nothing fits: hard-truncate with ellipsis at minimum size.
+  // Too long for maxLines even at the floor font. Wrap the WHOLE thing at
+  // minPx (unbounded), keep the first maxLines lines, and ellipsize the last —
+  // so a huge command fills all the lines it's given (3 × ~90 chars) instead
+  // of collapsing to a single ~90-char line. For tiles (breakWords=false) an
+  // over-long single token still can't wrap, so this yields one line, same as
+  // before; only the banner benefits.
   ctx.font = `600 ${minPx}px ${FONT_FAMILY}`;
-  let truncated = text;
-  while (truncated.length > 1 && ctx.measureText(truncated + "…").width > maxWidth) {
-    truncated = truncated.slice(0, -1);
+  const fits = (s: string) => ctx.measureText(s).width <= maxWidth;
+  const all = tryLayout(ctx, text, minPx, maxWidth, Number.MAX_SAFE_INTEGER, breakWords);
+  if (all && all.length) {
+    const shown = all.slice(0, maxLines);
+    if (all.length > maxLines) {
+      let last = shown[shown.length - 1]!.text;
+      while (last.length > 1 && !fits(last + "…")) last = last.slice(0, -1);
+      shown[shown.length - 1] = { text: `${last}…`, width: ctx.measureText(`${last}…`).width };
+    }
+    return { fontPx: minPx, lines: shown };
   }
-  const t = truncated + "…";
-  return { fontPx: minPx, lines: [{ text: t, width: ctx.measureText(t).width }] };
+
+  // Degenerate (a single unbreakable token, e.g. a tile label): one line, cut.
+  let truncated = text;
+  while (truncated.length > 1 && !fits(`${truncated}…`)) truncated = truncated.slice(0, -1);
+  return { fontPx: minPx, lines: [{ text: `${truncated}…`, width: ctx.measureText(`${truncated}…`).width }] };
 }
 
 export function renderTile(spec: TileSpec): Buffer {
