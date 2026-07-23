@@ -17,7 +17,7 @@
     "windowMode": "activeWindow"
   },
   "commandsFile": "commands.json",
-  "newSessionCommand": "claude",
+  "newSessionCommand": "claude --permission-mode plan",
   "consoleHost": "wt",
   "newSessionDir": "C:\\path\\to\\your\\main\\repo",
   "newSessionWorktrees": true,

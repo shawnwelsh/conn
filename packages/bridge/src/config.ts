@@ -130,7 +130,11 @@ export function loadConfig(): DeckConfig {
   cfg.moveCancelSeconds ??= 5;
   cfg.cmdPagerRevertSeconds ??= 6;
   cfg.deadSessionSweepHours ??= 3;
-  cfg.newSessionCommand ??= "claude";
+  // Plan mode by default: deck-launched consoles start read-only and plan
+  // first, and approving the plan FROM THE DECK drops into auto mode — routine
+  // Bash/edits run silently, only risky ones re-surface as a permission. Set
+  // newSessionCommand to plain "claude" (or any weaker flag) to opt down.
+  cfg.newSessionCommand ??= "claude --permission-mode plan";
   cfg.consoleHost ??= "wt";
   if (!["wt", "conhost"].includes(cfg.consoleHost)) {
     throw new Error('config: consoleHost must be "wt" or "conhost"');

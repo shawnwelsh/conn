@@ -111,8 +111,13 @@ temp directory so it doesn't inherit a repo's `CLAUDE.md`, runs with all tools
 disabled, and the bridge discards its hook events by cwd — otherwise the
 classifier would show up as a session on your own deck.
 
-The **New** key (row 3) spawns `newSessionCommand` (default `claude`) in a
-fresh console window. With `newSessionWorktrees: true` (default) it first
+The **New** key (row 3) spawns `newSessionCommand` in a fresh console window.
+The default is `claude --permission-mode plan`, so consoles **start in plan
+mode**: Claude plans read-only until you approve, and approving the plan *from
+the deck* drops into **auto mode** — routine Bash/edits run silently and only
+risky commands re-surface as a permission. It's the natural posture for a
+deck-driven workflow; set `newSessionCommand` to plain `"claude"` to opt down
+to per-tool prompting. With `newSessionWorktrees: true` (default) it first
 creates a **fresh git worktree** in the targeted session's repo — branch
 `deck/<codename>`, dir `.claude/worktrees/<codename>` — so parallel sessions
 never share a working tree, and **the codename becomes the feature name on
