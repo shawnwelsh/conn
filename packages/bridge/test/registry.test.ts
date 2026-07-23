@@ -306,6 +306,38 @@ describe("working-set + pager model", () => {
     expect(r.snapshot().working).toEqual(["f", "a", "b", "c"]);
   });
 
+  it("moveToIndex fires 'reordered' so the order can be persisted", () => {
+    const r = new SessionRegistry(5);
+    fill(r, ["a", "b"]);
+    let fired = 0;
+    r.on("reordered", () => fired++);
+    r.moveToIndex("b", 0);
+    expect(fired).toBe(1);
+  });
+
+  it("restores the saved order across a restart, keyed by cwd", () => {
+    // Arrange + move.
+    const a = new SessionRegistry(5);
+    fill(a, ["a", "b", "c", "d"]);
+    a.moveToIndex("c", 0); // → c, a, b, d
+    expect(a.orderedEntries().map((s) => s.sessionId)).toEqual(["c", "a", "b", "d"]);
+    const saved = a.orderedCwds(); // cwds, front-first — what gets persisted
+
+    // "Restart": fresh registry, load the saved order, then sessions are
+    // rediscovered in their ORIGINAL (a,b,c,d) order.
+    const b = new SessionRegistry(5);
+    b.loadOrder(saved);
+    for (const id of ["a", "b", "c", "d"]) start(b, id);
+    expect(b.orderedEntries().map((s) => s.sessionId)).toEqual(["c", "a", "b", "d"]);
+  });
+
+  it("a session not in the saved order lands after the remembered ones", () => {
+    const b = new SessionRegistry(5);
+    b.loadOrder(["C:\\dev\\c", "C:\\dev\\a"]); // only c, a remembered
+    for (const id of ["a", "b", "c"]) start(b, id); // b is unknown
+    expect(b.orderedEntries().map((s) => s.sessionId)).toEqual(["c", "a", "b"]);
+  });
+
   it("caps tracked sessions at maxSessions, dropping LRU overflow", () => {
     const r = new SessionRegistry(5, 6); // cap at 6
     fill(r, ["a", "b", "c", "d", "e", "f"]);

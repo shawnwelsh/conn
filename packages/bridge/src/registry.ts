@@ -91,6 +91,11 @@ export class SessionRegistry extends EventEmitter {
   private overflow: string[] = []; // MRU: index 0 = most recent
   private targeted: string | null = null;
   private pendingLaunches: PendingLaunch[] = [];
+  /** Persisted display order, by cwd (the only identity stable across
+   * restarts — sessionIds are per-run). A rediscovered session slots back to
+   * its saved rank; unknowns append. Populated by loadOrder(), refreshed on
+   * every manual move. */
+  private savedRank = new Map<string, number>();
 
   constructor(
     private readonly slotCount: number,
@@ -450,7 +455,34 @@ export class SessionRegistry extends EventEmitter {
     this.working = order.slice(0, cap);
     this.overflow = order.slice(cap);
     this.syncSlots();
+    this.rememberOrder(); // this arrangement is now the one to restore
     this.emit("changed");
+    this.emit("reordered"); // index.ts persists it
+  }
+
+  /** Restore a saved display order (list of cwds, front-first). Applied before
+   * sessions are adopted, so each slots back to its remembered rank. */
+  loadOrder(cwds: string[]): void {
+    this.savedRank = new Map(cwds.map((cwd, i) => [cwd, i]));
+  }
+
+  /** The current display order as cwds (deduped, front-first) — what gets
+   * persisted after a move. */
+  orderedCwds(): string[] {
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const id of [...this.working, ...this.overflow]) {
+      const cwd = this.sessions.get(id)?.cwd;
+      if (cwd !== undefined && !seen.has(cwd)) {
+        seen.add(cwd);
+        out.push(cwd);
+      }
+    }
+    return out;
+  }
+
+  private rememberOrder(): void {
+    this.loadOrder(this.orderedCwds());
   }
 
   /** The session's window died: skull it, demote it to the END of the
@@ -490,10 +522,36 @@ export class SessionRegistry extends EventEmitter {
     };
   }
 
-  /** Place a newly-tracked session: into working if room, else overflow front. */
+  /** Place a newly-tracked session. If its cwd has a remembered rank (restored
+   * order), slot it there so a restart rebuilds the arrangement as sessions are
+   * rediscovered; otherwise append, as before. */
   private place(sessionId: string): void {
-    if (this.working.length < this.capacity()) this.working.push(sessionId);
-    else this.overflow.unshift(sessionId);
+    const cwd = this.sessions.get(sessionId)?.cwd;
+    const rank = cwd !== undefined ? this.savedRank.get(cwd) : undefined;
+    if (rank === undefined) {
+      if (this.working.length < this.capacity()) this.working.push(sessionId);
+      else this.overflow.unshift(sessionId);
+      this.rebalance();
+      return;
+    }
+    // Insert into the combined order just before the first session that ranks
+    // AFTER this one (unknowns count as after everything).
+    const combined = [...this.working, ...this.overflow];
+    const rankOf = (id: string): number => {
+      const c = this.sessions.get(id)?.cwd;
+      return (c !== undefined ? this.savedRank.get(c) : undefined) ?? Number.POSITIVE_INFINITY;
+    };
+    let at = combined.length;
+    for (let i = 0; i < combined.length; i++) {
+      if (rankOf(combined[i]!) > rank) {
+        at = i;
+        break;
+      }
+    }
+    combined.splice(at, 0, sessionId);
+    const cap = this.capacity();
+    this.working = combined.slice(0, cap);
+    this.overflow = combined.slice(cap);
     this.rebalance();
   }
 

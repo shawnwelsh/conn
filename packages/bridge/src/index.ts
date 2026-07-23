@@ -1,5 +1,6 @@
 import Fastify from "fastify";
 import { join } from "node:path";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { loadConfig } from "./config.js";
 import { createLogger } from "./log.js";
 import { SessionRegistry, pathWithin, type SessionEntry } from "./registry.js";
@@ -73,6 +74,25 @@ const delivery = await createDelivery();
 // arrive, so a returning session adopts its console key (kind + HWND)
 // instead of re-registering as a desktop session. Skip when delivery can't
 // resolve windows (noop) — pruning would wrongly erase every binding.
+// Restore the saved row-1 order (by cwd) BEFORE any session is adopted, so
+// each rediscovered session slots back to where you last dragged it.
+const orderFile = join(cfg.log.dir, "row1-order.json");
+try {
+  if (existsSync(orderFile)) {
+    const saved = JSON.parse(readFileSync(orderFile, "utf8"));
+    if (Array.isArray(saved)) registry.loadOrder(saved.filter((c): c is string => typeof c === "string"));
+  }
+} catch (err) {
+  log.warn({ err: String(err) }, "row1-order: could not read saved order");
+}
+registry.on("reordered", () => {
+  try {
+    writeFileSync(orderFile, JSON.stringify(registry.orderedCwds(), null, 2) + "\n");
+  } catch (err) {
+    log.warn({ err: String(err) }, "row1-order: could not persist order");
+  }
+});
+
 const bindings = new BindingStore(join(cfg.log.dir, "console-bindings.json"), log);
 if (delivery instanceof AhkAdapter) {
   await restoreConsoleBindings(bindings, registry, delivery, log);
