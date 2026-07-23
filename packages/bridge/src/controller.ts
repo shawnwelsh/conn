@@ -1,4 +1,4 @@
-import type { Slot } from "@belay/shared";
+import type { Slot } from "@conn/shared";
 import { gitBranch, type SessionRegistry, type SessionEntry } from "./registry.js";
 import { slugifyName, isDeckBranch, renameDeckBranch } from "./rename.js";
 import type { DeckLayerState } from "./layers.js";

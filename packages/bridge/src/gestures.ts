@@ -1,4 +1,4 @@
-import type { Slot } from "@belay/shared";
+import type { Slot } from "@conn/shared";
 
 /**
  * Turns raw key down/up events (from any client) into recognized gestures.

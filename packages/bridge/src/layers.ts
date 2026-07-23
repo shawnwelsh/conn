@@ -1,4 +1,4 @@
-import type { TileSpec, Row2Layer } from "@belay/shared";
+import type { TileSpec, Row2Layer } from "@conn/shared";
 import type { SessionRegistry, SessionEntry } from "./registry.js";
 import type { DeckConfig } from "./config.js";
 import { activeSuggestion, needsSpokenAnswer } from "./suggestions.js";

@@ -4,7 +4,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { loadConfig } from "./config.js";
 import { createLogger } from "./log.js";
 import { SessionRegistry, pathWithin, type SessionEntry } from "./registry.js";
-import type { SessionStatus } from "@belay/shared";
+import type { SessionStatus } from "@conn/shared";
 import { BindingStore, restoreConsoleBindings } from "./bindings.js";
 import { DenyReasonFlow } from "./denyReason.js";
 import { readCcSessionNames, readCliSessions, CC_SESSIONS_DIR } from "./sessionMeta.js";
@@ -36,7 +36,7 @@ import { ensureSidecarDir, looksEnumerated, readOptions } from "./optionReader.j
 import { deliverQuestionAnswer } from "./questionKeys.js";
 import { QUESTION_OPTIONS_PER_PAGE } from "./layers.js";
 import type { AskUserQuestionInput } from "./hookTypes.js";
-import type { KeyRender } from "@belay/shared";
+import type { KeyRender } from "@conn/shared";
 
 const cfg = loadConfig();
 const log = createLogger(cfg);
@@ -549,7 +549,7 @@ sockets = new DeckSocketServer(
 );
 pushRender();
 
-log.info({ port: cfg.port }, `belay bridge up — web deck at http://127.0.0.1:${cfg.port}/`);
+log.info({ port: cfg.port }, `Conn bridge up — web deck at http://127.0.0.1:${cfg.port}/`);
 
 // Periodic sweep: re-derive labels (branch renames reach the buttons), skull
 // and demote dead-window sessions (3h TTL sweep), refresh stale dimming.

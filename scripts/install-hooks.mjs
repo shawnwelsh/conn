@@ -1,5 +1,5 @@
 /**
- * Merges the belay hook block into ~/.claude/settings.json.
+ * Merges the Conn hook block into ~/.claude/settings.json.
  *
  * - Purely additive: existing hooks, permissions, and other settings are
  *   never modified or removed. Our entries are appended per-event.
@@ -62,7 +62,7 @@ for (const [event, entries] of Object.entries(HOOK_BLOCK)) {
 
 const updated = JSON.stringify(settings, null, 2) + "\n";
 if (added === 0) {
-  console.log("All belay hooks already present — nothing to do.");
+  console.log("All Conn hooks already present — nothing to do.");
   process.exit(0);
 }
 

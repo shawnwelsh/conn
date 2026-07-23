@@ -42,7 +42,7 @@ import type { Logger } from "./log.js";
  * `--bare`, which would, is unauthenticated). The bridge discards the
  * sidecar's own events by cwd instead.
  */
-export const SIDECAR_DIR = join(tmpdir(), "belay-sidecar");
+export const SIDECAR_DIR = join(tmpdir(), "conn-sidecar");
 
 /** Create the sidecar's neutral project dir. Cheap and idempotent. */
 export function ensureSidecarDir(): string {

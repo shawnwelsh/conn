@@ -1,6 +1,6 @@
 import { createCanvas, type SKRSContext2D } from "@napi-rs/canvas";
 import { createHash } from "node:crypto";
-import type { TileSpec, SessionStatus } from "@belay/shared";
+import type { TileSpec, SessionStatus } from "@conn/shared";
 import { themeFor, SELECTED_BORDER, TILE_SIZE, FONT_FAMILY } from "./theme.js";
 
 /**

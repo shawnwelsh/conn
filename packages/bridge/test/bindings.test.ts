@@ -7,7 +7,7 @@ import { SessionRegistry } from "../src/registry.js";
 import { NoopAdapter } from "../src/delivery/adapter.js";
 
 const noopLog = { info: () => {}, warn: () => {}, debug: () => {} } as never;
-const dir = join(tmpdir(), `belay-bindings-${process.pid}`);
+const dir = join(tmpdir(), `conn-bindings-${process.pid}`);
 const file = join(dir, "console-bindings.json");
 
 beforeEach(() => mkdirSync(dir, { recursive: true }));
