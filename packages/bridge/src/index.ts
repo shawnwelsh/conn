@@ -16,7 +16,7 @@ import {
   initialControls,
   initialRow1,
   initialRow2Cmd,
-  targetAfterQuestion,
+  targetAfterInterrupt,
   type DeckLayerState,
 } from "./layers.js";
 import { CommandStore } from "./commands.js";
@@ -167,13 +167,56 @@ function syncFlash(active: boolean): void {
 
 let denyReason: DenyReasonFlow | null = null;
 
+/**
+ * The session you were working in before an interrupt grabbed the deck. Both
+ * interrupt surfaces — a held permission and a question morph — auto-target
+ * whoever needs you, which is right for answering but strands you there once
+ * you're done. We remember the origin at the OUTERMOST interrupt and hand the
+ * target back when the deck returns to idle, so being interrupted costs an
+ * answer, not an answer plus a re-select. A stack (permission over question,
+ * or a queue of permissions) keeps the first origin and unwinds to it.
+ */
+let focusReturn: string | undefined;
+
+/** True while the deck is showing an interrupt morph rather than the idle
+ * command surface — i.e. a permission or a question owns row 2. */
+function inMorph(): boolean {
+  return layer.row2 === "permission" || layer.row2 === "question";
+}
+
+/** Record who we were working in, but only for the outermost interrupt: if a
+ * morph is already up (`wasMorph`) the current target is the previous
+ * interrupter, not the origin, so leave the earlier note intact. Call BEFORE
+ * the interrupt retargets the deck. */
+function noteFocusOrigin(wasMorph: boolean): void {
+  if (!wasMorph && focusReturn === undefined) {
+    focusReturn = registry.targetedSession?.sessionId;
+  }
+}
+
+/** Hand the target back to the pre-interrupt session once the deck is fully
+ * idle again. Self-guards: does nothing while any morph is still up, so it's
+ * safe to call from every revert path. */
+function restoreFocusAfterMorph(): void {
+  if (inMorph()) return; // still handling something — hold the note
+  const back = targetAfterInterrupt(
+    focusReturn,
+    registry.targetedSession?.sessionId ?? null,
+    (id) => registry.get(id) !== undefined,
+  );
+  focusReturn = undefined;
+  if (back) registry.target(back);
+}
+
 /** Keep the row-2 layer in lockstep with the decision queue. A pending
  * permission outranks a question layer. */
 function syncPermissionLayer(): void {
   // A queue change means any in-flight deny-reason dictation may be moot.
   denyReason?.sync();
   const current = decisions.current;
+  const wasMorph = inMorph();
   if (current) {
+    noteFocusOrigin(wasMorph); // remember the origin before we retarget
     layer.row2 = "permission";
     layer.permission = {
       sessionId: current.sessionId,
@@ -187,6 +230,7 @@ function syncPermissionLayer(): void {
     layer.row2 = "idle";
     layer.permission = undefined;
   }
+  restoreFocusAfterMorph(); // no-op until every morph has cleared
   syncFlash(flashNeeded());
   pushRender();
 }
@@ -202,22 +246,13 @@ function showQuestion(event: Parameters<typeof decisions.hold>[0]): void {
     .filter((q) => q?.options?.length)
     .map((q) => ({ question: q.question, options: (q.options ?? []).map((o) => o.label) }));
   if (!questions.length) return;
-  // Remember who we were working in before this question grabbed the deck, so
-  // answering hands the target back and resuming is free. On a
-  // question-over-question re-entry the live target is ALREADY the previous
-  // asker, so carry the ORIGINAL prior forward rather than capturing the
-  // stolen one — capture BEFORE flipping the layer.
-  const priorTarget =
-    layer.row2 === "question" && layer.question
-      ? layer.question.priorTarget
-      : registry.targetedSession?.sessionId;
+  noteFocusOrigin(inMorph()); // remember the origin before we retarget
   layer.row2 = "question";
   layer.question = {
     sessionId: event.session_id,
     questions,
     index: 0,
     page: 0,
-    priorTarget,
   };
   registry.target(event.session_id);
   syncFlash(flashNeeded());
@@ -273,22 +308,9 @@ async function readTurnOptions(sessionId: string, lastMessage: string): Promise<
 
 function revertQuestion(): void {
   if (layer.row2 !== "question") return;
-  // Snap the target back to whoever you were working in before the question
-  // interrupted — computed BEFORE we clear layer.question. Every answer path
-  // (deck, on-screen, cancel, asker-gone) funnels through here, so this is the
-  // one place the restore has to live.
-  const asker = layer.question?.sessionId;
-  const back = asker
-    ? targetAfterQuestion(
-        layer.question?.priorTarget,
-        asker,
-        registry.targetedSession?.sessionId ?? null,
-        (id) => registry.get(id) !== undefined,
-      )
-    : null;
   layer.row2 = "idle";
   layer.question = undefined;
-  if (back) registry.target(back);
+  restoreFocusAfterMorph(); // hand the target back to your pre-question session
   syncFlash(flashNeeded());
   pushRender();
 }

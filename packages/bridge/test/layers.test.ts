@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { advanceQuestion, computeTiles, targetAfterQuestion, type DeckLayerState } from "../src/layers.js";
+import { advanceQuestion, computeTiles, targetAfterInterrupt, type DeckLayerState } from "../src/layers.js";
 import { SessionRegistry } from "../src/registry.js";
 import type { DeckConfig } from "../src/config.js";
 
@@ -32,33 +32,31 @@ function start(r: SessionRegistry, id: string) {
   return r.ensure({ session_id: id, cwd: `C:\\dev\\${id}`, hook_event_name: "SessionStart" });
 }
 
-describe("target restore after a question morph", () => {
-  // You're working in A; a question from B takes over the deck. After you
-  // answer, the target must return to A — answering an interruption should not
-  // also cost a re-select. `alive` is the set of sessions that still exist.
+describe("target restore after an interrupt morph (permission or question)", () => {
+  // You're working in A; an interrupt from B takes over the deck and retargets
+  // to B so the answer keys act on it. Once handled, the target must return to
+  // A — an interruption should cost one answer, not an answer plus a re-select.
+  // `alive` is the set of sessions that still exist.
   const alive = (...ids: string[]) => (id: string) => ids.includes(id);
 
-  it("returns focus to the session you were working in before the question", () => {
-    expect(targetAfterQuestion("A", "B", "B", alive("A", "B"))).toBe("A");
+  it("returns focus to the session you were working in before the interrupt", () => {
+    expect(targetAfterInterrupt("A", "B", alive("A", "B"))).toBe("A");
   });
 
-  it("does nothing when the question came from the session you were already on", () => {
-    // Prior === asker: you were on B, B asked. Answering leaves you on B.
-    expect(targetAfterQuestion("B", "B", "B", alive("B"))).toBeNull();
+  it("does nothing when the origin is already the current target", () => {
+    // The interrupt came from the very session you were on (B asked, or the
+    // whole stack unwound back to B): answering leaves you on B.
+    expect(targetAfterInterrupt("B", "B", alive("B"))).toBeNull();
   });
 
-  it("does nothing when nothing was targeted before the question", () => {
-    expect(targetAfterQuestion(undefined, "B", "B", alive("B"))).toBeNull();
+  it("does nothing when nothing was targeted before the interrupt", () => {
+    expect(targetAfterInterrupt(undefined, "B", alive("B"))).toBeNull();
   });
 
-  it("respects a target you hand-picked while the question was up", () => {
-    // The live target is no longer the asker → someone re-targeted C. Don't
-    // stomp that with a stale restore.
-    expect(targetAfterQuestion("A", "B", "C", alive("A", "B", "C"))).toBeNull();
-  });
-
-  it("does not resurrect a prior session that has since died", () => {
-    expect(targetAfterQuestion("A", "B", "B", alive("B"))).toBeNull();
+  it("does not resurrect an origin session that has since died", () => {
+    // A ended while you were answering B's interrupt — leave the target on B
+    // rather than pointing at a session that no longer exists.
+    expect(targetAfterInterrupt("A", "B", alive("B"))).toBeNull();
   });
 });
 

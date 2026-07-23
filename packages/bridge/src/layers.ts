@@ -34,13 +34,6 @@ export interface QuestionContext {
   index: number;
   /** Option page within the current question. */
   page: number;
-  /**
-   * Who was targeted when this question stole the deck. Answering returns the
-   * target here, so an interruption costs one answer — not an answer plus a
-   * re-select to get back to what you were doing. Undefined when nothing was
-   * targeted, or when the asker was already the target.
-   */
-  priorTarget?: string;
 }
 
 /** The question currently on the keys. */
@@ -60,23 +53,26 @@ export function advanceQuestion(q: QuestionContext): boolean {
 }
 
 /**
- * After a question morph closes, decide which session the target should snap
- * back to. A question auto-targets its asker so the answer keys act on it;
- * once answered, work resumes wherever you were BEFORE the interruption. Guard
- * it, though: only restore if that takeover is still the live target (you
- * didn't hand-pick someone else meanwhile) and the prior session still exists.
- * Returns the id to target, or null to leave the current target untouched.
+ * When an interrupt morph (a permission or a question) closes and the deck
+ * returns to idle, decide which session the target should snap back to. An
+ * interrupt auto-targets the session that needs you so the answer keys act on
+ * it; once handled, work resumes wherever you were BEFORE the interruption.
+ *
+ * `focusReturn` is the session captured at the OUTERMOST interrupt (a stack of
+ * them — permission over question — keeps the first, so unwinding lands you at
+ * the true origin). Restore it only if it still exists and isn't already the
+ * target. Returns the id to target, or null to leave the current target alone.
+ * Mid-morph the user can't hand-pick a different session (row 1 is the banner),
+ * so there's no manual choice to protect here.
  */
-export function targetAfterQuestion(
-  priorTarget: string | undefined,
-  asker: string,
+export function targetAfterInterrupt(
+  focusReturn: string | undefined,
   currentTarget: string | null,
   exists: (id: string) => boolean,
 ): string | null {
-  if (!priorTarget || priorTarget === asker) return null; // nowhere to return to
-  if (currentTarget !== asker) return null; // you already moved on — respect it
-  if (!exists(priorTarget)) return null; // the prior session is gone
-  return priorTarget;
+  if (!focusReturn || focusReturn === currentTarget) return null; // nothing to do
+  if (!exists(focusReturn)) return null; // the origin session is gone
+  return focusReturn;
 }
 
 /**
