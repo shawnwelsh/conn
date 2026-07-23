@@ -16,6 +16,7 @@ import {
   initialControls,
   initialRow1,
   initialRow2Cmd,
+  targetAfterQuestion,
   type DeckLayerState,
 } from "./layers.js";
 import { CommandStore } from "./commands.js";
@@ -201,12 +202,22 @@ function showQuestion(event: Parameters<typeof decisions.hold>[0]): void {
     .filter((q) => q?.options?.length)
     .map((q) => ({ question: q.question, options: (q.options ?? []).map((o) => o.label) }));
   if (!questions.length) return;
+  // Remember who we were working in before this question grabbed the deck, so
+  // answering hands the target back and resuming is free. On a
+  // question-over-question re-entry the live target is ALREADY the previous
+  // asker, so carry the ORIGINAL prior forward rather than capturing the
+  // stolen one — capture BEFORE flipping the layer.
+  const priorTarget =
+    layer.row2 === "question" && layer.question
+      ? layer.question.priorTarget
+      : registry.targetedSession?.sessionId;
   layer.row2 = "question";
   layer.question = {
     sessionId: event.session_id,
     questions,
     index: 0,
     page: 0,
+    priorTarget,
   };
   registry.target(event.session_id);
   syncFlash(flashNeeded());
@@ -262,8 +273,22 @@ async function readTurnOptions(sessionId: string, lastMessage: string): Promise<
 
 function revertQuestion(): void {
   if (layer.row2 !== "question") return;
+  // Snap the target back to whoever you were working in before the question
+  // interrupted — computed BEFORE we clear layer.question. Every answer path
+  // (deck, on-screen, cancel, asker-gone) funnels through here, so this is the
+  // one place the restore has to live.
+  const asker = layer.question?.sessionId;
+  const back = asker
+    ? targetAfterQuestion(
+        layer.question?.priorTarget,
+        asker,
+        registry.targetedSession?.sessionId ?? null,
+        (id) => registry.get(id) !== undefined,
+      )
+    : null;
   layer.row2 = "idle";
   layer.question = undefined;
+  if (back) registry.target(back);
   syncFlash(flashNeeded());
   pushRender();
 }

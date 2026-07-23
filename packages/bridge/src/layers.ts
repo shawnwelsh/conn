@@ -34,6 +34,13 @@ export interface QuestionContext {
   index: number;
   /** Option page within the current question. */
   page: number;
+  /**
+   * Who was targeted when this question stole the deck. Answering returns the
+   * target here, so an interruption costs one answer — not an answer plus a
+   * re-select to get back to what you were doing. Undefined when nothing was
+   * targeted, or when the asker was already the target.
+   */
+  priorTarget?: string;
 }
 
 /** The question currently on the keys. */
@@ -50,6 +57,26 @@ export function advanceQuestion(q: QuestionContext): boolean {
   q.index += 1;
   q.page = 0;
   return true;
+}
+
+/**
+ * After a question morph closes, decide which session the target should snap
+ * back to. A question auto-targets its asker so the answer keys act on it;
+ * once answered, work resumes wherever you were BEFORE the interruption. Guard
+ * it, though: only restore if that takeover is still the live target (you
+ * didn't hand-pick someone else meanwhile) and the prior session still exists.
+ * Returns the id to target, or null to leave the current target untouched.
+ */
+export function targetAfterQuestion(
+  priorTarget: string | undefined,
+  asker: string,
+  currentTarget: string | null,
+  exists: (id: string) => boolean,
+): string | null {
+  if (!priorTarget || priorTarget === asker) return null; // nowhere to return to
+  if (currentTarget !== asker) return null; // you already moved on — respect it
+  if (!exists(priorTarget)) return null; // the prior session is gone
+  return priorTarget;
 }
 
 /**

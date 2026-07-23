@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { advanceQuestion, computeTiles, type DeckLayerState } from "../src/layers.js";
+import { advanceQuestion, computeTiles, targetAfterQuestion, type DeckLayerState } from "../src/layers.js";
 import { SessionRegistry } from "../src/registry.js";
 import type { DeckConfig } from "../src/config.js";
 
@@ -31,6 +31,36 @@ const cfg: DeckConfig = {
 function start(r: SessionRegistry, id: string) {
   return r.ensure({ session_id: id, cwd: `C:\\dev\\${id}`, hook_event_name: "SessionStart" });
 }
+
+describe("target restore after a question morph", () => {
+  // You're working in A; a question from B takes over the deck. After you
+  // answer, the target must return to A — answering an interruption should not
+  // also cost a re-select. `alive` is the set of sessions that still exist.
+  const alive = (...ids: string[]) => (id: string) => ids.includes(id);
+
+  it("returns focus to the session you were working in before the question", () => {
+    expect(targetAfterQuestion("A", "B", "B", alive("A", "B"))).toBe("A");
+  });
+
+  it("does nothing when the question came from the session you were already on", () => {
+    // Prior === asker: you were on B, B asked. Answering leaves you on B.
+    expect(targetAfterQuestion("B", "B", "B", alive("B"))).toBeNull();
+  });
+
+  it("does nothing when nothing was targeted before the question", () => {
+    expect(targetAfterQuestion(undefined, "B", "B", alive("B"))).toBeNull();
+  });
+
+  it("respects a target you hand-picked while the question was up", () => {
+    // The live target is no longer the asker → someone re-targeted C. Don't
+    // stomp that with a stale restore.
+    expect(targetAfterQuestion("A", "B", "C", alive("A", "B", "C"))).toBeNull();
+  });
+
+  it("does not resurrect a prior session that has since died", () => {
+    expect(targetAfterQuestion("A", "B", "B", alive("B"))).toBeNull();
+  });
+});
 
 describe("row-1 stale dimming", () => {
   it("dims a slot with no events past the threshold, keeps fresh ones lit", () => {
