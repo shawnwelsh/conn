@@ -87,3 +87,18 @@ export function activeSuggestion(
   if (session.status !== "done" || !session.suggestion) return null;
   return { session, text: session.suggestion };
 }
+
+/**
+ * True when the active suggestion is an either/or (or open) question whose only
+ * answer is voice — the state where the mic key should announce itself as the
+ * next step, because the bannered question gives no other cue that talking is
+ * how you reply. Mirrors the spoken-answer branch in computeTiles: no read-out
+ * option keys, not a view-in-window, and the question needs a spoken answer.
+ */
+export function awaitingSpokenAnswer(registry: SessionRegistry, layer: DeckLayerState): boolean {
+  const sug = activeSuggestion(registry, layer);
+  if (!sug) return false;
+  const read = sug.session.suggestionOptions;
+  if (read?.viewInWindow || read?.options.length) return false;
+  return needsSpokenAnswer(sug.text);
+}

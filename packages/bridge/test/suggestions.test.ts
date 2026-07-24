@@ -203,6 +203,21 @@ describe("suggestion layer gating + accept", () => {
     expect(adapter.calls).toEqual(["text:run it separately"]);
   });
 
+  it("lights the mic key as 'Answer' when voice is the only reply", () => {
+    // The gap the user hit: the either/or banner gave no cue that talking was
+    // the next step. The row-3 mic key (tile 10) now says so.
+    consoleSession("c1", "Should I run that as a separate cleanup, or leave it?");
+    layer.ptt = "ready";
+    const tiles = computeTiles(r, layer, cfg, [], false);
+    expect(tiles[10]).toMatchObject({ text: "Answer", subtext: "say your pick", state: "waiting", icon: "mic" });
+  });
+
+  it("leaves the mic key as plain Talk for a yes/no offer (Accept covers it)", () => {
+    consoleSession("c1", "Want me to also wire the tests?");
+    layer.ptt = "ready";
+    expect(computeTiles(r, layer, cfg, [], false)[10]).toMatchObject({ text: "Talk", state: "command" });
+  });
+
   it("keeps the Accept key for a plain yes/no offer", () => {
     consoleSession("c1", "Want me to also wire the tests?");
     const tiles = computeTiles(r, layer, cfg, [], false);

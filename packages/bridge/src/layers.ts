@@ -1,7 +1,7 @@
 import type { TileSpec, Row2Layer } from "@conn/shared";
 import type { SessionRegistry, SessionEntry } from "./registry.js";
 import type { DeckConfig } from "./config.js";
-import { activeSuggestion, needsSpokenAnswer } from "./suggestions.js";
+import { activeSuggestion, awaitingSpokenAnswer, needsSpokenAnswer } from "./suggestions.js";
 import type { CommandEntry } from "./commands.js";
 
 /**
@@ -249,14 +249,18 @@ export function commandTile(
  * beats a caption too small to read while you're already talking. Subtext only
  * for the transient/broken states that the face can't convey on its own.
  */
-export function pttTile(ptt: DeckLayerState["ptt"], flashPhase: boolean): TileSpec {
+export function pttTile(ptt: DeckLayerState["ptt"], flashPhase: boolean, answerCue = false): TileSpec {
   switch (ptt) {
     case "recording":
       return { text: "REC", state: "error", icon: "mic", selected: flashPhase };
     case "transcribing":
       return { text: "Talk", subtext: "transcribing…", state: "waiting", icon: "mic", selected: flashPhase };
     case "ready":
-      return { text: "Talk", state: "command", icon: "mic" };
+      // A question is up whose only answer is voice — pulse the key amber and
+      // rename it "Answer" so "talk to reply" isn't something you have to guess.
+      return answerCue
+        ? { text: "Answer", subtext: "say your pick", state: "waiting", icon: "mic", selected: flashPhase }
+        : { text: "Talk", state: "command", icon: "mic" };
     case "loading":
       return { text: "Talk", subtext: "loading…", state: "blank", icon: "mic" };
     default:
@@ -608,7 +612,7 @@ export function computeTiles(
     // "worktree") — read once, never again, and they cost the space the label
     // needs. The exceptions earn it: they say something the key face can't.
     tiles.push(
-      pttTile(layer.ptt, flashPhase),
+      pttTile(layer.ptt, flashPhase, awaitingSpokenAnswer(registry, layer)),
       // Mid-dictation Send is a compound: stop, type, submit. Keep the plane
       // (that's how the key is found by shape) but light it up and say so.
       layer.talkActive

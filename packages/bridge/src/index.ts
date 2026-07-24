@@ -35,6 +35,7 @@ import { endsPendingQuestion } from "./status.js";
 import { ensureSidecarDir, looksEnumerated, readOptions } from "./optionReader.js";
 import { deliverQuestionAnswer } from "./questionKeys.js";
 import { QUESTION_OPTIONS_PER_PAGE } from "./layers.js";
+import { awaitingSpokenAnswer } from "./suggestions.js";
 import type { AskUserQuestionInput } from "./hookTypes.js";
 import type { KeyRender } from "@conn/shared";
 
@@ -147,7 +148,9 @@ function flashNeeded(): boolean {
     layer.row2 === "question" ||
     layer.launching === true ||
     layer.ptt === "recording" ||
-    layer.ptt === "transcribing"
+    layer.ptt === "transcribing" ||
+    // A spoken-answer question is up and the mic is ready — pulse "Answer".
+    (layer.ptt === "ready" && awaitingSpokenAnswer(registry, layer))
   );
 }
 
