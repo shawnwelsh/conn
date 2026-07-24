@@ -19,6 +19,12 @@ export interface SessionRef {
    * straight into the console INPUT BUFFER (AttachConsole+WriteConsoleInput)
    * — focus-free and host-agnostic (Windows Terminal or classic conhost). */
   pid?: number;
+  /** Name Claude Code carries for the conversation (`/rename`). Claude Code
+   * retitles the terminal to this, so it's the title a moved Windows Terminal
+   * tab still shows — the key to re-finding a console window that lost the
+   * handle we captured at launch (before any rename it's the codename, i.e.
+   * the cwd leaf). */
+  ccName?: string;
 }
 
 export interface DeliveryAdapter {

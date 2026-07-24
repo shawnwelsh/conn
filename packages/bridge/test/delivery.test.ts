@@ -113,6 +113,17 @@ describe("console delivery via input-buffer injection (pid-bound sessions)", () 
     };
     return { adapter, calls };
   }
+  // Reply depends on the command — for the window-recovery paths, which fan out
+  // to findpid / findtitle before acting.
+  function probe(replies: (line: string) => string) {
+    const adapter = new AhkAdapter("C:\\fake\\AutoHotkey64.exe", noopLog, "activeWindow");
+    const calls: string[] = [];
+    (adapter as unknown as { command: (line: string) => Promise<string> }).command = async (line) => {
+      calls.push(line);
+      return replies(line);
+    };
+    return { adapter, calls };
+  }
   const con = { sessionId: "s", cwd: "", label: "keen marten", hwnd: 42, pid: 9 };
 
   it("text and VT-mappable keys inject by pid — never the window", async () => {
@@ -142,13 +153,64 @@ describe("console delivery via input-buffer injection (pid-bound sessions)", () 
     expect(calls).toEqual(["focus|ahk_id 42"]);
   });
 
-  it("a pid-adopted terminal refuses focus rather than raising the desktop app", async () => {
-    const { adapter, calls } = stubbed();
-    const adopted = { sessionId: "s", cwd: "", label: "nimble otter", pid: 36588 }; // no hwnd
-    expect(await adapter.focus(adopted)).toBe(false);
-    expect(calls).toEqual([]); // never touched the app fallback
-    // …but it still takes keystrokes, which is the point of adopting it.
-    await adapter.sendText(adopted, "/status");
+  it("a pid-only console with no window tries to re-find one, then refuses — never the app", async () => {
+    const { adapter, calls } = probe((line) =>
+      line.startsWith("findpid") || line.startsWith("findtitle") ? "hwnd|0" : "ok",
+    );
+    const c = { sessionId: "s", cwd: "C:\\dev\\nimble-otter", label: "nimble otter", pid: 36588 }; // no hwnd
+    expect(await adapter.focus(c)).toBe(false);
+    // Re-find attempted — pid first (conhost), then title constrained to WT —
+    // but it NEVER falls through to the Claude desktop app.
+    expect(calls).toEqual(["findpid|36588", "findtitle|nimble-otter ahk_exe WindowsTerminal.exe"]);
+    expect(calls).not.toContain("focus|ahk_exe Claude.exe");
+    // …but it still takes keystrokes, which is the point of a pid binding.
+    calls.length = 0;
+    await adapter.sendText(c, "/status");
     expect(calls).toEqual(["conwrite|36588|/status"]);
+  });
+
+  it("re-finds a moved console's window by its Claude Code name and focuses + maximizes it", async () => {
+    // The reported bug: a WT tab dragged to another window keeps taking
+    // commands (pid) but lost the handle focus/maximize need. Claude Code
+    // renamed the tab "Renewal Fix", so that title still resolves the window.
+    const { adapter, calls } = probe((line) =>
+      line.startsWith("findpid") ? "hwnd|0" : line.startsWith("findtitle") ? "hwnd|88" : "ok",
+    );
+    const moved = { sessionId: "s", cwd: "C:\\dev\\worktrees\\brisk-wombat", label: "brisk wombat", pid: 42200, ccName: "Renewal Fix" };
+    expect(await adapter.focus(moved)).toBe(true);
+    expect(calls).toEqual([
+      "findpid|42200",
+      "findtitle|Renewal Fix ahk_exe WindowsTerminal.exe",
+      "focus|ahk_id 88",
+    ]);
+    calls.length = 0;
+    expect(await adapter.setWindowState(moved, "maximize")).toBe(true);
+    expect(calls).toEqual([
+      "findpid|42200",
+      "findtitle|Renewal Fix ahk_exe WindowsTerminal.exe",
+      "winstate|ahk_id 88|max",
+    ]);
+  });
+
+  it("with no Claude Code name, the title hunt uses the launch codename (cwd leaf)", async () => {
+    const { adapter, calls } = probe((line) =>
+      line.startsWith("findpid") ? "hwnd|0" : line.startsWith("findtitle") ? "hwnd|91" : "ok",
+    );
+    const moved = { sessionId: "s", cwd: "C:\\dev\\worktrees\\brisk-wombat", label: "brisk wombat", pid: 42200 };
+    expect(await adapter.focus(moved)).toBe(true);
+    expect(calls).toEqual([
+      "findpid|42200",
+      "findtitle|brisk-wombat ahk_exe WindowsTerminal.exe",
+      "focus|ahk_id 91",
+    ]);
+  });
+
+  it("a classic conhost console re-finds its window by pid — no title hunt", async () => {
+    // conhost windows belong to the cmd child, so the pid resolves them
+    // exactly; the title fallback is never reached.
+    const { adapter, calls } = probe((line) => (line.startsWith("findpid") ? "hwnd|77" : "ok"));
+    const c = { sessionId: "s", cwd: "C:\\dev\\x", label: "x", pid: 500 }; // no hwnd
+    expect(await adapter.focus(c)).toBe(true);
+    expect(calls).toEqual(["findpid|500", "focus|ahk_id 77"]);
   });
 });

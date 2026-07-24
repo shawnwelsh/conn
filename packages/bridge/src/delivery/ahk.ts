@@ -1,6 +1,6 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { existsSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createInterface, type Interface } from "node:readline";
 import type { DeliveryAdapter, SessionRef } from "./adapter.js";
@@ -110,21 +110,66 @@ export class AhkAdapter implements DeliveryAdapter {
 
   async focus(session: SessionRef): Promise<boolean> {
     if (session.pid && !session.hwnd) {
-      // A terminal adopted by pid: we can type into it, but we never learned
-      // its window. Falling through to the app fallback would surface the
-      // Claude desktop app — a different program from the one this session
-      // is running in. Better to do nothing than to raise the wrong window.
-      this.log.info({ session: session.label, pid: session.pid }, "focus unavailable: adopted terminal has no window handle");
-      return false;
+      // Console with a pid but no window handle — either a terminal we adopted
+      // by pid (never learned its window) or, more often, one whose WT tab was
+      // dragged to another window, closing the one we bound at launch. Delivery
+      // still rides the pid; focus needs a window, so re-find it. Never the app
+      // fallback: that surfaces the Claude desktop app, a different program.
+      const hwnd = await this.recoverConsoleWindow(session);
+      if (!hwnd) {
+        this.log.info({ session: session.label, pid: session.pid }, "focus unavailable: no window handle and none re-found");
+        return false;
+      }
+      return (await this.command(`focus|ahk_id ${hwnd}`)) === "ok";
     }
     return this.withWindow(session, async (query) => this.command(`focus|${query}`));
   }
 
   async setWindowState(session: SessionRef, state: "maximize" | "restore"): Promise<boolean> {
-    // Needs a real window — a pid-only adopted terminal has none to resize.
-    if (session.pid && !session.hwnd) return false;
     const arg = state === "maximize" ? "max" : "restore";
+    if (session.pid && !session.hwnd) {
+      // Same re-find as focus: a moved tab lost its launch handle, but the
+      // window is still there under the title the tab carries.
+      const hwnd = await this.recoverConsoleWindow(session);
+      if (!hwnd) return false;
+      return (await this.command(`winstate|ahk_id ${hwnd}|${arg}`)) === "ok";
+    }
     return this.withWindow(session, async (query) => this.command(`winstate|${query}|${arg}`));
+  }
+
+  /**
+   * Re-find a console window whose launch handle is gone. The usual cause is a
+   * Windows Terminal tab dragged to another window: the old window closes, its
+   * handle dies, and the liveness sweep drops it — leaving the session pid-only
+   * (commands still deliver into its input buffer; focus and maximize have no
+   * window to act on). A WT window can't be found from the console's pid (it
+   * belongs to WindowsTerminal.exe), so:
+   *   1. try the pid anyway — that resolves a classic conhost window exactly;
+   *   2. else match the title the tab still carries — the Claude Code name
+   *      (ccName, set as the terminal title on /rename) or, before any rename,
+   *      the launch codename (the cwd leaf) — constrained to WindowsTerminal.exe
+   *      so a same-named editor or explorer window can't be mistaken for it.
+   * Best-effort: title recovery only works while the moved tab is its window's
+   * ACTIVE tab (so the window title reflects it). Returns null otherwise, and
+   * the caller refuses rather than raising the wrong window.
+   */
+  private async recoverConsoleWindow(session: SessionRef): Promise<number | null> {
+    if (!session.pid) return null;
+    const byPid = await this.findWindowByPid(session.pid);
+    if (byPid) {
+      this.log.info({ session: session.label, pid: session.pid, hwnd: byPid }, "re-found console window by pid");
+      return byPid;
+    }
+    const leaf = session.cwd ? basename(session.cwd) : "";
+    const titles = [...new Set([session.ccName, leaf].filter(Boolean))] as string[];
+    for (const title of titles) {
+      const hwnd = await this.findWindowByTitle(`${title} ahk_exe WindowsTerminal.exe`);
+      if (hwnd) {
+        this.log.info({ session: session.label, title, hwnd }, "re-found moved WT window by title");
+        return hwnd;
+      }
+    }
+    return null;
   }
 
   async sendText(session: SessionRef, text: string): Promise<boolean> {
