@@ -8,7 +8,10 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    # Conn is Windows-only (Windows Terminal, AutoHotkey, the desktop app's
+    # window model) and its tests use Windows paths — so CI runs on the
+    # platform it ships on, not a Linux runner.
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
