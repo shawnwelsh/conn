@@ -433,9 +433,11 @@ controller.setHooks({
     // already rendered the next question by the time a human reaches for the
     // next key, and leaving the answered one on screen invites a double press.
     const more = advanceQuestion(q);
-    // Only the LAST question's answer carries the submitting Enter; the number
-    // alone advances Claude past every earlier one.
+    // Only the LAST answer finishes the form; earlier ones just advance on the
+    // number. A multi-question ask ends on a digit-selected "Submit answers"
+    // step (press "1"); a single-question ask submits on the number itself.
     const isLast = !more;
+    const multi = q.questions.length > 1;
     if (more) {
       syncFlash(flashNeeded());
       pushRender();
@@ -443,9 +445,9 @@ controller.setHooks({
       revertQuestion();
     }
     void (async () => {
-      const ok = await deliverQuestionAnswer(delivery, session, absolute + 1, isLast);
+      const ok = await deliverQuestionAnswer(delivery, session, absolute + 1, isLast, multi);
       log.info(
-        { session: q.sessionId, option: options[absolute], isLast, ok },
+        { session: q.sessionId, option: options[absolute], isLast, multi, ok },
         "question answered from deck",
       );
     })();
