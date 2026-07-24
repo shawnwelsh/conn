@@ -16,6 +16,17 @@ later if you like it — same bridge, nicer buttons.
 
 ![A Bash approval on the Conn deck — the asking session with its prompt mark and attention badge, the command banner sliced across the top row, and one-press Allow / Always / Deny answers below.](docs/showcase-deck.png)
 
+**What it does**
+
+- **Live status, per session** — every Claude Code session gets a key; a colour *and* a shape show idle / thinking / waiting / done / error at a glance.
+- **One-press permissions** — approval prompts morph the keys into Allow / Always-allow / Deny, while the on-screen dialog waits for you.
+- **Approve plans** — approve a plan from the deck and the session drops into auto mode; only risky commands come back.
+- **Talk to any session** — dictate by voice, or **deny a tool call by _saying why_** — Claude gets the reason.
+- **Spawn in fresh worktrees** — New opens a session in its own `deck/<name>` git worktree, so parallel work never shares a tree.
+- **Focus that returns** — answer an interruption from another session and the deck hands you back to what you were on.
+- **Fail-open by design** — bridge down, timed out, or no deck connected → Claude Code's normal dialog. Never an automatic _allow_.
+- **Browser or hardware** — the web deck at `127.0.0.1:3711` is a first-class client; point a Stream Deck at it when you want the buttons.
+
 > On a ship, whoever has *the conn* directs her course — the helm and engines
 > answer to their orders, no wheel in hand. That's this: you hold the conn
 > over your agents while they do the work. And it commands your Claude Code
@@ -57,6 +68,9 @@ the toolchain, merge the hooks, and verify it works — see [`SETUP.md`](SETUP.m
 - [**Configuration reference**](docs/CONFIGURATION.md) — every `config.json` key with its default, the hooks block, the row-2 command lineup
 - [**Troubleshooting & FAQ**](docs/TROUBLESHOOTING.md) — the common snags, answered
 - [Contributing](CONTRIBUTING.md) · [Security policy](SECURITY.md) · [License (MIT)](LICENSE)
+
+<details>
+<summary><b>How it works — architecture and the session model</b></summary>
 
 ## Architecture
 
@@ -188,6 +202,11 @@ life through restarts and dispatched jobs, all sharing one console. `entrypoint:
 no console to inject into. The one thing an adopted terminal can't do is
 double-tap focus — we know its process but never learned its window, and
 surfacing the wrong one is worse than surfacing nothing.
+
+</details>
+
+<details>
+<summary><b>The keys, voice, naming, and answering questions</b></summary>
 
 ## Key layout
 
@@ -343,6 +362,8 @@ incident got through. `"extraEnter"` goes further and only ever fires at a
 confirm it can positively see; if none appears, or the state is unknown, it
 presses nothing.
 
+</details>
+
 ## Safety model (permission flow)
 
 The deck never approves anything without a physical press. If no press
@@ -351,6 +372,9 @@ hung, or has no connected deck clients, Claude Code falls through to its
 normal interactive permission dialog — never auto-allow, never auto-deny.
 This relies on documented Claude Code `http`-hook semantics: non-2xx,
 connection failure, and timeout are all non-blocking errors.
+
+<details>
+<summary><b>Setup — config, the Stream Deck plugin, running at startup, and limitations</b></summary>
 
 ## Configuration notes
 
@@ -407,6 +431,8 @@ focus/keystrokes; prefer Task Scheduler here.
   that one through untouched so the options — not an Allow/Deny morph — reach
   the keys.
 - Multi-select questions defer to the screen in v1.
+
+</details>
 
 ## Trademarks
 
