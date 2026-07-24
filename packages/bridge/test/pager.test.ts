@@ -29,6 +29,7 @@ describe("row-1 banner keys during a morph", () => {
   let layer: DeckLayerState;
   let c: DeckController;
   let focused: string[];
+  let windowStates: Array<{ id: string; state: string }>;
 
   beforeEach(() => {
     vi.useFakeTimers();
@@ -46,6 +47,11 @@ describe("row-1 banner keys during a morph", () => {
     const delivery = new NoopAdapter(() => {});
     delivery.focus = async (s) => {
       focused.push(s.sessionId);
+      return true;
+    };
+    windowStates = [];
+    (delivery as any).setWindowState = async (s: { sessionId: string }, state: string) => {
+      windowStates.push({ id: s.sessionId, state });
       return true;
     };
     c = new DeckController(r, layer, delivery, cfg, noopLog, () => {});
@@ -88,6 +94,16 @@ describe("row-1 banner keys during a morph", () => {
     vi.advanceTimersByTime(600);
     c.up(1);
     expect(layer.row1.mode).toBe("agents");
+  });
+
+  it("double-tap-hold the asking key focuses AND maximizes it — read the window, still answer on the deck", async () => {
+    // "d" is the asking session, shown on key 0. The agent-row focus+maximize
+    // gesture works during a morph too, so you can pop its window forward to
+    // read the full message while answering on row 2.
+    (c as any).row1(0, "doubleLong");
+    await vi.advanceTimersByTimeAsync(1);
+    expect(focused).toContain("d");
+    expect(windowStates).toEqual([{ id: "d", state: "maximize" }]);
   });
 });
 

@@ -163,12 +163,17 @@ export class DeckController {
     // agents
     // While a morph is up ALL of row 1 belongs to the asking session: key 0 is
     // that session (flashing), keys 1-4 are one wide banner of what's being
-    // decided. NONE are the normal session slots, so a tap anywhere focuses the
-    // asking session. Without covering key 0, it fell through to slot logic and
-    // acted on whoever sat in registry position 0 — focusing the wrong window
-    // when you tapped the very session the deck was showing you.
-    if (this.morphSessionId()) {
-      if (gesture === "tap" || gesture === "double") void this.focusMorphSession();
+    // decided. NONE are the normal session slots, so the row carries the
+    // agent-row FOCUS gestures on that session: tap/double-tap brings its
+    // window forward so you can read the full message, and double-tap-hold
+    // focuses AND maximizes it (toggle) — the same "…and stay big" gesture.
+    // You still answer on row 2; surfacing the window never dismisses the
+    // morph. (Covering key 0 matters: without it, it fell through to slot logic
+    // and focused whoever sat in registry position 0 — the wrong window.)
+    const morphId = this.morphSessionId();
+    if (morphId) {
+      if (gesture === "doubleLong") void this.row1FocusMaximize(this.registry.get(morphId));
+      else if (gesture === "tap" || gesture === "double") void this.focusMorphSession();
       return;
     }
     // Paging happens in place: the row keeps showing sessions, so a press
