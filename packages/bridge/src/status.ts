@@ -1,4 +1,4 @@
-import type { SessionStatus } from "@belay/shared";
+import type { SessionStatus } from "@conn/shared";
 import type { AnyHookEvent } from "./hookTypes.js";
 
 /**

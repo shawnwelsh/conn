@@ -1,4 +1,4 @@
-import type { SessionStatus } from "@belay/shared";
+import type { SessionStatus } from "@conn/shared";
 
 /**
  * One color language for the whole deck. Status colors fill key backgrounds;

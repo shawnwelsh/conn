@@ -1,4 +1,4 @@
-"""belay STT sidecar — push-to-talk capture + local transcription.
+"""Conn STT sidecar — push-to-talk capture + local transcription.
 
 Spawned once by the bridge. Owns the microphone (sounddevice) and a
 faster-whisper model (CPU int8). Protocol: one JSON object per line.

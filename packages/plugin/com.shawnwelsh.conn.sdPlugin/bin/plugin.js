@@ -17334,7 +17334,7 @@ var DeckKey = class extends SingletonAction {
   }
 };
 DeckKey = __decorateClass([
-  action({ UUID: "com.shawnwelsh.belay.key" })
+  action({ UUID: "com.shawnwelsh.conn.key" })
 ], DeckKey);
 plugin_default.actions.registerAction(new DeckKey());
 connect();

@@ -1,10 +1,10 @@
 {
   "$schema": "https://schemas.elgato.com/streamdeck/plugins/manifest.json",
-  "UUID": "com.shawnwelsh.belay",
-  "Name": "Belay",
+  "UUID": "com.shawnwelsh.conn",
+  "Name": "Conn",
   "Version": "0.1.0.0",
   "Author": "Shawn Welsh",
-  "Description": "Physical control surface for Claude Code sessions — renders live status and permission/question answer keys from the local belay bridge.",
+  "Description": "Physical control surface for Claude Code sessions — renders live status and permission/question answer keys from the local Conn bridge.",
   "Icon": "imgs/plugin-icon",
   "CodePath": "bin/plugin.js",
   "SDKVersion": 2,
@@ -17,11 +17,11 @@
   "OS": [
     { "Platform": "windows", "MinimumVersion": "10" }
   ],
-  "Category": "Belay",
+  "Category": "Conn",
   "CategoryIcon": "imgs/plugin-icon",
   "Actions": [
     {
-      "UUID": "com.shawnwelsh.belay.key",
+      "UUID": "com.shawnwelsh.conn.key",
       "Name": "Deck Key",
       "Tooltip": "Place on every key of a 3x5 profile; the bridge decides what each key shows and does based on its position.",
       "Icon": "imgs/action-icon",

@@ -47,7 +47,7 @@ const decisions = {
   deny: {
     hookSpecificOutput: {
       hookEventName: "PermissionRequest",
-      decision: { behavior: "deny", message: "Denied by belay probe" },
+      decision: { behavior: "deny", message: "Denied by conn probe" },
     },
   },
 };

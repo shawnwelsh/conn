@@ -1,0 +1,4 @@
+# Every change to this repo requires review from the code owner.
+# Paired with a branch ruleset that requires Code-Owner review, this makes
+# @shawnwelsh the required approver on every pull request.
+* @shawnwelsh

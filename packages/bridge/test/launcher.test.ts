@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { findRepoRoot, ConsoleLauncher } from "../src/delivery/launcher.js";
 
-const fixture = join(tmpdir(), `belay-launcher-test-${process.pid}`);
+const fixture = join(tmpdir(), `conn-launcher-test-${process.pid}`);
 
 beforeAll(() => {
   // mainrepo/.git/ (dir) with a worktree at mainrepo/.claude/worktrees/wt

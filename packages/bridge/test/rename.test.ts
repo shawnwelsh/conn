@@ -82,7 +82,7 @@ describe("isDeckBranch (only rewrite branches we created)", () => {
 });
 
 describe("renameDeckBranch (real git)", () => {
-  const repo = join(tmpdir(), `belay-rename-${process.pid}`);
+  const repo = join(tmpdir(), `conn-rename-${process.pid}`);
   beforeEach(() => {
     mkdirSync(repo, { recursive: true });
     const git = (...args: string[]) => execFileSync("git", ["-C", repo, ...args], { stdio: "ignore" });
@@ -107,7 +107,7 @@ describe("renameDeckBranch (real git)", () => {
 });
 
 describe("readCcSessionNames (Claude Code's own /rename)", () => {
-  const dir = join(tmpdir(), `belay-ccmeta-${process.pid}`);
+  const dir = join(tmpdir(), `conn-ccmeta-${process.pid}`);
   beforeEach(() => {
     rmSync(dir, { recursive: true, force: true });
     mkdirSync(dir, { recursive: true });
@@ -329,7 +329,7 @@ describe('"rename" command (session row)', () => {
     // fire renameDeckBranch's own kill-timeout before git could finish.
     vi.useRealTimers();
     const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-    const repo = join(tmpdir(), `belay-rename-e2e-${process.pid}`);
+    const repo = join(tmpdir(), `conn-rename-e2e-${process.pid}`);
     rmSync(repo, { recursive: true, force: true });
     mkdirSync(repo, { recursive: true });
     const git = (...args: string[]) => execFileSync("git", ["-C", repo, ...args], { stdio: "ignore" });

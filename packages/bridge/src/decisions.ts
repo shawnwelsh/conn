@@ -195,7 +195,7 @@ function buildDecisionBody(
       return decision({ behavior: "allow" });
     case "always-allow": {
       const rule = deriveAlwaysRule(pending);
-      if (!rule) return decision({ behavior: "allow", message: "belay: allowed once (no narrow rule derivable)" });
+      if (!rule) return decision({ behavior: "allow", message: "Conn: allowed once (no narrow rule derivable)" });
       // Schema verified against the CC 2.1.211 binary: updatedPermissions is
       // a PermissionUpdate[] discriminated on `type`; the addRules variant is
       // { type, rules: [{toolName, ruleContent}], behavior, destination }.
@@ -236,8 +236,8 @@ export function planHeadline(plan: string): string {
 
 function cannedDenial(pending: PendingPermission): string {
   return pending.toolName === "ExitPlanMode"
-    ? "Not approved from belay — keep planning."
-    : "Denied from belay";
+    ? "Not approved from Conn — keep planning."
+    : "Denied from Conn";
 }
 
 function decision(body: Record<string, unknown>): unknown {

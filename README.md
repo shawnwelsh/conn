@@ -1,21 +1,30 @@
-# Belay
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/conn-logo-dark.png">
+    <img alt="Conn" src="docs/conn-logo.png" width="340">
+  </picture>
+</p>
 
-Supervise a room full of Claude Code sessions from a grid of 15 keys. Every
-session gets a key showing what it's doing; permission prompts morph the keys
-into Allow / Deny answers you hit with one press; you can talk to any session,
-spawn new ones in their own git worktrees, and deny a tool call *by saying why*.
+**Take the conn.** Command a room full of Claude Code sessions from a grid of
+15 keys. Every session gets a key showing what it's doing; permission prompts
+morph the keys into Allow / Deny answers you hit with one press; you can talk
+to any session, spawn new ones in their own git worktrees, and deny a tool
+call *by saying why*.
 
 **It runs in your browser. No hardware needed.** Point a Stream Deck at it
 later if you like it — same bridge, nicer buttons.
 
-> In climbing, the belayer holds the rope while the climber leads: you can
-> arrest a fall at any moment, but you never make the moves. At sea, "belay
-> that" means stop, cancel. Both are this tool.
+![A Bash approval on the Conn deck — the asking session with its prompt mark and attention badge, the command banner sliced across the top row, and one-press Allow / Always / Deny answers below.](docs/showcase-deck.png)
+
+> On a ship, whoever has *the conn* directs her course — the helm and engines
+> answer to their orders, no wheel in hand. That's this: you hold the conn
+> over your agents while they do the work. And it commands your Claude Code
+> **con·soles** — the name was hiding in the job.
 
 ## Try it in your browser
 
 ```bash
-git clone https://github.com/shawnwelsh/belay && cd belay
+git clone https://github.com/shawnwelsh/conn && cd conn
 npm install
 cp config.example.json config.json
 node scripts/install-hooks.mjs   # prints the diff, merges only on confirm
@@ -38,6 +47,16 @@ Requirements: **Node 24+** and **Windows**, plus Claude Code ≥ 2.1.211.
 type into windows — monitoring and permission decisions work without it, since
 those travel back through the hook response rather than the keyboard. For
 voice, `python -m pip install faster-whisper sounddevice`.
+
+**Prefer to have Claude Code install it?** Paste one prompt and let it install
+the toolchain, merge the hooks, and verify it works — see [`SETUP.md`](SETUP.md).
+
+## Documentation
+
+- [**Install & verify**](docs/INSTALL.md) — manual steps and a fresh-box checklist
+- [**Configuration reference**](docs/CONFIGURATION.md) — every `config.json` key with its default, the hooks block, the row-2 command lineup
+- [**Troubleshooting & FAQ**](docs/TROUBLESHOOTING.md) — the common snags, answered
+- [Contributing](CONTRIBUTING.md) · [Security policy](SECURITY.md) · [License (MIT)](LICENSE)
 
 ## Architecture
 
@@ -351,20 +370,23 @@ connection failure, and timeout are all non-blocking errors.
 
 1. Install Stream Deck software ≥ 7.1 (bundles the plugin Node runtime; SDK
    dev tooling needs Node 24 locally).
-2. `npm run build -w @belay/plugin`
-3. `npx -y @elgato/cli link packages/plugin/com.shawnwelsh.belay.sdPlugin`
+2. `npm run build -w @conn/plugin`
+3. `npx -y @elgato/cli link packages/plugin/com.shawnwelsh.conn.sdPlugin`
    (dev-links the plugin into Stream Deck; `streamdeck restart
-   com.shawnwelsh.belay` after rebuilds).
-4. Create a 3×5 profile and place the single "Deck Key" action on all 15
-   keys — each instance derives its role from its position; zero per-key
-   configuration.
+   com.shawnwelsh.conn` after rebuilds).
+4. **Import the ready-made profile**: double-click
+   [`packages/plugin/Conn.streamDeckProfile`](packages/plugin/Conn.streamDeckProfile)
+   (or Stream Deck → Profiles ▾ → Import). It's a 3×5 layout with the "Deck Key"
+   on all 15 keys — each derives its role from its position, so there's nothing
+   to configure per key. (Prefer to build it by hand? New 3×5 profile, drop
+   "Deck Key" on every key.)
 
 ### Run the bridge at startup
 
 Task Scheduler (no extra tools): create a task triggered "At log on" running
 `"C:\Program Files\nodejs\node.exe" C:\dev\claude-deck\node_modules\tsx\dist\cli.mjs C:\dev\claude-deck\packages\bridge\src\index.ts`,
 "Run only when user is logged on" (it types into your windows, so it must run
-in your interactive session). Alternatively NSSM: `nssm install belay-bridge <same command>` —
+in your interactive session). Alternatively NSSM: `nssm install conn-bridge <same command>` —
 but note NSSM services run in session 0 by default, which breaks window
 focus/keystrokes; prefer Task Scheduler here.
 
@@ -385,3 +407,9 @@ focus/keystrokes; prefer Task Scheduler here.
   that one through untouched so the options — not an Allow/Deny morph — reach
   the keys.
 - Multi-select questions defer to the screen in v1.
+
+## Trademarks
+
+Stream Deck® and Elgato® are trademarks of Corsair Memory, Inc. Claude™ and
+Claude Code are trademarks of Anthropic, PBC. Conn is an independent project and
+is not affiliated with, endorsed by, or sponsored by either.

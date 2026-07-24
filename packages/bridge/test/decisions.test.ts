@@ -192,7 +192,7 @@ describe("plan approvals are not tool permissions", () => {
     store.decide("deny");
     const body = (await held) as any;
     expect(body.hookSpecificOutput.decision.behavior).toBe("deny");
-    expect(body.hookSpecificOutput.decision.message).toBe("Not approved from belay — keep planning.");
+    expect(body.hookSpecificOutput.decision.message).toBe("Not approved from Conn — keep planning.");
   });
 
   it("a dictated reason still wins over the canned message", async () => {

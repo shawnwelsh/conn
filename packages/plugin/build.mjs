@@ -20,7 +20,7 @@ await build({
   format: "esm",
   target: "node24", // the runtime the manifest asks Stream Deck for
   tsconfig: "tsconfig.json",
-  outfile: "com.shawnwelsh.belay.sdPlugin/bin/plugin.js",
+  outfile: "com.shawnwelsh.conn.sdPlugin/bin/plugin.js",
   banner: {
     js: "import{createRequire}from'node:module';const require=createRequire(import.meta.url);",
   },
