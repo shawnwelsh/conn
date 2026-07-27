@@ -9,7 +9,6 @@
   "/tasks",
   "/review",
   "/compact",
-  { "label": "Commit", "text": "/save-work" },
   "/focus",
   "/status",
   "/context",

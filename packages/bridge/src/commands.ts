@@ -63,7 +63,6 @@ export const DEFAULT_COMMANDS_JSON: unknown[] = [
   "/tasks",
   "/review",
   "/compact",
-  { label: "Commit", text: "/save-work" },
   "/focus",
   "/status",
   "/context",

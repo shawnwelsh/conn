@@ -26,7 +26,7 @@ describe("CommandStore", () => {
     expect(entries[0]).toEqual({ kind: "keys", label: "Accept Next", keys: ["tab", "enter"] });
     expect(entries.some((e) => e.kind === "builtin" && e.id === "mode")).toBe(true);
     expect(entries.some((e) => e.kind === "builtin" && e.id === "model")).toBe(true);
-    expect(entries.some((e) => e.kind === "text" && e.label === "Commit" && e.text === "/save-work")).toBe(true);
+    expect(entries.some((e) => e.kind === "text" && e.label === "Remote" && e.text === "/remote-control" && e.extraEnter === true)).toBe(true);
   });
 
   it("caps a runaway file and survives a broken one", () => {
