@@ -21,8 +21,11 @@ describe("CommandStore", () => {
     const store = new CommandStore(file, noopLog, () => {});
     store.load();
     const entries = store.all();
-    expect(entries[0]).toEqual({ kind: "builtin", id: "mode" });
-    expect(entries[1]).toEqual({ kind: "builtin", id: "model" });
+    // The default lineup mixes all three entry kinds — a keys chord, builtins,
+    // and a text/slash command — so this also exercises every parse branch.
+    expect(entries[0]).toEqual({ kind: "keys", label: "Accept Next", keys: ["tab", "enter"] });
+    expect(entries.some((e) => e.kind === "builtin" && e.id === "mode")).toBe(true);
+    expect(entries.some((e) => e.kind === "builtin" && e.id === "model")).toBe(true);
     expect(entries.some((e) => e.kind === "text" && e.label === "Commit" && e.text === "/save-work")).toBe(true);
   });
 

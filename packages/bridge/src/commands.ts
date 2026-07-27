@@ -50,17 +50,27 @@ export interface CommandSource {
   move(fromIndex: number, toIndex: number): void;
 }
 
+// The lineup a fresh install auto-creates (kept in sync with
+// commands.example.json). Row 2 pages through it five keys at a time.
 export const DEFAULT_COMMANDS_JSON: unknown[] = [
+  { label: "Accept Next", keys: ["tab", "enter"] },
+  { label: "Remote", text: "/remote-control", extraEnter: true },
   "mode",
   "model",
-  "/compact",
+  { label: "Subtask", text: "/subtask ", dictate: true },
+  "/diff",
+  "/recap",
+  "/tasks",
   "/review",
+  "/compact",
   { label: "Commit", text: "/save-work" },
+  "/focus",
   "/status",
   "/context",
   "/usage",
   "rename",
   "sendname",
+  "modemenu",
 ];
 
 function parseEntry(raw: unknown): CommandEntry | null {

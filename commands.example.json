@@ -1,8 +1,9 @@
 [
   { "label": "Accept Next", "keys": ["tab", "enter"] },
-  { "label": "Subtask", "text": "/subtask ", "dictate": true },
+  { "label": "Remote", "text": "/remote-control", "extraEnter": true },
   "mode",
   "model",
+  { "label": "Subtask", "text": "/subtask ", "dictate": true },
   "/diff",
   "/recap",
   "/tasks",
@@ -12,7 +13,6 @@
   "/focus",
   "/status",
   "/context",
-  { "label": "Remote", "text": "/remote-control", "extraEnter": true },
   "/usage",
   "rename",
   "sendname",
