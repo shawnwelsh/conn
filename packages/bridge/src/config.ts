@@ -83,11 +83,12 @@ export interface DeckConfig {
   /**
    * Reading a prose ending with a cheap model so its choices become real keys.
    *
-   * OFF by default, deliberately: it spawns Claude Code, which draws on YOUR
-   * subscription usage (or bills your API key). That is the owner's call to
-   * make, not a default to inherit. It is gated even when on — see
-   * looksEnumerated — so it only runs on messages that plausibly offer a
-   * choice, never on every turn.
+   * ON by default — one of the surface's best tricks: a message's offered
+   * choices become pressable keys instead of something you type. The cost to
+   * know about: it spawns Claude Code, which draws on YOUR subscription usage
+   * (or bills your API key). So it's gated — see looksEnumerated — to run only
+   * on messages that plausibly offer a choice, never every turn, and
+   * `enabled: false` turns it off.
    */
   optionReader: {
     enabled: boolean;
@@ -140,7 +141,7 @@ export function loadConfig(): DeckConfig {
     throw new Error('config: consoleHost must be "wt" or "conhost"');
   }
   cfg.newSessionWorktrees ??= true;
-  cfg.optionReader ??= { enabled: false, model: "haiku", timeoutSeconds: 20 };
+  cfg.optionReader ??= { enabled: true, model: "haiku", timeoutSeconds: 20 };
   cfg.optionReader.model ||= "haiku";
   cfg.optionReader.timeoutSeconds ||= 20;
   cfg.worktreeTimeoutSeconds ??= 90;

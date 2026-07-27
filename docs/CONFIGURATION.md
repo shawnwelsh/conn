@@ -92,7 +92,7 @@ Reads a prose turn-ending with a cheap model so its choices become real keys.
 
 | Key | Default | What it does |
 |-----|---------|--------------|
-| `optionReader.enabled` | `false` | **Off by default, deliberately** — it spawns Claude Code, which draws on *your* subscription usage (or bills your API key). Turning it on is the owner's call. Even on, it's gated to messages that plausibly offer a choice. |
+| `optionReader.enabled` | `true` | Turns a message's offered choices into pressable keys. **Uses your Claude usage** — it spawns Claude Code (Haiku) to read the ending, but only on messages that plausibly offer a choice, never every turn. Set `false` to turn it off. |
 | `optionReader.model` | `"haiku"` | Model alias for the classification. Haiku is ample and cheapest. |
 | `optionReader.timeoutSeconds` | `20` | Give up after this long and fall back to the plain reading surface. |
 

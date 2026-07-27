@@ -37,7 +37,7 @@
     "dir": "logs"
   },
   "optionReader": {
-    "enabled": false,
+    "enabled": true,
     "model": "haiku",
     "timeoutSeconds": 25
   }

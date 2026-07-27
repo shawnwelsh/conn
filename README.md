@@ -120,7 +120,7 @@ supersedes this with true per-pane targeting.
 
 ### Console sessions — full per-session control
 
-### Turning prose into buttons (`optionReader`, off by default)
+### Turning prose into buttons (`optionReader`, on by default)
 
 When a turn ends by offering several courses of action in ordinary sentences —
 "I can add a fourth rule, widen the APAC gate, or leave it deferred" — the deck
@@ -130,12 +130,13 @@ trade-offs that four-word labels would misrepresent, the reader says so and the
 key becomes **View in window**, which focuses the session instead of faking a
 button.
 
-It is **off by default** and stays that way unless you opt in: it spawns Claude
-Code, so it draws on *your* subscription usage (or bills your API key). That's
-the owner's call. Even when on it is gated — it only runs on messages that
+It is **on by default** — one of the surface's best tricks. The cost to know
+about: it spawns Claude Code, so it draws on *your* subscription usage (or bills
+your API key). It earns that by staying gated — it only runs on messages that
 plausibly enumerate alternatives, never on every turn, because yes/no offers
 and open questions are already handled for free. Any failure (timeout, refusal,
-nonsense) falls back to the plain reading surface, which is always correct.
+nonsense) falls back to the plain reading surface, which is always correct. Set
+`"enabled": false` to turn it off.
 
 ```jsonc
 "optionReader": { "enabled": true, "model": "haiku", "timeoutSeconds": 25 }
