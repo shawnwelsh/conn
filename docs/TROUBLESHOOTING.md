@@ -39,6 +39,20 @@ the desktop app's home directory or a non-git folder. Set **`newSessionDir`** in
 `config.json` to your main repo; New falls back to it whenever the target can't
 host one.
 
+## New does nothing — no console opens (or one flashes and vanishes)
+
+Conn's **New** key spawns a session by running `claude` in a fresh terminal, so
+the **`claude` CLI has to be on your PATH**. Having the Claude *desktop app*
+installed is not enough — that's a separate program. Confirm with:
+
+```bash
+claude --version
+```
+
+If that's "not recognized," install the Claude Code CLI (or add it to PATH),
+then restart the bridge. This is the command `newSessionCommand` runs, so a wrong
+value there fails the same way.
+
 ## Keystrokes don't land (approvals work, but typing/New/voice don't)
 
 Delivery needs **AutoHotkey v2**. Monitoring and permission *decisions* travel

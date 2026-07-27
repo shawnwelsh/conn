@@ -10,9 +10,10 @@ Windows, plus:
 
 | Tool | Why | winget |
 |------|-----|--------|
-| **Claude Code ≥ 2.1.211** | the whole point; provides the `http` hooks | (already installed) |
+| **Claude Code CLI ≥ 2.1.211** | the whole point; provides the `http` hooks. Must be the **`claude` command on your PATH** — the desktop app alone is not enough, since Conn spawns sessions by running `claude`. Check with `claude --version`. | (install Claude Code) |
 | **Node 24+** | runs the bridge | `winget install OpenJS.NodeJS.LTS` |
 | **Git** | worktrees for New sessions | `winget install Git.Git` |
+| **Python 3.10+** | voice / dictation (on by default) | `winget install Python.Python.3.12` |
 | **AutoHotkey v2** | keystroke delivery (optional — see below) | `winget install AutoHotkey.AutoHotkey` |
 | **Stream Deck software** | only if you have the hardware | `winget install Elgato.StreamDeck` |
 
@@ -59,11 +60,18 @@ Then load the button layout: double-click **`packages/plugin/Conn.streamDeckProf
 all 15 keys, no per-key setup. If you moved or renamed the repo folder, the
 dev-link breaks and the plugin disappears; re-run the `link` command to fix it.
 
-### Optional: voice / dictation
+### Voice / dictation (on by default)
+
+Dictation ships **enabled** (`ptt.enabled: true`). Install the sidecar's Python
+deps so the mic key comes up "ready" instead of "offline" (the first recording
+then downloads a small model):
 
 ```bash
 python -m pip install faster-whisper sounddevice
 ```
+
+Don't want it? Set `ptt.enabled: false` in `config.json` and skip the deps —
+nothing else changes.
 
 ## Verification checklist
 

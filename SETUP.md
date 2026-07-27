@@ -1,9 +1,11 @@
 # Set up Conn with Claude Code
 
-Conn's one hard prerequisite is **Claude Code itself** — and since you already
-have it, it can do the rest of the install for you. Paste the prompt below into
-a Claude Code session and it will install the toolchain, configure Conn, merge
-the hooks, and prove it works.
+Conn's one hard prerequisite is the **Claude Code CLI** — the `claude` command on
+your PATH, which is separate from the Claude desktop app (Conn launches sessions
+by *running* `claude`). Since you're reading this inside Claude Code, you have it,
+and it can do the rest of the install for you. Paste the prompt below into a
+Claude Code session and it will install the toolchain, configure Conn, merge the
+hooks, and prove it works.
 
 ## Read this first
 
@@ -32,9 +34,16 @@ machine. Work step by step, check before you change anything, and keep asking me
 to approve each install and edit — do NOT bypass or disable permission prompts.
 
 1. Preflight. Confirm this is Windows and that `winget` and `git` are available.
+   Then confirm the Claude Code CLI is on PATH by running `claude --version` — this
+   is SEPARATE from the Claude desktop app, and Conn spawns sessions by running
+   `claude`, so the CLI must be installed and on PATH. If it isn't found, stop and
+   help me install Claude Code / add it to PATH before continuing.
+
    Check whether these are already installed, and only install the missing ones:
    - Node.js >= 24  (winget id: OpenJS.NodeJS.LTS) — verify with `node -v`
    - AutoHotkey v2  (winget id: AutoHotkey.AutoHotkey)
+   - Python >= 3.10 (winget id: Python.Python.3.12) — verify with `python --version`.
+     This powers voice/dictation, which is ON by default (step 5).
    - Elgato Stream Deck software (winget id: Elgato.StreamDeck) — only if I say
      I have Stream Deck hardware; it's optional (the browser deck needs nothing).
 
@@ -47,19 +56,25 @@ to approve each install and edit — do NOT bypass or disable permission prompts
    machine-specific values: `delivery.ahkPath` (the full path to AutoHotkey64.exe
    you just installed) and `newSessionDir` (ask me for the repo I mainly work in).
 
-5. Merge the Conn hooks by running `node scripts/install-hooks.mjs`. It prints a
+5. Voice/dictation is on by default — install the sidecar's Python packages:
+   `python -m pip install faster-whisper sounddevice`. (The first recording then
+   downloads a small model.) Only if I say I don't want voice: skip this and set
+   `ptt.enabled: false` in config.json instead.
+
+6. Merge the Conn hooks by running `node scripts/install-hooks.mjs`. It prints a
    diff of ~/.claude/settings.json and asks for confirmation — show me the diff
    and let me confirm. Do not edit settings.json any other way.
 
-6. If Stream Deck hardware is in play: `npm run build -w @conn/plugin`, then
+7. If Stream Deck hardware is in play: `npm run build -w @conn/plugin`, then
    `npx -y @elgato/cli link packages/plugin/com.shawnwelsh.conn.sdPlugin`.
 
-7. Start the bridge with `npm run bridge` and open http://127.0.0.1:3711/ so I
+8. Start the bridge with `npm run bridge` and open http://127.0.0.1:3711/ so I
    can see the web deck. Then, to prove it end to end, help me start a separate
    Claude Code session and confirm its key appears on the deck and lights up as
-   it works.
+   it works. If voice was installed, confirm the mic key reads "ready", not
+   "offline".
 
-8. Summarize what you installed and changed, and remind me that `config.json`
+9. Summarize what you installed and changed, and remind me that `config.json`
    and the hooks are the only machine-level things you touched.
 ```
 

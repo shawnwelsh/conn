@@ -53,11 +53,14 @@ layer, voice dictation, worktree spawning. The web deck was the primary
 development surface before any hardware existed, and it stays a first-class
 client.
 
-Requirements: **Node 24+** and **Windows**, plus Claude Code ≥ 2.1.211.
+Requirements: **Node 24+** and **Windows**, plus the **Claude Code CLI** on your
+PATH (the `claude` command — separate from the desktop app, since Conn spawns
+sessions by *running* it), version ≥ 2.1.211.
 [AutoHotkey v2](https://www.autohotkey.com/) is needed only for the parts that
 type into windows — monitoring and permission decisions work without it, since
-those travel back through the hook response rather than the keyboard. For
-voice, `python -m pip install faster-whisper sounddevice`.
+those travel back through the hook response rather than the keyboard. Voice
+dictation is on by default; it needs **Python 3.10+** plus
+`python -m pip install faster-whisper sounddevice`.
 
 **Prefer to have Claude Code install it?** Paste one prompt and let it install
 the toolchain, merge the hooks, and verify it works — see [`SETUP.md`](SETUP.md).
