@@ -99,8 +99,14 @@ Run through this on a fresh box to confirm everything's wired:
 
 ## Run the bridge as a background service
 
-So the deck is always live without a terminal open. Any supervisor works; e.g.
-[NSSM](https://nssm.cc/):
+So the deck is always live without a terminal open. Any supervisor works, and
+the bridge is stateless across restarts except for the small files it writes
+under `log.dir` (`row1-order.json`, `console-bindings.json`), which it restores
+automatically.
+
+### NSSM
+
+A Windows service via [NSSM](https://nssm.cc/):
 
 ```bash
 nssm install conn-bridge "C:\Program Files\nodejs\npm.cmd" run bridge
@@ -108,6 +114,36 @@ nssm set conn-bridge AppDirectory C:\dev\conn
 nssm start conn-bridge
 ```
 
-Or a Task Scheduler task set to "run at logon." The bridge is stateless across
-restarts except for the small files it writes under `log.dir`
-(`row1-order.json`, `console-bindings.json`), which it restores automatically.
+### Task Scheduler (runs hidden at logon)
+
+`scripts/run-bridge-hidden.vbs` starts the bridge with no console window — it
+goes through `cmd` → `npm.cmd`, which also sidesteps the PowerShell
+script-execution policy that blocks `npm.ps1` on some locked-down machines.
+Register it to run at logon — this runs in your own interactive session, no
+admin needed:
+
+```powershell
+$vbs = "$PWD\scripts\run-bridge-hidden.vbs"   # full path to the launcher
+$me  = "$env:USERDOMAIN\$env:USERNAME"
+$action    = New-ScheduledTaskAction -Execute "wscript.exe" -Argument "`"$vbs`""
+$trigger   = New-ScheduledTaskTrigger -AtLogOn -User $me
+$principal = New-ScheduledTaskPrincipal -UserId $me -LogonType Interactive -RunLevel Limited
+$settings  = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit ([TimeSpan]::Zero) -MultipleInstances IgnoreNew
+Register-ScheduledTask -TaskName "Conn Bridge" -Description "Conn bridge; starts hidden at logon." -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Force
+```
+
+It starts at the next logon, or run `Start-ScheduledTask -TaskName "Conn Bridge"`
+to start it immediately.
+
+**Manage it:**
+
+- Stop the bridge (the task DETACHES it, so Task Scheduler's *End* button won't
+  stop it — kill by port):
+  `Get-NetTCPConnection -LocalPort 3711 -State Listen | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force }`
+- Disable (keep the task, stop auto-start) / re-enable:
+  `Disable-ScheduledTask -TaskName "Conn Bridge"` and `Enable-ScheduledTask -TaskName "Conn Bridge"`
+- Remove entirely: `Unregister-ScheduledTask -TaskName "Conn Bridge" -Confirm:$false`
+
+If you drive *elevated* (admin) Claude Code terminals, change `-RunLevel Limited`
+to `-RunLevel Highest` so keystroke delivery can reach them (Windows blocks
+lower→higher integrity).
