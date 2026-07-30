@@ -43,26 +43,25 @@ isBound(winQuery) {
 
 ; Bring a window to the foreground (for focus / double-tap surfacing).
 ; Returns "ok", or "noactivate" when the window EXISTS but Windows' foreground
-; lock refuses activation. Escalates through the standard workarounds.
+; lock refuses activation.
+;
+; Best-effort BY DESIGN — it must never touch global input state. An earlier
+; version escalated past the foreground lock with a synthesized Alt tap (`Send`,
+; i.e. SendInput under `SendMode "Input"`) plus a minimize/restore dance.
+; SendInput BLOCKS the physical keyboard and mouse for its duration; when one
+; stalled on an unresponsive window the block was never released and the WHOLE
+; MACHINE froze until this daemon was killed. Surfacing a window is only a
+; convenience — delivery itself is focus-free (ControlSend / console-buffer
+; injection) — so it is not worth a single frame of input risk. If WinActivate
+; can't take the foreground within the timeout, give up cleanly; the user can
+; click the window. NEVER reintroduce an input-synthesizing focus workaround
+; here without a non-blocking technique (e.g. AttachThreadInput).
 activateHwnd(hwnd) {
   if (WinActive(hwnd))
     return "ok"
-  WinActivate(hwnd)
+  WinActivate(hwnd)          ; posts the request; does not block input
   if (WinWaitActive(hwnd, , 1))
     return settle()
-  ; A brief Alt tap grants foreground rights — the classic workaround.
-  Send "{Alt down}{Alt up}"
-  WinActivate(hwnd)
-  if (WinWaitActive(hwnd, , 1))
-    return settle()
-  ; Last resort: minimize+restore usually defeats a stubborn foreground lock.
-  try {
-    WinMinimize(hwnd)
-    WinRestore(hwnd)
-    WinActivate(hwnd)
-    if (WinWaitActive(hwnd, , 1))
-      return settle()
-  }
   return "noactivate"
 }
 
