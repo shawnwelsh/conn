@@ -15,38 +15,46 @@ class Rec implements DeliveryAdapter {
   async dispose(): Promise<void> {}
 }
 
-describe("deliverQuestionAnswer", () => {
-  it("a NON-last answer sends the number ONLY — no key to corrupt the next question", async () => {
-    // number+key per question would advance Claude by two (the key answering
-    // the next question's default) but the deck by one, drifting a question
-    // behind. The number alone selects AND advances.
+// Claude Code's question menu is arrow-navigated: the highlight starts on
+// option 1, so answering is ↓×(n-1) then Enter — and never a number key, and
+// never a forced focus first (console delivery is focus-free).
+describe("deliverQuestionAnswer (arrow-navigated menu)", () => {
+  it("option 1 is a bare Enter — the highlight already sits there", async () => {
+    const d = new Rec();
+    await deliverQuestionAnswer(d, session, 1, true, false, 0);
+    expect(d.calls).toEqual(["key:enter"]);
+  });
+
+  it("steps DOWN to the chosen option, then Enter", async () => {
+    const d = new Rec();
+    await deliverQuestionAnswer(d, session, 3, true, false, 0); // option 3, single-question
+    expect(d.calls).toEqual(["key:down", "key:down", "key:enter"]);
+  });
+
+  it("a NON-last answer selects and stops (the Enter advances Claude itself)", async () => {
     const d = new Rec();
     await deliverQuestionAnswer(d, session, 2, false, true, 0);
-    expect(d.calls).toEqual(["focus", "key:2"]);
+    expect(d.calls).toEqual(["key:down", "key:enter"]);
   });
 
-  it("the LAST answer of a MULTI-question ask presses '1' on the Submit step, not Enter", async () => {
-    // The bug: Claude's multi-question form ends on a digit-selected
-    // "Submit answers / Cancel" step; Enter is ignored there, so it parked.
+  it("the LAST answer of a MULTI-question ask adds an Enter for the Submit step", async () => {
     const d = new Rec();
     await deliverQuestionAnswer(d, session, 2, true, true, 0);
-    expect(d.calls).toEqual(["focus", "key:2", "key:1"]);
+    expect(d.calls).toEqual(["key:down", "key:enter", "key:enter"]);
   });
 
-  it("a SINGLE-question ask submits on the number — trailing key is a harmless Enter", async () => {
+  it("never types a digit and never forces focus", async () => {
     const d = new Rec();
-    await deliverQuestionAnswer(d, session, 3, true, false, 0);
-    expect(d.calls).toEqual(["focus", "key:3", "key:enter"]);
+    await deliverQuestionAnswer(d, session, 4, true, false, 0);
+    expect(d.calls).not.toContain("focus");
+    expect(d.calls.some((c) => /^key:[0-9]$/.test(c))).toBe(false);
   });
 
-  it("stops if the number keystroke fails", async () => {
+  it("stops if a keystroke fails — no submit key after a failed select", async () => {
     const d = new Rec();
-    d.sendKey = async (_s, c) => {
-      d.calls.push(`key:${c}`);
-      return false;
-    };
+    d.sendKey = async (_s, c) => { d.calls.push(`key:${c}`); return c !== "enter"; };
     const ok = await deliverQuestionAnswer(d, session, 3, true, true, 0);
     expect(ok).toBe(false);
-    expect(d.calls).toEqual(["focus", "key:3"]); // never reached the submit key
+    expect(d.calls).toEqual(["key:down", "key:down", "key:enter"]);
   });
 });

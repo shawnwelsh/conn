@@ -472,9 +472,10 @@ controller.setHooks({
     // already rendered the next question by the time a human reaches for the
     // next key, and leaving the answered one on screen invites a double press.
     const more = advanceQuestion(q);
-    // Only the LAST answer finishes the form; earlier ones just advance on the
-    // number. A multi-question ask ends on a digit-selected "Submit answers"
-    // step (press "1"); a single-question ask submits on the number itself.
+    // Only the LAST answer finishes the form; earlier ones just advance. The
+    // menu is arrow-navigated (see deliverQuestionAnswer): a multi-question ask
+    // ends on a "Submit answers" step, a single-question ask submits on the
+    // chosen option's own Enter.
     const isLast = !more;
     const multi = q.questions.length > 1;
     if (more) {
