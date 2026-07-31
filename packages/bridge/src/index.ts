@@ -418,10 +418,25 @@ function rebootBridge(): void {
     return;
   }
   log.warn({ restartCommand: cfg.restartCommand }, "reboot: restarting the bridge from the deck");
+  const port = cfg.port;
+  const logFile = join(cfg.log.dir, "reboot.log").replace(/'/g, "''"); // single-quote-safe for PS
+  // Detached restarter: wait for THIS bridge to free the port, then launch the
+  // successor and RETRY until it actually binds. The old single-shot version
+  // left the deck dead whenever that one trigger raced the port release or
+  // transiently missed — with no trace of why. This retries (stopping the
+  // instant the port comes up, so it can never stack duplicate bridges) and
+  // appends each step to reboot.log. No double quotes in the script (Node's
+  // arg-quoting mangles them); inline -Command dodges the script-execution
+  // policy.
   const script =
-    `$end=(Get-Date).AddSeconds(30); ` +
-    `while (((Get-Date) -lt $end) -and (Get-NetTCPConnection -LocalPort ${cfg.port} -State Listen -ErrorAction SilentlyContinue)) { Start-Sleep -Milliseconds 250 }; ` +
-    `${cfg.restartCommand}`;
+    `$ErrorActionPreference='SilentlyContinue';` +
+    `function L($m){ ([string](Get-Date)+' '+$m) | Out-File -Append -Encoding utf8 '${logFile}' };` +
+    `L 'waiting for port ${port} to free';` +
+    `$end=(Get-Date).AddSeconds(20);` +
+    `while(((Get-Date) -lt $end) -and (Get-NetTCPConnection -LocalPort ${port} -State Listen)){ Start-Sleep -Milliseconds 200 };` +
+    `$up=$false;` +
+    `for($t=0; $t -lt 3 -and -not $up; $t++){ L ('launch attempt '+($t+1)); ${cfg.restartCommand}; for($i=0;$i -lt 30;$i++){ Start-Sleep -Milliseconds 500; if(Get-NetTCPConnection -LocalPort ${port} -State Listen){ $up=$true; break } } };` +
+    `L ('done up='+$up)`;
   try {
     spawn("powershell.exe", ["-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-Command", script], {
       detached: true,
@@ -432,9 +447,9 @@ function rebootBridge(): void {
     log.error({ err: String(err) }, "reboot: could not spawn the restarter — staying up");
     return; // never exit if the relaunch couldn't be scheduled, or the deck stays dead
   }
-  // Give the detached spawn a beat to register, then exit so the restarter's
-  // port-wait unblocks and it relaunches us.
-  setTimeout(() => process.exit(0), 400);
+  // Give the detached restarter a beat to spin up and start logging, then exit
+  // so its port-wait unblocks and it relaunches us.
+  setTimeout(() => process.exit(0), 600);
 }
 
 controller.setHooks({
