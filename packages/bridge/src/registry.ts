@@ -254,26 +254,67 @@ export class SessionRegistry extends EventEmitter {
     return undefined;
   }
 
-  /** Adopt a provisional entry for a real session id: keep its slot/order and
-   * window binding, swap the identity. Returns null if none matches. */
-  private adoptProvisional(event: AnyHookEvent): SessionEntry | null {
+  /** Swap a covering provisional (launching:*) key's identity to a real session
+   * id, keeping its slot/order and window binding. The single place a
+   * placeholder becomes a real session — shared by the hook path
+   * (adoptProvisional) and the interactive-adopt path (adoptProvisionalTerminal).
+   * Returns the entry, or null if no provisional covers `cwd`. */
+  private reconcileProvisional(cwd: string, newSessionId: string): SessionEntry | null {
     for (const entry of this.sessions.values()) {
       if (!entry.sessionId.startsWith("launching:")) continue;
       // The session may have moved into a subdirectory of where it launched.
-      if (!pathWithin(event.cwd ?? "", entry.cwd)) continue;
+      if (!pathWithin(cwd, entry.cwd)) continue;
       const oldId = entry.sessionId;
       this.sessions.delete(oldId);
-      entry.sessionId = event.session_id;
-      this.sessions.set(entry.sessionId, entry);
-      this.working = this.working.map((id) => (id === oldId ? entry.sessionId : id));
-      this.overflow = this.overflow.map((id) => (id === oldId ? entry.sessionId : id));
-      if (this.targeted === oldId) this.targeted = entry.sessionId;
+      entry.sessionId = newSessionId;
+      this.sessions.set(newSessionId, entry);
+      this.working = this.working.map((id) => (id === oldId ? newSessionId : id));
+      this.overflow = this.overflow.map((id) => (id === oldId ? newSessionId : id));
+      if (this.targeted === oldId) this.targeted = newSessionId;
       // The matching pending launch is now consumed too.
       this.pendingLaunches = this.pendingLaunches.filter((l) => !samePath(l.cwd, entry.cwd));
       this.emit("changed");
       return entry;
     }
     return null;
+  }
+
+  /** Hook path: a real session's first event arrived — adopt its provisional. */
+  private adoptProvisional(event: AnyHookEvent): SessionEntry | null {
+    return this.reconcileProvisional(event.cwd ?? "", event.session_id);
+  }
+
+  /**
+   * Interactive-adopt path: reconcile a covering provisional into a terminal
+   * session Claude Code knows about but that fired no SessionStart hook.
+   *
+   * Without this, a restored provisional (from a persisted console binding)
+   * sits as a `launching:*` phantom while the real session can't surface —
+   * adoptTerminals sees the tree already "covered" and skips it — so the key
+   * keeps its codename, `/rename` can't attach (no real sessionId), and on the
+   * next launch the real session lands as a "name 2" duplicate. This is the
+   * root of the stranded-key / detached-session / duplicate mess. Binds the pid
+   * and carries Claude Code's name/status across.
+   */
+  adoptProvisionalTerminal(meta: {
+    sessionId: string;
+    cwd?: string;
+    pid: number;
+    name?: string;
+    status?: SessionStatus;
+  }): SessionEntry | null {
+    const entry = this.reconcileProvisional(meta.cwd ?? "", meta.sessionId);
+    if (!entry) return null;
+    if (!entry.pid) entry.pid = meta.pid;
+    entry.windowKind = "console";
+    if (meta.status) entry.status = meta.status;
+    if (meta.name) {
+      entry.ccName = meta.name;
+      entry.labelBase = meta.name;
+      entry.label = this.dedupeLabel(meta.name, meta.sessionId);
+    }
+    this.emit("changed");
+    return entry;
   }
 
   private dedupeLabel(base: string, forSessionId: string): string {

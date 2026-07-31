@@ -543,6 +543,22 @@ function adoptTerminals(only?: SessionEntry): void {
     // work by days without exiting, and a key for something abandoned last
     // Tuesday is noise — reuse the same staleness threshold that dims a key.
     if (Date.now() - meta.updatedAt > cfg.staleSessionMinutes * 60_000) continue;
+    // A restored provisional key (from a persisted console binding) covers this
+    // tree — reconcile the real session INTO it (swap its launching:* id, bind
+    // the pid, carry the name) rather than skipping and stranding a phantom
+    // beside a would-be duplicate. Interactive sessions fire no hook, so this
+    // adopt pass is the only place that reconciliation can happen for them.
+    const reconciled = registry.adoptProvisionalTerminal({
+      sessionId: meta.sessionId,
+      cwd: meta.cwd,
+      pid: meta.pid,
+      name: meta.name,
+      status: ccStatusToDeck(meta.status),
+    });
+    if (reconciled) {
+      log.info({ session: meta.sessionId, label: reconciled.label, pid: meta.pid }, "reconciled provisional into terminal session");
+      continue;
+    }
     // One key per working tree. A terminal accumulates several Claude Code
     // sessions over its life — restarts, dispatched jobs — all sharing one
     // console. The deck should show the console, not its history.
