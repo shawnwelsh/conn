@@ -64,6 +64,11 @@ and you get the default shown.
 | `newSessionWorktrees` | `true` | When true, New creates a **fresh git worktree** on branch `deck/<codename>` — the codename becomes the feature name on the key. Non-git dirs fall back to spawning in place. |
 | `worktreeTimeoutSeconds` | `90` | How long to wait for `git worktree add`. OneDrive-backed repos are slow; too short a timeout strands a completed worktree. |
 | `suggestionAcceptText` | `"yes"` | Text the suggestion-layer **Accept** key types into the session. |
+| `restartCommand` | `Start-ScheduledTask -TaskName 'Conn Bridge'` | Command the **Reboot** key (row 3, page 2) runs to relaunch the bridge after it exits itself — via a detached PowerShell that first waits for the port to free (inline `-Command`, so the script-execution policy can't block it). Point it at however you run the bridge. Set to `""` to hide the Reboot key entirely. |
+
+### The Reboot key (row 3, page 2)
+
+A two-step, un-fumbleable bridge restart from the deck itself. First press arms it — the key turns **red "Confirm?"**; a second press within ~3s restarts the bridge, and no second press disarms it. The bridge can't restart in place (it holds the port and serves the deck), so it spawns a detached restarter that waits for the port to free, runs `restartCommand`, and exits — the deck blanks for ~2–3s and reconnects on its own. Since the AHK daemon is a child of the bridge, this also gives you a fresh daemon, so it doubles as a "kick a wedged delivery" button. It only works when the bridge is still responsive enough to receive the press; a fully-hung bridge still needs the task/PowerShell fallback.
 
 ## Voice / dictation (`ptt`)
 

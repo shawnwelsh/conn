@@ -23,6 +23,7 @@
   "newSessionWorktrees": true,
   "worktreeTimeoutSeconds": 90,
   "suggestionAcceptText": "yes",
+  "restartCommand": "Start-ScheduledTask -TaskName 'Conn Bridge'",
   "ptt": {
     "enabled": true,
     "python": "python",

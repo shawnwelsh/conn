@@ -18,6 +18,9 @@ const PTT_SLOT = 10;
 
 /** Gap between typed text and its submitting Enter on console sessions. */
 const CONSOLE_SUBMIT_GAP_MS = 150;
+/** Two-step Reboot: how long the red "Confirm?" stays armed before it disarms
+ * itself. Short enough that a stray first press can't linger dangerously. */
+const REBOOT_CONFIRM_MS = 3000;
 
 /**
  * Routes recognized gestures (from any client) to actions. Clients report raw
@@ -42,6 +45,9 @@ export class DeckController {
        * answered by keystroke, so the panel dismisses instead of waiting out
        * the timeout. */
       onPermissionDefer?: () => void;
+      /** The Reboot key was confirmed (two-step) — restart the bridge process.
+       * The bridge exits itself; a detached restarter brings it back. */
+      onReboot?: () => void;
     } = {},
     /** Optional: the "New" key spawns console sessions through this. */
     private launcher?: ConsoleLauncher,
@@ -901,6 +907,7 @@ export class DeckController {
       if (index === 0) return void (await this.resumeSession());
       if (index === 1) return void (await this.globalSlash("Fork", "/fork"));
       if (index === 2) return void (await this.globalSlash("Branch", "/branch"));
+      if (index === 3 && this.cfg.restartCommand) return this.rebootKey();
       return;
     }
     switch (index) {
@@ -976,5 +983,41 @@ export class DeckController {
       this.layer.launching = false;
       this.onLayerChanged();
     }
+  }
+
+  private rebootTimer: ReturnType<typeof setTimeout> | null = null;
+
+  /**
+   * Two-step Reboot (row 3, page 2). First press arms it — the key goes red
+   * "Confirm?"; a second press within REBOOT_CONFIRM_MS fires, anything else
+   * lets it disarm. Restarting the bridge blanks the deck for a couple of
+   * seconds (the bridge exits and a detached restarter relaunches it), so it
+   * must never be a one-tap action.
+   */
+  private rebootKey(): void {
+    if (this.layer.rebootArmed) {
+      this.disarmReboot();
+      this.onLayerChanged();
+      this.log.warn("reboot: confirmed from the deck — restarting the bridge");
+      this.hooks.onReboot?.();
+      return;
+    }
+    this.layer.rebootArmed = true;
+    if (this.rebootTimer) clearTimeout(this.rebootTimer);
+    this.rebootTimer = setTimeout(() => {
+      if (this.layer.rebootArmed) {
+        this.layer.rebootArmed = false;
+        this.onLayerChanged();
+      }
+    }, REBOOT_CONFIRM_MS);
+    this.onLayerChanged();
+  }
+
+  private disarmReboot(): void {
+    if (this.rebootTimer) {
+      clearTimeout(this.rebootTimer);
+      this.rebootTimer = null;
+    }
+    this.layer.rebootArmed = false;
   }
 }

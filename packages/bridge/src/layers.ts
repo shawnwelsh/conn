@@ -122,6 +122,10 @@ export interface DeckLayerState {
   /** A console launch (worktree + spawn) is in flight — New shows progress
    * and further presses are ignored. */
   launching?: boolean;
+  /** The Reboot global (row 3, page 2) is armed: first press turns it into a
+   * red "Confirm?", a second press within a few seconds restarts the bridge,
+   * and no second press disarms it. */
+  rebootArmed?: boolean;
   /** Dictation sidecar state, mirrored from the STT adapter; drives the mic
    * key face. Absent = offline (dictation not configured/available). */
   ptt?: "offline" | "loading" | "ready" | "recording" | "transcribing";
@@ -604,7 +608,14 @@ export function computeTiles(
         : { text: "Resume", state: "command", icon: "resume" },
       { text: "Fork", state: "command", icon: "fork" },
       { text: "Branch", state: "command", icon: "branch" },
-      { text: "", state: "blank" },
+      // Reboot the bridge itself — guarded by a two-step confirm (red) so a
+      // stray press can't blank the deck. Hidden when no restart command is
+      // configured (nothing to bring the bridge back with).
+      !cfg.restartCommand
+        ? { text: "", state: "blank" }
+        : layer.rebootArmed
+          ? { text: "Confirm?", subtext: "reboot bridge", state: "error" }
+          : { text: "Reboot", state: "command" },
       { text: "Page", state: "command", icon: "page" },
     );
   } else {

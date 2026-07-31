@@ -55,6 +55,13 @@ export interface DeckConfig {
   worktreeTimeoutSeconds: number;
   /** Text the suggestion-layer Accept key types into the session. */
   suggestionAcceptText: string;
+  /** Command the deck's Reboot key (row 3, page 2) runs to bring the bridge
+   * back after it exits itself. Executed by a detached PowerShell that first
+   * waits for the port to free — inline `-Command`, so the script-execution
+   * policy doesn't block it. Default relaunches via the "Conn Bridge" scheduled
+   * task; set to "" to hide the Reboot key entirely (e.g. if you start the
+   * bridge another way and don't want a self-restart button). */
+  restartCommand?: string;
   /** Milliseconds between typed text and the submitting Enter on DESKTOP
    * sessions — the Electron app renders its input/slash-popup async and an
    * instant Enter is swallowed. Consoles never delay. */
@@ -146,6 +153,7 @@ export function loadConfig(): DeckConfig {
   cfg.optionReader.timeoutSeconds ||= 20;
   cfg.worktreeTimeoutSeconds ??= 90;
   cfg.suggestionAcceptText ??= "yes";
+  cfg.restartCommand ??= "Start-ScheduledTask -TaskName 'Conn Bridge'";
   cfg.desktopSubmitDelayMs ??= 250;
   cfg.ptt ??= {} as DeckConfig["ptt"];
   cfg.ptt.enabled ??= true;

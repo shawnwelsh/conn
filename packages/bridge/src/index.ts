@@ -1,6 +1,7 @@
 import Fastify from "fastify";
 import { join } from "node:path";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { spawn } from "node:child_process";
 import { loadConfig } from "./config.js";
 import { createLogger } from "./log.js";
 import { SessionRegistry, pathWithin, type SessionEntry } from "./registry.js";
@@ -402,7 +403,42 @@ denyReason = new DenyReasonFlow(
   },
 );
 
+/**
+ * Restart the bridge from the deck's Reboot key. The bridge can't restart in
+ * place — it holds the port and serves the deck — so it hands off: spawn a
+ * DETACHED restarter that waits for THIS process to exit (which frees the
+ * port), then runs cfg.restartCommand to relaunch, and only then does the
+ * bridge exit. Inline `powershell -Command` isn't gated by the script-execution
+ * policy. The deck blanks for a couple of seconds and its clients reconnect on
+ * their own.
+ */
+function rebootBridge(): void {
+  if (!cfg.restartCommand) {
+    log.warn("reboot ignored: no restartCommand configured");
+    return;
+  }
+  log.warn({ restartCommand: cfg.restartCommand }, "reboot: restarting the bridge from the deck");
+  const script =
+    `$end=(Get-Date).AddSeconds(30); ` +
+    `while (((Get-Date) -lt $end) -and (Get-NetTCPConnection -LocalPort ${cfg.port} -State Listen -ErrorAction SilentlyContinue)) { Start-Sleep -Milliseconds 250 }; ` +
+    `${cfg.restartCommand}`;
+  try {
+    spawn("powershell.exe", ["-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-Command", script], {
+      detached: true,
+      stdio: "ignore",
+      windowsHide: true,
+    }).unref();
+  } catch (err) {
+    log.error({ err: String(err) }, "reboot: could not spawn the restarter — staying up");
+    return; // never exit if the relaunch couldn't be scheduled, or the deck stays dead
+  }
+  // Give the detached spawn a beat to register, then exit so the restarter's
+  // port-wait unblocks and it relaunches us.
+  setTimeout(() => process.exit(0), 400);
+}
+
 controller.setHooks({
+  onReboot: rebootBridge,
   onPermissionKey: (index) => {
     const action = (["allow", "always-allow", "deny", "deny-reason", "show-on-screen"] as const)[index];
     if (!action) return;
