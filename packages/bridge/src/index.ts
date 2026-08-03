@@ -34,7 +34,7 @@ import { registerApiRoutes } from "./http/api.js";
 import { livenessSweep } from "./liveness.js";
 import { endsPendingQuestion } from "./status.js";
 import { ensureSidecarDir, looksEnumerated, readOptions } from "./optionReader.js";
-import { deliverQuestionAnswer } from "./questionKeys.js";
+import { deliverQuestionAnswer, deliverMultiSelectAnswer } from "./questionKeys.js";
 import { QUESTION_OPTIONS_PER_PAGE } from "./layers.js";
 import { awaitingSpokenAnswer } from "./suggestions.js";
 import type { AskUserQuestionInput } from "./hookTypes.js";
@@ -248,7 +248,7 @@ function showQuestion(event: Parameters<typeof decisions.hold>[0]): void {
   // abandoned the rest, leaving the console on question 2 with no panel.
   const questions = (input?.questions ?? [])
     .filter((q) => q?.options?.length)
-    .map((q) => ({ question: q.question, options: (q.options ?? []).map((o) => o.label) }));
+    .map((q) => ({ question: q.question, options: (q.options ?? []).map((o) => o.label), multiSelect: q.multiSelect }));
   if (!questions.length) return;
   noteFocusOrigin(inMorph()); // remember the origin before we retarget
   layer.row2 = "question";
@@ -257,6 +257,7 @@ function showQuestion(event: Parameters<typeof decisions.hold>[0]): void {
     questions,
     index: 0,
     page: 0,
+    checked: [],
   };
   registry.target(event.session_id);
   syncFlash(flashNeeded());
@@ -481,6 +482,16 @@ controller.setHooks({
     const options = currentQuestion(q).options;
     const absolute = q.page * QUESTION_OPTIONS_PER_PAGE + optionIndex;
     if (absolute >= options.length) return;
+    // Multi-select: each option key is a checkbox — toggle it and wait for the
+    // Submit key, instead of answering-and-advancing on a single press.
+    if (currentQuestion(q).multiSelect) {
+      const checked = (q.checked ??= []);
+      const at = checked.indexOf(absolute);
+      if (at === -1) checked.push(absolute);
+      else checked.splice(at, 1);
+      pushRender();
+      return;
+    }
     const session = registry.get(q.sessionId);
     if (!session) return revertQuestion();
     // Advance the layer NOW, not after the keystrokes land. Claude Code has
@@ -510,6 +521,28 @@ controller.setHooks({
   onQuestionPager: () => {
     const q = layer.question;
     if (!q) return;
+    // Multi-select: this key is "Submit" — ship the toggled set, then advance
+    // (or finish) exactly like a single answer would.
+    if (currentQuestion(q).multiSelect) {
+      const session = registry.get(q.sessionId);
+      if (!session) return revertQuestion();
+      const checked = [...(q.checked ?? [])];
+      const more = advanceQuestion(q);
+      const isLast = !more;
+      const multi = q.questions.length > 1;
+      if (more) {
+        q.checked = [];
+        syncFlash(flashNeeded());
+        pushRender();
+      } else {
+        revertQuestion();
+      }
+      void (async () => {
+        const ok = await deliverMultiSelectAnswer(delivery, session, checked, isLast, multi);
+        log.info({ session: q.sessionId, picked: checked.length, isLast, multi, ok }, "multi-select answered from deck");
+      })();
+      return;
+    }
     const pages = Math.ceil(currentQuestion(q).options.length / QUESTION_OPTIONS_PER_PAGE);
     if (pages > 1) {
       q.page = (q.page + 1) % pages;

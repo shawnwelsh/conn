@@ -42,3 +42,39 @@ export async function deliverQuestionAnswer(
   await new Promise((r) => setTimeout(r, gapMs * 3));
   return delivery.sendKey(session, "enter");
 }
+
+/**
+ * Deliver a MULTI-SELECT question answer to a console.
+ *
+ * Claude Code renders these as a checkbox list: ↑/↓ moves the highlight, SPACE
+ * toggles the box under it, ENTER proceeds. The highlight starts on option 1,
+ * so we walk DOWN to each chosen option (in menu order), Space it, then Enter.
+ * The deck tracked which boxes you toggled; this replays them in one go.
+ *
+ *  - Single-question ask: that Enter submits.
+ *  - MULTI-question ask: the last question's Enter lands on the "Submit answers"
+ *    step, so one more Enter ships it (same tail as the single-select path).
+ */
+export async function deliverMultiSelectAnswer(
+  delivery: DeliveryAdapter,
+  session: SessionRef,
+  checked: number[], // 0-based option indices toggled ON, any order
+  isLast: boolean,
+  multi: boolean, // the ask has >1 question → a "Submit answers" step follows
+  gapMs = 80,
+): Promise<boolean> {
+  let cursor = 0; // the highlight starts on option 1
+  for (const idx of [...checked].sort((a, b) => a - b)) {
+    for (; cursor < idx; cursor++) {
+      if (!(await delivery.sendKey(session, "down"))) return false;
+      await new Promise((r) => setTimeout(r, gapMs));
+    }
+    if (!(await delivery.sendKey(session, "space"))) return false;
+    await new Promise((r) => setTimeout(r, gapMs));
+  }
+  // Enter proceeds — submits this question's picks (or advances to the next).
+  if (!(await delivery.sendKey(session, "enter"))) return false;
+  if (!isLast || !multi) return true;
+  await new Promise((r) => setTimeout(r, gapMs * 3));
+  return delivery.sendKey(session, "enter");
+}

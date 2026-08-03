@@ -29,15 +29,18 @@ export interface QuestionContext {
    * abandoned the rest and left the console sitting on question 2 with no
    * deck panel.
    */
-  questions: Array<{ question: string; options: string[] }>;
+  questions: Array<{ question: string; options: string[]; multiSelect?: boolean }>;
   /** Which question is on the keys right now. */
   index: number;
   /** Option page within the current question. */
   page: number;
+  /** Multi-select only: the absolute option indices toggled ON for the CURRENT
+   * question (the checkbox state on the keys). Reset when the form advances. */
+  checked?: number[];
 }
 
 /** The question currently on the keys. */
-export function currentQuestion(q: QuestionContext): { question: string; options: string[] } {
+export function currentQuestion(q: QuestionContext): { question: string; options: string[]; multiSelect?: boolean } {
   return q.questions[q.index] ?? { question: "", options: [] };
 }
 
@@ -494,22 +497,33 @@ export function computeTiles(
     );
   } else if (layer.row2 === "question" && layer.question) {
     const q = layer.question;
-    const options = currentQuestion(q).options;
+    const cur = currentQuestion(q);
+    const options = cur.options;
+    const isMulti = !!cur.multiSelect;
+    const checked = q.checked ?? [];
     const start = q.page * QUESTION_OPTIONS_PER_PAGE;
     const pageOptions = options.slice(start, start + QUESTION_OPTIONS_PER_PAGE);
     for (let i = 0; i < QUESTION_OPTIONS_PER_PAGE; i++) {
       const opt = pageOptions[i];
+      const abs = start + i;
       tiles.push(
-        opt !== undefined
-          ? { text: opt, state: "answer", badge: String(start + i + 1) }
-          : { text: "", state: "blank" },
+        opt === undefined
+          ? { text: "", state: "blank" }
+          : isMulti
+            // Checkbox button — mirrors the console's [ ]/[x] and lights up when on.
+            ? { text: `${checked.includes(abs) ? "[x]" : "[ ]"} ${opt}`, state: "answer", selected: checked.includes(abs) }
+            : { text: opt, state: "answer", badge: String(abs + 1) },
       );
     }
     const pages = Math.ceil(options.length / QUESTION_OPTIONS_PER_PAGE);
     tiles.push(
-      pages > 1
-        ? { text: `Page ${q.page + 1}/${pages}`, state: "command", subtext: "next page" }
-        : { text: "Cancel", state: "command", subtext: "to screen" },
+      isMulti
+        // Multi-select ships the toggled set from one key; options past the
+        // first four are answered in the console (rare — most asks fit).
+        ? { text: "Submit", state: "answer", subtext: checked.length ? `${checked.length} picked` : "pick some" }
+        : pages > 1
+          ? { text: `Page ${q.page + 1}/${pages}`, state: "command", subtext: "next page" }
+          : { text: "Cancel", state: "command", subtext: "to screen" },
     );
   } else if (activeSuggestion(registry, layer)) {
     // Suggestion layer: the targeted console session finished with a

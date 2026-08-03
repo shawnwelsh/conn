@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { deliverQuestionAnswer } from "../src/questionKeys.js";
+import { deliverQuestionAnswer, deliverMultiSelectAnswer } from "../src/questionKeys.js";
 import type { DeliveryAdapter, SessionRef } from "../src/delivery/adapter.js";
 
 const session: SessionRef = { sessionId: "s", cwd: "C:\\dev\\s", label: "s", pid: 1 };
@@ -56,5 +56,46 @@ describe("deliverQuestionAnswer (arrow-navigated menu)", () => {
     const ok = await deliverQuestionAnswer(d, session, 3, true, true, 0);
     expect(ok).toBe(false);
     expect(d.calls).toEqual(["key:down", "key:down", "key:enter"]);
+  });
+});
+
+// Multi-select is a checkbox list: ↓ to move, SPACE to toggle, ENTER to
+// proceed. The deck tracks which boxes you tapped and replays them in one go.
+describe("deliverMultiSelectAnswer (checkbox menu)", () => {
+  it("walks down to each checked option in menu order, Spaces it, then Enter", async () => {
+    const d = new Rec();
+    await deliverMultiSelectAnswer(d, session, [0, 2], true, false, 0);
+    // cursor starts on option 1: toggle 0 in place, ↓↓ to 2, toggle, Enter.
+    expect(d.calls).toEqual(["key:space", "key:down", "key:down", "key:space", "key:enter"]);
+  });
+
+  it("sorts the taps so cursor moves are minimal and correct regardless of tap order", async () => {
+    const d = new Rec();
+    await deliverMultiSelectAnswer(d, session, [2, 0], true, false, 0);
+    expect(d.calls).toEqual(["key:space", "key:down", "key:down", "key:space", "key:enter"]);
+  });
+
+  it("a single checked option: down to it, Space, Enter", async () => {
+    const d = new Rec();
+    await deliverMultiSelectAnswer(d, session, [1], true, false, 0);
+    expect(d.calls).toEqual(["key:down", "key:space", "key:enter"]);
+  });
+
+  it("nothing checked is a bare Enter (submit with no picks)", async () => {
+    const d = new Rec();
+    await deliverMultiSelectAnswer(d, session, [], true, false, 0);
+    expect(d.calls).toEqual(["key:enter"]);
+  });
+
+  it("a NON-last multi-select answer proceeds without the extra Submit-step Enter", async () => {
+    const d = new Rec();
+    await deliverMultiSelectAnswer(d, session, [0], false, true, 0);
+    expect(d.calls).toEqual(["key:space", "key:enter"]);
+  });
+
+  it("the LAST answer of a MULTI-question ask adds the Submit-step Enter", async () => {
+    const d = new Rec();
+    await deliverMultiSelectAnswer(d, session, [0], true, true, 0);
+    expect(d.calls).toEqual(["key:space", "key:enter", "key:enter"]);
   });
 });
