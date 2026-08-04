@@ -53,6 +53,11 @@ export interface SessionEntry {
    * demoted to the end of the overflow line, swept after a TTL. */
   windowDead?: boolean;
   deadAt?: number;
+  /** Swept off the deck by the Tidy key, but still tracked. Kept in the sessions
+   * map (so the 30s re-scan sees it as "known" and doesn't drag it back) but
+   * pulled out of working/overflow so it renders nowhere. Cleared by wake()
+   * the moment the human types into it (UserPromptSubmit). */
+  hidden?: boolean;
   events: RingBuffer<{ at: number; event: string; detail?: string }>;
 }
 
@@ -113,9 +118,11 @@ export class SessionRegistry extends EventEmitter {
     return [...this.sessions.values()];
   }
 
-  /** True when the Page key occupies the last slot (more sessions than slots). */
+  /** True when the Page key occupies the last slot (more sessions than slots).
+   * Counts the VISIBLE list (working + overflow), not the sessions map — swept
+   * (hidden) sessions are out of both, so they must not force the pager on. */
   pagerActive(): boolean {
-    return this.sessions.size > this.slotCount;
+    return this.working.length + this.overflow.length > this.slotCount;
   }
 
   /** Working-set size: one fewer than slotCount while the pager is shown. */
@@ -550,6 +557,52 @@ export class SessionRegistry extends EventEmitter {
         this.release(entry.sessionId);
       }
     }
+  }
+
+  /**
+   * Tidy: hide a cohort of sessions by window kind. NOTHING is ended — the
+   * sessions keep running; this only takes their keys off the deck. They leave
+   * working AND overflow but stay tracked in the sessions map — that's what
+   * makes the 30s re-scan treat them as "known" and NOT drag them back. They
+   * return through the normal path, at the end of the row, the moment the human
+   * types into one (wake(), on UserPromptSubmit).
+   *
+   * Launches in flight (`launching:*`) are never swept — a console you just
+   * asked for shouldn't vanish before it's even bound. Returns the count hidden.
+   */
+  sweep(kinds: Array<"console" | "desktop">): number {
+    let n = 0;
+    for (const entry of this.sessions.values()) {
+      if (entry.hidden || entry.sessionId.startsWith("launching:")) continue;
+      if (!kinds.includes(entry.windowKind)) continue;
+      entry.hidden = true;
+      n++;
+    }
+    if (n === 0) return 0;
+    this.working = this.working.filter((id) => !this.sessions.get(id)?.hidden);
+    this.overflow = this.overflow.filter((id) => !this.sessions.get(id)?.hidden);
+    // Retarget only if the target itself was swept — leave a surviving target be.
+    if (this.targeted && this.sessions.get(this.targeted)?.hidden) this.targeted = null;
+    this.rebalance();
+    if (!this.targeted) this.targeted = this.working[0] ?? this.overflow[0] ?? null;
+    this.emit("changed");
+    return n;
+  }
+
+  /**
+   * Un-hide a swept session and return it to the END of the row — no position
+   * memory, exactly as a freshly-discovered session would arrive. Pushed to the
+   * back of the line; rebalance pulls it up into a working slot only if one is
+   * free. A no-op unless the session is actually hidden, so it's cheap to call
+   * on every UserPromptSubmit.
+   */
+  wake(sessionId: string): void {
+    const entry = this.sessions.get(sessionId);
+    if (!entry || !entry.hidden) return;
+    entry.hidden = false;
+    this.overflow.push(sessionId); // end of the line
+    this.rebalance();
+    this.emit("changed");
   }
 
   snapshot(): RegistrySnapshot {

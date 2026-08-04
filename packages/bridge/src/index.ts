@@ -1,7 +1,7 @@
 import Fastify from "fastify";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { loadConfig } from "./config.js";
 import { createLogger } from "./log.js";
 import { SessionRegistry, pathWithin, type SessionEntry } from "./registry.js";
@@ -414,42 +414,85 @@ denyReason = new DenyReasonFlow(
  * their own.
  */
 function rebootBridge(): void {
+  // Supervised: just die. scripts/run-bridge-hidden.vbs is sitting in a wait on
+  // this process and relaunches the moment it returns, so there is nothing to
+  // spawn and nothing that has to outlive us. That last part is the whole
+  // point — every previous attempt failed because the restarter had to survive
+  // its dying parent (a detached spawn, then WMI, both silently didn't).
+  if (cfg.supervised) {
+    log.warn("reboot: exiting for the supervisor to relaunch us");
+    process.exit(0);
+  }
   if (!cfg.restartCommand) {
-    log.warn("reboot ignored: no restartCommand configured");
+    log.warn("reboot ignored: not supervised and no restartCommand configured");
     return;
   }
+  log.warn("reboot: NOT supervised — attempting the legacy self-restart, which is unreliable");
   log.warn({ restartCommand: cfg.restartCommand }, "reboot: restarting the bridge from the deck");
   const port = cfg.port;
-  const logFile = join(cfg.log.dir, "reboot.log").replace(/'/g, "''"); // single-quote-safe for PS
-  // Detached restarter: wait for THIS bridge to free the port, then launch the
-  // successor and RETRY until it actually binds. The old single-shot version
-  // left the deck dead whenever that one trigger raced the port release or
-  // transiently missed — with no trace of why. This retries (stopping the
-  // instant the port comes up, so it can never stack duplicate bridges) and
-  // appends each step to reboot.log. No double quotes in the script (Node's
-  // arg-quoting mangles them); inline -Command dodges the script-execution
-  // policy.
-  const script =
+  const logFile = resolve(cfg.log.dir, "reboot.log").replace(/'/g, "''"); // absolute + single-quote-safe for PS
+  // The restarter: wait for THIS bridge to free the port, then relaunch the
+  // successor and RETRY until it actually binds, stopping the instant the port
+  // comes up (so it can never stack duplicate bridges) and appending each step
+  // to reboot.log.
+  const restarter =
     `$ErrorActionPreference='SilentlyContinue';` +
     `function L($m){ ([string](Get-Date)+' '+$m) | Out-File -Append -Encoding utf8 '${logFile}' };` +
+    `L 'restarter up';` +
     `L 'waiting for port ${port} to free';` +
     `$end=(Get-Date).AddSeconds(20);` +
     `while(((Get-Date) -lt $end) -and (Get-NetTCPConnection -LocalPort ${port} -State Listen)){ Start-Sleep -Milliseconds 200 };` +
     `$up=$false;` +
-    `for($t=0; $t -lt 3 -and -not $up; $t++){ L ('launch attempt '+($t+1)); ${cfg.restartCommand}; for($i=0;$i -lt 30;$i++){ Start-Sleep -Milliseconds 500; if(Get-NetTCPConnection -LocalPort ${port} -State Listen){ $up=$true; break } } };` +
+    `for($t=0; $t -lt 5 -and -not $up; $t++){ L ('launch attempt '+($t+1)); ${cfg.restartCommand}; for($i=0;$i -lt 30;$i++){ Start-Sleep -Milliseconds 500; if(Get-NetTCPConnection -LocalPort ${port} -State Listen){ $up=$true; break } } };` +
     `L ('done up='+$up)`;
+  // -EncodedCommand (UTF-16LE base64) carries the script with zero nested-quote
+  // hazards and dodges the script-execution policy.
+  const encoded = Buffer.from(restarter, "utf16le").toString("base64");
+
+  // Launch it so it SURVIVES this process exiting. The old reboot silently did
+  // nothing (reboot.log stayed empty — the restarter never wrote its first
+  // line): the prime suspect is the quote/`$`/`;`-heavy script passed through
+  // `-Command`, which Node's Windows arg-quoting mangles into an unparseable
+  // command. -EncodedCommand (below) removes that hazard entirely. We create the
+  // restarter through WMI Win32_Process.Create — which parents it under
+  // WmiPrvSE rather than this process — as belt-and-suspenders so it can't be
+  // torn down with us however this bridge is supervised (today the Task
+  // Scheduler task is fire-and-forget and the node tree is orphaned, but that's
+  // not something to depend on). A detached spawn is the fallback. base64 is
+  // quote-free, so single-quoting the CommandLine is safe.
+  const childCmd = `powershell.exe -NoProfile -NonInteractive -WindowStyle Hidden -EncodedCommand ${encoded}`;
+  const wmi =
+    `try { $r = Invoke-CimMethod -ClassName Win32_Process -MethodName Create ` +
+    `-Arguments @{ CommandLine = '${childCmd}' } -ErrorAction Stop; ` +
+    `if ($r.ReturnValue -ne 0) { exit 1 }; exit 0 } catch { exit 2 }`;
+  let launched = false;
   try {
-    spawn("powershell.exe", ["-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-Command", script], {
-      detached: true,
-      stdio: "ignore",
+    const res = spawnSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", wmi], {
       windowsHide: true,
-    }).unref();
+      timeout: 10_000,
+    });
+    launched = res.status === 0;
+    if (!launched) log.warn({ status: res.status }, "reboot: WMI restarter did not confirm — falling back to detached spawn");
   } catch (err) {
-    log.error({ err: String(err) }, "reboot: could not spawn the restarter — staying up");
-    return; // never exit if the relaunch couldn't be scheduled, or the deck stays dead
+    log.warn({ err: String(err) }, "reboot: WMI restarter threw — falling back to detached spawn");
   }
-  // Give the detached restarter a beat to spin up and start logging, then exit
-  // so its port-wait unblocks and it relaunches us.
+  if (!launched) {
+    // Fallback for standalone/dev runs (no kill-on-close job to escape): a
+    // plain detached, unref'd child. It can't survive a Task Scheduler job
+    // close — but without WMI, nothing could.
+    try {
+      spawn("powershell.exe", ["-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-EncodedCommand", encoded], {
+        detached: true,
+        stdio: "ignore",
+        windowsHide: true,
+      }).unref();
+    } catch (err) {
+      log.error({ err: String(err) }, "reboot: could not spawn the restarter — staying up");
+      return; // never exit if the relaunch couldn't be scheduled, or the deck stays dead
+    }
+  }
+  // Give the restarter a beat to come up and start logging, then exit so its
+  // port-wait unblocks and it relaunches us.
   setTimeout(() => process.exit(0), 600);
 }
 

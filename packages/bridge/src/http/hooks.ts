@@ -117,4 +117,12 @@ function applyEvent(registry: SessionRegistry, event: AnyHookEvent): void {
   // real dialog regardless of origin).
   const status = nextStatus(entry.status, event);
   if (status) registry.setStatus(entry, status);
+
+  // A swept (hidden) session comes back the moment the human types into it.
+  // UserPromptSubmit is that signal specifically — an automation's own tool /
+  // Stop / Notification traffic must NOT resurface it, or the sweep is
+  // pointless. wake() is a no-op unless the session is actually hidden, and it
+  // runs AFTER recordEvent so the session lands at the END of the row rather
+  // than being MRU-floated to the front. (See registry.wake / sweep.)
+  if (event.hook_event_name === "UserPromptSubmit") registry.wake(entry.sessionId);
 }

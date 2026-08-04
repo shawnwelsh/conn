@@ -55,7 +55,7 @@ export interface TileSpec {
   /** Session's bound window is gone (dead console) — inverted, with a skull. */
   dead?: boolean;
   /** Vector icon drawn above the label (row-3 globals etc.). */
-  icon?: "mic" | "send" | "esc" | "new" | "page" | "menu" | "resume" | "fork" | "branch";
+  icon?: "mic" | "send" | "esc" | "new" | "page" | "menu" | "resume" | "fork" | "branch" | "trash";
   /** Banner membership: this tile is slice `bannerIndex` of one string
    * rendered across `bannerSpan` adjacent keys (text carries the full
    * string on every slice). */
