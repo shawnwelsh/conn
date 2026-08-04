@@ -503,6 +503,53 @@ function drawIcon(
       }
       break;
     }
+    case "trash": {
+      // A bin: handle, lid, tapered body with ribs. Note what this key does —
+      // it takes sessions OFF THE DECK; it does not end them (they keep running
+      // and return the moment you type into one). The bin was chosen over a
+      // broom because its silhouette survives the 72px downscale unmistakably,
+      // and the cohort menu's "hide …" subtexts carry the non-destructive part.
+      ctx.save();
+      ctx.translate(cx, cy);
+      // Handle above the lid.
+      ctx.lineWidth = r * 0.16;
+      ctx.beginPath();
+      ctx.moveTo(-r * 0.26, -r * 0.74);
+      ctx.lineTo(-r * 0.26, -r * 0.96);
+      ctx.lineTo(r * 0.26, -r * 0.96);
+      ctx.lineTo(r * 0.26, -r * 0.74);
+      ctx.stroke();
+      // Lid.
+      ctx.lineWidth = r * 0.2;
+      ctx.beginPath();
+      ctx.moveTo(-r * 0.94, -r * 0.68);
+      ctx.lineTo(r * 0.94, -r * 0.68);
+      ctx.stroke();
+      // Body: tapering slightly, rounded into the base.
+      ctx.lineWidth = r * 0.18;
+      ctx.beginPath();
+      ctx.moveTo(-r * 0.76, -r * 0.4);
+      ctx.lineTo(-r * 0.56, r * 0.84);
+      ctx.quadraticCurveTo(-r * 0.52, r * 1.06, -r * 0.3, r * 1.06);
+      ctx.lineTo(r * 0.3, r * 1.06);
+      ctx.quadraticCurveTo(r * 0.52, r * 1.06, r * 0.56, r * 0.84);
+      ctx.lineTo(r * 0.76, -r * 0.4);
+      ctx.stroke();
+      // Ribs, following the taper.
+      ctx.lineWidth = r * 0.13;
+      for (const [xTop, xBot] of [
+        [-0.32, -0.26],
+        [0, 0],
+        [0.32, 0.26],
+      ] as const) {
+        ctx.beginPath();
+        ctx.moveTo(r * xTop, -r * 0.14);
+        ctx.lineTo(r * xBot, r * 0.72);
+        ctx.stroke();
+      }
+      ctx.restore();
+      break;
+    }
     case "menu": {
       // Three bars.
       ctx.lineWidth = r * 0.26;

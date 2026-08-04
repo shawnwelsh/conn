@@ -55,13 +55,18 @@ export interface DeckConfig {
   worktreeTimeoutSeconds: number;
   /** Text the suggestion-layer Accept key types into the session. */
   suggestionAcceptText: string;
-  /** Command the deck's Reboot key (row 3, page 2) runs to bring the bridge
-   * back after it exits itself. Executed by a detached PowerShell that first
-   * waits for the port to free — inline `-Command`, so the script-execution
-   * policy doesn't block it. Default relaunches via the "Conn Bridge" scheduled
-   * task; set to "" to hide the Reboot key entirely (e.g. if you start the
-   * bridge another way and don't want a self-restart button). */
+  /** LEGACY restart path, used only when the bridge is NOT supervised: a
+   * command run by a detached PowerShell that waits for the port to free and
+   * relaunches us. Unreliable in practice — the restarter has to outlive its
+   * dying parent, and repeatedly didn't — which is why
+   * scripts/run-bridge-hidden.vbs now supervises instead (see `supervised`).
+   * Set to "" to hide the Reboot key on an unsupervised install. */
   restartCommand?: string;
+  /** True when the bridge was started by the supervising launcher, which sets
+   * CONN_SUPERVISED=1. Then Reboot is simply process.exit(0) — the supervisor
+   * brings us back — and nothing has to survive our death. Derived from the
+   * environment, never read from config.json. */
+  supervised?: boolean;
   /** Milliseconds between typed text and the submitting Enter on DESKTOP
    * sessions — the Electron app renders its input/slash-popup async and an
    * instant Enter is swallowed. Consoles never delay. */
@@ -105,6 +110,16 @@ export interface DeckConfig {
     timeoutSeconds: number;
   };
   log: { level: string; dir: string };
+}
+
+/**
+ * Can the deck offer a Reboot key at all? Either the supervisor will bring us
+ * back after we exit (the reliable path), or there's a legacy restart command
+ * to attempt. With neither, exiting would just leave a dead deck — so the key
+ * is hidden rather than offered as a trap.
+ */
+export function canReboot(cfg: Pick<DeckConfig, "supervised" | "restartCommand">): boolean {
+  return Boolean(cfg.supervised || cfg.restartCommand);
 }
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
@@ -154,6 +169,10 @@ export function loadConfig(): DeckConfig {
   cfg.worktreeTimeoutSeconds ??= 90;
   cfg.suggestionAcceptText ??= "yes";
   cfg.restartCommand ??= "Start-ScheduledTask -TaskName 'Conn Bridge'";
+  // Set by scripts/run-bridge-hidden.vbs, which waits on us and relaunches on
+  // exit. Environment, not config: whether we're supervised is a fact about how
+  // this process was started, and a config file could easily claim otherwise.
+  cfg.supervised = process.env.CONN_SUPERVISED === "1";
   cfg.desktopSubmitDelayMs ??= 250;
   cfg.ptt ??= {} as DeckConfig["ptt"];
   cfg.ptt.enabled ??= true;

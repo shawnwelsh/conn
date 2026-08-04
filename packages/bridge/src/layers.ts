@@ -1,6 +1,6 @@
 import type { TileSpec, Row2Layer } from "@conn/shared";
 import type { SessionRegistry, SessionEntry } from "./registry.js";
-import type { DeckConfig } from "./config.js";
+import { canReboot, type DeckConfig } from "./config.js";
 import { activeSuggestion, awaitingSpokenAnswer, needsSpokenAnswer } from "./suggestions.js";
 import type { CommandEntry } from "./commands.js";
 
@@ -125,10 +125,18 @@ export interface DeckLayerState {
   /** A console launch (worktree + spawn) is in flight — New shows progress
    * and further presses are ignored. */
   launching?: boolean;
-  /** The Reboot global (row 3, page 2) is armed: first press turns it into a
+  /** The Reboot global (row 3, page 3) is armed: first press turns it into a
    * red "Confirm?", a second press within a few seconds restarts the bridge,
    * and no second press disarms it. */
   rebootArmed?: boolean;
+  /** Reboot was confirmed: the whole deck says REBOOTING while the bridge
+   * tears itself down. Never cleared by the reboot itself (the process exits
+   * under it) — only by the safety timer, if the restart never happened. */
+  rebooting?: boolean;
+  /** The Tidy key (row 3, page 2) is armed: the verb keys become the cohort
+   * picker (Consoles · Windows · All · Cancel). Auto-disarms after a few
+   * seconds so it can't strand the row. */
+  sweepMenu?: boolean;
   /** Dictation sidecar state, mirrored from the STT adapter; drives the mic
    * key face. Absent = offline (dictation not configured/available). */
   ptt?: "offline" | "loading" | "ready" | "recording" | "transcribing";
@@ -288,6 +296,23 @@ export function computeTiles(
    * the requesting session's key. */
   flashPhase = false,
 ): TileSpec[] {
+  // Reboot takes over the ENTIRE deck. The bridge is about to exit, and the
+  // plugin keeps the last frame it received — so this screen stays up for the
+  // whole outage, rather than leaving a normal-looking deck that has silently
+  // stopped responding. A frozen deck that still looks fine is
+  // indistinguishable from a hang, which is exactly what this replaces.
+  if (layer.rebooting) {
+    const screen: TileSpec[] = [];
+    for (let i = 0; i < 5; i++) {
+      screen.push({ text: "REBOOTING", state: "waiting", bannerSpan: 5, bannerIndex: i });
+    }
+    for (let i = 0; i < 5; i++) {
+      screen.push({ text: "bridge restarting…", state: "waiting", bannerSpan: 5, bannerIndex: i });
+    }
+    for (let i = 0; i < 5; i++) screen.push({ text: "", state: "blank" });
+    return screen;
+  }
+
   const tiles: TileSpec[] = [];
   const targeted = registry.targetedSession;
   const morphSessionId =
@@ -613,23 +638,45 @@ export function computeTiles(
   // Row 3 — true globals only. Session-specific keys (Mode picker, Rename)
   // live in the session row, configurable in commands.json like everything
   // else that acts on the targeted session.
-  if (HAS_GLOBALS_PAGE2 && layer.row3Page === 1) {
+  if (HAS_GLOBALS_PAGE2 && layer.row3Page === 1 && layer.sweepMenu) {
+    // Tidy armed: which cohort to take off the deck? Nothing is ended — the
+    // subtexts say "hide" deliberately, because the key wears a bin and the one
+    // thing a bin must not imply here is that sessions die. They return at the
+    // END of the row the next time you type into one (registry.wake).
+    tiles.push(
+      { text: "Consoles", subtext: "hide consoles", state: "answer" },
+      { text: "Windows", subtext: "hide app tabs", state: "answer" },
+      { text: "All", subtext: "hide both", state: "answer" },
+      { text: "Cancel", state: "command" },
+      { text: "Page", state: "command", icon: "page" },
+    );
+  } else if (HAS_GLOBALS_PAGE2 && layer.row3Page === 1) {
     // The other ways to start a session: pick up an old one, copy this one
-    // aside, or split it here.
+    // aside, or split it here — plus Tidy, which takes a cohort of sessions
+    // off the deck until you next type into them.
     tiles.push(
       layer.launching
         ? { text: "Resume", subtext: "spawning…", state: "waiting", icon: "resume", selected: flashPhase }
         : { text: "Resume", state: "command", icon: "resume" },
       { text: "Fork", state: "command", icon: "fork" },
       { text: "Branch", state: "command", icon: "branch" },
-      // Reboot the bridge itself — guarded by a two-step confirm (red) so a
-      // stray press can't blank the deck. Hidden when no restart command is
-      // configured (nothing to bring the bridge back with).
-      !cfg.restartCommand
+      { text: "Tidy", state: "command", icon: "trash" },
+      { text: "Page", state: "command", icon: "page" },
+    );
+  } else if (HAS_GLOBALS_PAGE2 && layer.row3Page === 2) {
+    // Page 3 — the bridge's own controls, off the everyday pages so a stray
+    // press never lands here. Reboot the bridge itself — guarded by a two-step
+    // confirm (red) so it can't blank the deck. Hidden when no restart command
+    // is configured (nothing to bring the bridge back with).
+    tiles.push(
+      !canReboot(cfg)
         ? { text: "", state: "blank" }
         : layer.rebootArmed
           ? { text: "Confirm?", subtext: "reboot bridge", state: "error" }
           : { text: "Reboot", state: "command" },
+      { text: "", state: "blank" },
+      { text: "", state: "blank" },
+      { text: "", state: "blank" },
       { text: "Page", state: "command", icon: "page" },
     );
   } else {

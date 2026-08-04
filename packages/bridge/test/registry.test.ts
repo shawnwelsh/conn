@@ -355,3 +355,93 @@ describe("working-set + pager model", () => {
     expect(r.targetedSession?.sessionId).toBe("b");
   });
 });
+
+describe("sweep + wake (the Tidy key)", () => {
+  it("hides a cohort by window kind, keeps them tracked, drops them off the deck", () => {
+    const r = new SessionRegistry(5);
+    start(r, "c1");
+    r.adoptTerminal("c1", 101); // → console
+    start(r, "c2");
+    r.adoptTerminal("c2", 102); // → console
+    start(r, "d1"); // stays desktop
+    expect(r.orderedEntries().map((s) => s.sessionId)).toEqual(["c1", "c2", "d1"]);
+
+    const n = r.sweep(["console"]);
+    expect(n).toBe(2);
+    expect(r.orderedEntries().map((s) => s.sessionId)).toEqual(["d1"]); // consoles gone
+    expect(r.get("c1")?.hidden).toBe(true);
+    expect(r.all()).toHaveLength(3); // still tracked, just hidden
+  });
+
+  it("Windows sweeps desktop app tabs; All takes both", () => {
+    const r = new SessionRegistry(5);
+    start(r, "c1");
+    r.adoptTerminal("c1", 1); // console
+    start(r, "d1"); // desktop
+    expect(r.sweep(["desktop"])).toBe(1);
+    expect(r.orderedEntries().map((s) => s.sessionId)).toEqual(["c1"]);
+    expect(r.sweep(["console", "desktop"])).toBe(1);
+    expect(r.orderedEntries()).toHaveLength(0);
+  });
+
+  it("the 30s re-scan can't drag a swept session back — it reads as known", () => {
+    const r = new SessionRegistry(5);
+    r.addKnownTerminal({ sessionId: "c1", pid: 101 }); // console
+    r.sweep(["console"]);
+    expect(r.orderedEntries()).toHaveLength(0);
+    // The periodic scan re-offers the same session; it must be refused.
+    expect(r.addKnownTerminal({ sessionId: "c1", pid: 101 })).toBeNull();
+    expect(r.orderedEntries()).toHaveLength(0); // still hidden
+  });
+
+  it("wake un-hides and returns the session to the END of the row", () => {
+    const r = new SessionRegistry(5);
+    for (const id of ["a", "b", "c"]) start(r, id); // desktop trio
+    r.addKnownTerminal({ sessionId: "z", pid: 9 }); // console, at the end
+    expect(r.orderedEntries().map((s) => s.sessionId)).toEqual(["a", "b", "c", "z"]);
+
+    r.sweep(["console"]); // hide z
+    expect(r.orderedEntries().map((s) => s.sessionId)).toEqual(["a", "b", "c"]);
+
+    r.wake("z");
+    expect(r.orderedEntries().map((s) => s.sessionId)).toEqual(["a", "b", "c", "z"]); // back at the end
+    expect(r.get("z")?.hidden).toBeFalsy();
+  });
+
+  it("wake is a no-op for a session that isn't hidden", () => {
+    const r = new SessionRegistry(5);
+    start(r, "a");
+    start(r, "b");
+    const before = r.orderedEntries().map((s) => s.sessionId);
+    r.wake("a");
+    expect(r.orderedEntries().map((s) => s.sessionId)).toEqual(before);
+  });
+
+  it("hidden sessions do not inflate the pager", () => {
+    const r = new SessionRegistry(5);
+    for (const id of ["a", "b", "c", "d", "e", "f"]) start(r, id); // 6 → pager on
+    expect(r.pagerActive()).toBe(true);
+    for (const id of ["c", "d", "e", "f"]) r.adoptTerminal(id, 1); // consoles
+    expect(r.sweep(["console"])).toBe(4); // 2 visible left
+    expect(r.pagerActive()).toBe(false);
+    expect(r.orderedEntries().map((s) => s.sessionId)).toEqual(["a", "b"]);
+  });
+
+  it("retargets when the swept cohort included the target", () => {
+    const r = new SessionRegistry(5);
+    r.addKnownTerminal({ sessionId: "c", pid: 1 }); // console, auto-targeted (first)
+    start(r, "d"); // desktop survivor
+    r.target("c");
+    expect(r.targetedSession?.sessionId).toBe("c");
+    r.sweep(["console"]);
+    expect(r.targetedSession?.sessionId).toBe("d");
+  });
+
+  it("never sweeps a launch in flight", () => {
+    const r = new SessionRegistry(5);
+    const p = r.addProvisionalAt("C:\\dev\\repo\\.claude\\worktrees\\amber"); // console-kind provisional
+    expect(r.sweep(["console"])).toBe(0);
+    expect(r.get(p.sessionId)?.hidden).toBeFalsy();
+    expect(r.orderedEntries().map((s) => s.sessionId)).toContain(p.sessionId);
+  });
+});

@@ -4,7 +4,7 @@ import { slugifyName, isDeckBranch, renameDeckBranch } from "./rename.js";
 import type { DeckLayerState } from "./layers.js";
 import { COMMANDS_PER_PAGE, QUESTION_OPTIONS_PER_PAGE, HAS_GLOBALS_PAGE2, row1Pagination } from "./layers.js";
 import type { DeliveryAdapter } from "./delivery/adapter.js";
-import type { DeckConfig } from "./config.js";
+import { canReboot, type DeckConfig } from "./config.js";
 import type { Logger } from "./log.js";
 import { GestureRecognizer, type Gesture } from "./gestures.js";
 import type { ConsoleLauncher } from "./delivery/launcher.js";
@@ -21,6 +21,16 @@ const CONSOLE_SUBMIT_GAP_MS = 150;
 /** Two-step Reboot: how long the red "Confirm?" stays armed before it disarms
  * itself. Short enough that a stray first press can't linger dangerously. */
 const REBOOT_CONFIRM_MS = 3000;
+/** How long the full-deck REBOOTING screen is given to reach the clients
+ * before the bridge starts tearing itself down (the restart path blocks, then
+ * exits, so a frame queued after it would never ship). */
+const REBOOT_SCREEN_MS = 400;
+/** If the bridge is STILL running this long after a confirmed reboot, the
+ * restart never took — drop the REBOOTING screen instead of lying. */
+const REBOOT_STUCK_MS = 15_000;
+/** How long the Tidy key's cohort picker (Consoles · Windows · All) stays
+ * open before it auto-disarms back to the verb row. */
+const SWEEP_MENU_MS = 4000;
 
 /**
  * Routes recognized gestures (from any client) to actions. Clients report raw
@@ -895,19 +905,33 @@ export class DeckController {
   /** Row 3: mic / interrupt / globals; the Page key flips global pages. */
   private async row3(index: number): Promise<void> {
     const target = this.registry.targetedSession;
+
+    // Tidy armed (page 2): the whole verb row is the cohort picker until it
+    // resolves — a press here sweeps or cancels, never the underlying verb.
+    if (this.layer.row3Page === 1 && this.layer.sweepMenu) return this.sweepMenuKey(index);
+
     if (index === 4 && HAS_GLOBALS_PAGE2) {
-      // Page — only while page 2 holds something; otherwise this key is
-      // Resume (see the switch below).
-      this.layer.row3Page = this.layer.row3Page === 0 ? 1 : 0;
+      // Page — cycle the globals pages. Page 3 (bridge controls) only exists
+      // when there's a restart command to put on it.
+      const pages = canReboot(this.cfg) ? 3 : 2;
+      this.layer.row3Page = (this.layer.row3Page + 1) % pages;
+      this.disarmReboot(); // never leave a half-armed control on a hidden page
+      this.disarmSweep();
       this.onLayerChanged();
       return;
     }
     if (this.layer.row3Page === 1) {
-      // Page 2 — the session-creation verbs that aren't the everyday New.
+      // Page 2 — the session-creation verbs that aren't the everyday New, plus
+      // Tidy, which takes a cohort off the deck until you next type into one.
       if (index === 0) return void (await this.resumeSession());
       if (index === 1) return void (await this.globalSlash("Fork", "/fork"));
       if (index === 2) return void (await this.globalSlash("Branch", "/branch"));
-      if (index === 3 && this.cfg.restartCommand) return this.rebootKey();
+      if (index === 3) return this.armSweep();
+      return;
+    }
+    if (this.layer.row3Page === 2) {
+      // Page 3 — the bridge's own controls. Reboot only, two-step confirmed.
+      if (index === 0 && canReboot(this.cfg)) return this.rebootKey();
       return;
     }
     switch (index) {
@@ -997,9 +1021,26 @@ export class DeckController {
   private rebootKey(): void {
     if (this.layer.rebootArmed) {
       this.disarmReboot();
+      // Take the whole deck over FIRST and let that frame actually reach the
+      // clients before the bridge starts tearing itself down: the restart path
+      // blocks and then exits the process, so anything queued after it never
+      // ships. The plugin holds the last frame it got, so REBOOTING stays on
+      // the keys for the entire outage.
+      this.layer.rebooting = true;
       this.onLayerChanged();
       this.log.warn("reboot: confirmed from the deck — restarting the bridge");
-      this.hooks.onReboot?.();
+      setTimeout(() => {
+        this.hooks.onReboot?.();
+        // If we're still alive well after that, the restart never happened
+        // (nothing spawned, or it refused). Put the deck back rather than sit
+        // on a REBOOTING screen that has become a lie.
+        setTimeout(() => {
+          if (!this.layer.rebooting) return;
+          this.layer.rebooting = false;
+          this.log.error("reboot: bridge still running — restart never took; deck restored");
+          this.onLayerChanged();
+        }, REBOOT_STUCK_MS);
+      }, REBOOT_SCREEN_MS);
       return;
     }
     this.layer.rebootArmed = true;
@@ -1019,5 +1060,59 @@ export class DeckController {
       this.rebootTimer = null;
     }
     this.layer.rebootArmed = false;
+  }
+
+  private sweepTimer: ReturnType<typeof setTimeout> | null = null;
+
+  /**
+   * Tidy key (row 3, page 2): arm the cohort picker. It turns the verb row
+   * into Consoles · Windows · All · Cancel and auto-disarms after a few seconds
+   * so a stray press can't leave the row stuck mid-choice.
+   */
+  private armSweep(): void {
+    this.layer.sweepMenu = true;
+    if (this.sweepTimer) clearTimeout(this.sweepTimer);
+    this.sweepTimer = setTimeout(() => {
+      if (this.layer.sweepMenu) {
+        this.layer.sweepMenu = false;
+        this.onLayerChanged();
+      }
+    }, SWEEP_MENU_MS);
+    this.onLayerChanged();
+  }
+
+  /**
+   * A key on the armed Tidy menu:
+   *   0 Consoles · 1 Windows (desktop app tabs) · 2 All · 3 Cancel · 4 Page.
+   * Sweeps the chosen cohort off the deck (registry.sweep), then closes. The
+   * sessions keep running; they resurface at the end of the row the next time
+   * you type into one — no button brings them back, which is the whole point.
+   */
+  private sweepMenuKey(index: number): void {
+    this.disarmSweep();
+    const kinds =
+      index === 0
+        ? (["console"] as const)
+        : index === 1
+          ? (["desktop"] as const)
+          : index === 2
+            ? (["console", "desktop"] as const)
+            : null; // 3 Cancel, 4 Page → just close
+    if (!kinds) {
+      this.log.info("sweep: cancelled");
+      this.onLayerChanged();
+      return;
+    }
+    const hidden = this.registry.sweep([...kinds]);
+    this.log.info({ kinds, hidden }, "sweep");
+    this.onLayerChanged();
+  }
+
+  private disarmSweep(): void {
+    if (this.sweepTimer) {
+      clearTimeout(this.sweepTimer);
+      this.sweepTimer = null;
+    }
+    this.layer.sweepMenu = false;
   }
 }
