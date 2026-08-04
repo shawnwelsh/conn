@@ -126,11 +126,16 @@ describe("row 3 globals", () => {
     const cfgPtt = { ...(cfg as object), ptt: { maxSeconds: 60 } } as DeckConfig;
     const c = new DeckController(registry, layer, delivery, cfgPtt, noopLog, () => {});
     c.setStt(stt as never);
-    c.setCommands(fakeCommands([{ kind: "text", label: "Subtask", text: "/subtask ", dictate: true }]));
+    // NOTE: no trailing space in the entry — commands.json text is trimmed on
+    // parse, so one written there never survives. The separator is added at
+    // use time instead, which is what the assertion below pins.
+    c.setCommands(fakeCommands([{ kind: "text", label: "Subtask", text: "/subtask", dictate: true }]));
 
     (c as any).row2(0);
     await flush();
-    // Prefix typed, NO Enter — the argument is still to come.
+    // Prefix typed WITH its separating space, and NO Enter — the argument is
+    // still to come. Without the space the speech would land as "/subtaskcheck
+    // the leap year path" and Claude Code would see one unknown token.
     expect(delivery.calls).toEqual([{ m: "sendText", chords: ["/subtask "] }]);
     expect(stt.calls).toEqual(["start"]);
 
@@ -140,6 +145,35 @@ describe("row 3 globals", () => {
     expect(stt.calls).toEqual(["start", "stop"]);
     expect(delivery.calls.map((x) => x.m)).toEqual(["sendText", "sendText", "sendKey"]);
     expect(delivery.calls[1]!.chords).toEqual(["check the leap year path"]);
+    // End to end, the session receives a well-formed command line.
+    expect(delivery.calls.slice(0, 2).map((x) => x.chords[0]).join("")).toBe(
+      "/subtask check the leap year path",
+    );
+  });
+
+  it("normalises the dictate separator however the entry was written", async () => {
+    // Whether the user wrote "/btw", "/btw " or "/btw   ", exactly one space
+    // reaches the session — no missing separator, no double space.
+    for (const [written, expected] of [
+      ["/btw", "/btw "],
+      ["/btw ", "/btw "],
+      ["/btw   ", "/btw "],
+    ] as const) {
+      const stt = {
+        status: "ready" as const,
+        async start() { this.status = "recording" as never; return true; },
+        async stop() { this.status = "ready" as never; return ""; },
+        async cancel() {},
+      };
+      const d = new RecordingAdapter();
+      const cfgPtt = { ...(cfg as object), ptt: { maxSeconds: 60 } } as DeckConfig;
+      const c = new DeckController(registry, layer, d, cfgPtt, noopLog, () => {});
+      c.setStt(stt as never);
+      c.setCommands(fakeCommands([{ kind: "text", label: "BTW", text: written, dictate: true }]));
+      (c as any).row2(0);
+      await flush();
+      expect(d.calls[0]!.chords).toEqual([expected]);
+    }
   });
 
   it("globals page 2 holds Resume, Fork and Branch", async () => {

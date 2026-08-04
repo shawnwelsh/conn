@@ -566,7 +566,12 @@ export class DeckController {
       if (this.pttActive) {
         this.log.info({ key: name }, "dictate command ignored: already recording");
       } else {
-        ok = await this.delivery.sendText(target, entry.text);
+        // ALWAYS end the prefix with exactly one space, or the dictated words
+        // run straight into the command and Claude Code sees one unknown token
+        // ("/subtaskadd a test"). It can only be guaranteed here: commands.json
+        // entries are trimmed when parsed, so a trailing space written in the
+        // file never survives to this point.
+        ok = await this.delivery.sendText(target, `${entry.text.trimEnd()} `);
         if (ok) await this.pttToggle();
       }
     } else if (entry.kind === "text") {

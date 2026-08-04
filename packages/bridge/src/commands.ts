@@ -17,7 +17,10 @@ import type { Logger } from "./log.js";
  *   - { …, "dictate": true }     → type the text, then open the mic instead
  *                                  of submitting: for commands whose whole
  *                                  point is the argument (/subtask, /btw,
- *                                  /goal). Send ships prefix + speech.
+ *                                  /goal). Send ships prefix + speech. A
+ *                                  separating space is added automatically —
+ *                                  don't write one here, `text` is trimmed on
+ *                                  parse so it would be dropped anyway.
  *   - { "label": "Accept Next", "keys": ["tab", "enter"] } → a chord
  *                                  sequence, spaced so each lands separately
  *                                  (Tab accepts Claude Code's suggested next
@@ -57,7 +60,7 @@ export const DEFAULT_COMMANDS_JSON: unknown[] = [
   { label: "Remote", text: "/remote-control", extraEnter: true },
   "mode",
   "model",
-  { label: "Subtask", text: "/subtask ", dictate: true },
+  { label: "Subtask", text: "/subtask", dictate: true },
   "/diff",
   "/recap",
   "/tasks",
