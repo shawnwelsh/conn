@@ -83,16 +83,50 @@ describe("adopting terminal sessions the deck didn't launch", () => {
     expect(e.windowKind).toBe("console"); // now speaks the TUI dialect
   });
 
-  it("never overwrites a deck-launched binding", () => {
+  // This used to assert the OPPOSITE — that a deck-launched binding always
+  // wins, because it carries an hwnd for focus. That assumption is what made a
+  // crossed binding permanent: four `Resume` launches in the SAME cwd get
+  // paired to sessions arbitrarily (cwd is the only key), and Claude Code's
+  // own record — which is authoritative, since each session writes its own pid
+  // — was then re-read every 30s and thrown away. Keys drove the wrong console
+  // until the bridge restarted.
+  it("CORRECTS a binding Claude Code disagrees with, and drops the stale hwnd", () => {
     const r = new SessionRegistry(5);
     r.registerPendingLaunch({ cwd: "C:\\dev\\x", pid: 4242, hwnd: 777, at: Date.now() });
     const e = r.ensure({ session_id: "s1", cwd: "C:\\dev\\x", hook_event_name: "SessionStart" });
     expect(e.pid).toBe(4242);
-    // The deck-launched binding also carries an hwnd for focus — strictly
-    // better than what adoption can offer, so it wins.
-    expect(r.adoptTerminal("s1", 36588)).toBe(false);
-    expect(e.pid).toBe(4242);
-    expect(e.hwnd).toBe(777);
+
+    // Claude Code says this session is really pid 36588 — believe it.
+    expect(r.adoptTerminal("s1", 36588)).toBe(true);
+    expect(e.pid).toBe(36588);
+    // The hwnd was paired with the OLD pid, so it belongs to a different
+    // console. Dropping it lets focus re-derive from the corrected pid rather
+    // than raising someone else's window.
+    expect(e.hwnd).toBeUndefined();
+  });
+
+  it("is a no-op when the binding already agrees — no churn on every sweep", () => {
+    const r = new SessionRegistry(5);
+    const e = start(r, "s1");
+    expect(r.adoptTerminal("s1", 36588)).toBe(true); // first bind
+    expect(r.adoptTerminal("s1", 36588)).toBe(false); // already correct
+    expect(e.pid).toBe(36588);
+  });
+
+  it("unpicks a crossed pair: two sessions launched from ONE cwd", () => {
+    // The live failure: two Resumes in the same directory, so the provisional
+    // keys are indistinguishable and the pids land on the wrong sessions.
+    const r = new SessionRegistry(5);
+    const a = r.addKnownTerminal({ sessionId: "A", pid: 111, cwd: "C:\\dev\\repo", name: "msp products" })!;
+    const b = r.addKnownTerminal({ sessionId: "B", pid: 222, cwd: "C:\\dev\\repo", name: "renewal calls" })!;
+    a.pid = 222; // crossed
+    b.pid = 111;
+
+    // One sweep of Claude Code's truth puts both back.
+    r.adoptTerminal("A", 111);
+    r.adoptTerminal("B", 222);
+    expect(a.pid).toBe(111);
+    expect(b.pid).toBe(222);
   });
 
   it("announces new sessions so they bind on arrival, not 30s later", () => {

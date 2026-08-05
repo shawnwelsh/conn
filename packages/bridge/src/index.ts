@@ -624,8 +624,19 @@ function adoptTerminals(only?: SessionEntry): void {
     const known = registry.get(meta.sessionId);
     if (known) {
       if (only && known.sessionId !== only.sessionId) continue;
+      const had = known.pid;
       if (registry.adoptTerminal(meta.sessionId, meta.pid)) {
-        log.info({ session: meta.sessionId, label: known.label, pid: meta.pid }, "adopted terminal session by pid");
+        // A CHANGED pid means the key was driving the wrong console until now
+        // — worth a warning, not an info line, because the symptom (commands
+        // landing in another session) is bewildering from the outside.
+        if (had !== undefined) {
+          log.warn(
+            { session: meta.sessionId, label: known.label, was: had, now: meta.pid },
+            "corrected a crossed console binding from Claude Code's own record",
+          );
+        } else {
+          log.info({ session: meta.sessionId, label: known.label, pid: meta.pid }, "adopted terminal session by pid");
+        }
       }
       continue;
     }
@@ -650,12 +661,28 @@ function adoptTerminals(only?: SessionEntry): void {
       log.info({ session: meta.sessionId, label: reconciled.label, pid: meta.pid }, "reconciled provisional into terminal session");
       continue;
     }
-    // One key per working tree. A terminal accumulates several Claude Code
-    // sessions over its life — restarts, dispatched jobs — all sharing one
-    // console. The deck should show the console, not its history.
+    // One key per live CONSOLE — identified by pid, not by directory.
+    //
+    // A terminal accumulates several Claude Code sessions over its life
+    // (restarts, dispatched jobs) all sharing one console, and the deck should
+    // show the console rather than its history — but they share that console's
+    // PID, which is what makes them the same thing. Directory is not identity:
+    // `Resume` deliberately creates no worktree, so resuming four sessions into
+    // one repo gives four distinct consoles in ONE cwd. Keying on the tree made
+    // the first of them "cover" the rest, and three real consoles silently had
+    // no key at all until someone typed in them.
+    //
+    // The provisional clause stays: a launch still in flight owns its tree, and
+    // the session that eventually starts there belongs to that key (it
+    // reconciles above), so it must not also get a second one here.
     const covered = registry
       .all()
-      .some((s) => pathWithin(meta.cwd ?? "", s.cwd) || pathWithin(s.cwd, meta.cwd ?? ""));
+      .some(
+        (s) =>
+          (meta.pid !== undefined && s.pid === meta.pid) ||
+          (s.sessionId.startsWith("launching:") &&
+            (pathWithin(meta.cwd ?? "", s.cwd) || pathWithin(s.cwd, meta.cwd ?? ""))),
+      );
     if (covered) continue;
     const added = registry.addKnownTerminal({ ...meta, status: ccStatusToDeck(meta.status) });
     if (added) {

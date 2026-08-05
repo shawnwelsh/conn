@@ -312,7 +312,16 @@ export class SessionRegistry extends EventEmitter {
   }): SessionEntry | null {
     const entry = this.reconcileProvisional(meta.cwd ?? "", meta.sessionId);
     if (!entry) return null;
-    if (!entry.pid) entry.pid = meta.pid;
+    // Claude Code's pid wins here for the same reason it does in adoptTerminal:
+    // a restored provisional carries the pid/hwnd of whatever the launcher
+    // spawned, and a persisted binding can outlive a reboot entirely (the pid
+    // is then dead, or recycled onto an unrelated process). Keeping the stale
+    // one just to preserve an hwnd is how a key ends up driving another
+    // session's console at boot.
+    if (entry.pid !== meta.pid) {
+      if (entry.pid !== undefined) entry.hwnd = undefined; // captured with the old pid
+      entry.pid = meta.pid;
+    }
     entry.windowKind = "console";
     if (meta.status) entry.status = meta.status;
     if (meta.name) {
@@ -345,14 +354,29 @@ export class SessionRegistry extends EventEmitter {
    * controllable: delivery injects by pid, so a process id is the whole
    * requirement.
    *
-   * Never touches an already-bound session — a deck-launched console holds
-   * the cmd pid plus a window handle for focus, which is strictly better.
+   * Claude Code's record is AUTHORITATIVE and overrides what we think we
+   * bound, because each session writes its own pid — whereas the deck can only
+   * infer one from what it launched, and that inference pairs consoles to
+   * sessions by CWD. Several `Resume` launches share one cwd (Resume makes no
+   * worktree), so launching a few at once pairs them arbitrarily: keys then
+   * drive another session's console. This used to refuse to overwrite an
+   * existing pid, which made such a crossing permanent — the correct pid was
+   * re-read every 30s and discarded. Believing Claude Code makes the deck
+   * self-heal within one sweep, whatever caused the crossing (a launch race, a
+   * stale persisted binding, a pid reused after a reboot).
+   *
+   * A changed pid also invalidates the hwnd, which was captured alongside the
+   * OLD pid and therefore belongs to a different window. It's dropped so focus
+   * re-derives from the corrected pid instead of raising someone else's
+   * console; healthy adopted sessions run without one anyway.
    */
   adoptTerminal(sessionId: string, pid: number): boolean {
     const entry = this.sessions.get(sessionId);
-    if (!entry || entry.pid) return false;
+    if (!entry || entry.pid === pid) return false; // absent, or already right
+    const previous = entry.pid;
     entry.pid = pid;
     entry.windowKind = "console";
+    if (previous !== undefined) entry.hwnd = undefined;
     this.emit("changed");
     return true;
   }
