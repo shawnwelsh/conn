@@ -8,7 +8,7 @@ import { SessionRegistry, pathWithin, type SessionEntry } from "./registry.js";
 import type { SessionStatus } from "@conn/shared";
 import { BindingStore, restoreConsoleBindings } from "./bindings.js";
 import { DenyReasonFlow } from "./denyReason.js";
-import { readCcSessionNames, readCliSessions, CC_SESSIONS_DIR } from "./sessionMeta.js";
+import { readCcSessionNames, readCliSessions, readWaitingSessionIds, CC_SESSIONS_DIR } from "./sessionMeta.js";
 import { DecisionStore } from "./decisions.js";
 import {
   advanceQuestion,
@@ -731,15 +731,18 @@ function adoptTerminals(only?: SessionEntry): void {
  * one, so hooks keep ownership of every other transition and the next real
  * activity clears it. Idle-at-the-prompt reports "idle", not "waiting", so a
  * console merely sitting there does not light up.
+ *
+ * Covers DESKTOP-app sessions as well as terminals: being stuck is worth
+ * showing wherever the session lives, and only delivery needs a console pid
+ * (see readWaitingSessionIds).
  */
 function pollPromptWaiting(): void {
-  for (const meta of readCliSessions(CC_SESSIONS_DIR, log)) {
-    if (meta.status !== "waiting") continue;
-    const entry = registry.get(meta.sessionId);
+  for (const sessionId of readWaitingSessionIds(CC_SESSIONS_DIR, log)) {
+    const entry = registry.get(sessionId);
     if (!entry || entry.status === "waiting") continue;
     registry.setStatus(entry, "waiting");
     log.info(
-      { session: meta.sessionId, label: entry.label },
+      { session: sessionId, label: entry.label, kind: entry.windowKind },
       "session is blocked at a prompt the deck gets no hook for — surfacing it",
     );
   }

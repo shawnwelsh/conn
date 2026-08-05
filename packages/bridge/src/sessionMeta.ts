@@ -117,6 +117,37 @@ export function readCliSessions(dir: string = CC_SESSIONS_DIR, log?: Logger): Cl
   return [...byId.values()].map((v) => v.session);
 }
 
+/**
+ * Session ids Claude Code currently reports as BLOCKED ON THE HUMAN — whatever
+ * they happen to be running in.
+ *
+ * Deliberately NOT filtered to `entrypoint: "cli"` the way readCliSessions is.
+ * That filter exists because DELIVERY needs a console pid to type into; saying
+ * a session is stuck needs no pid at all, and a session in the desktop app sits
+ * on an MCP elicitation exactly as easily as one in a terminal. Inheriting the
+ * delivery filter here made those prompts invisible for a reason that had
+ * nothing to do with them.
+ *
+ * Freshest record per session wins (one session can have several, under
+ * different pids), and a record whose process is gone is ignored — otherwise a
+ * leftover file could pin a key on "waiting" forever, and nothing would ever
+ * clear it because a dead session generates no activity.
+ */
+export function readWaitingSessionIds(dir: string = CC_SESSIONS_DIR, log?: Logger): Set<string> {
+  const freshest = new Map<string, { at: number; waiting: boolean }>();
+  for (const meta of readRecords(dir, log)) {
+    if (typeof meta.sessionId !== "string") continue;
+    if (typeof meta.pid === "number" && !isRunning(meta.pid)) continue;
+    const at = typeof meta.statusUpdatedAt === "number" ? meta.statusUpdatedAt : (meta.updatedAt ?? 0);
+    const prev = freshest.get(meta.sessionId);
+    if (prev && at < prev.at) continue;
+    freshest.set(meta.sessionId, { at, waiting: meta.status === "waiting" });
+  }
+  const waiting = new Set<string>();
+  for (const [sessionId, v] of freshest) if (v.waiting) waiting.add(sessionId);
+  return waiting;
+}
+
 /** Cheap liveness check — signal 0 tests existence without touching the
  * process. EPERM means it exists but belongs to someone else. */
 function isRunning(pid: number): boolean {
