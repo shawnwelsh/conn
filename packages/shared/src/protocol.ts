@@ -52,6 +52,16 @@ export interface TileSpec {
   /** Stale slot (no events for a while) — drained of colour, not darkened, so
    * it can't be confused with "not targeted". */
   dim?: boolean;
+  /**
+   * Breathe this key on the SLOW clock: it's blocked on you, but the deck has
+   * no panel to answer it with (an MCP elicitation, a trust dialog — prompts
+   * Claude Code raises no hook for), so the only honest message is "come and
+   * look". Lightens the veil rather than lifting it: a fully unveiled key means
+   * "this is the console your keystrokes reach", and a key that borrows that
+   * look while you aren't driving it would send input to the wrong window.
+   * Distinct from `selected`, which strobes at 2Hz for a morph you CAN answer.
+   */
+  pulse?: boolean;
   /** Session's bound window is gone (dead console) — inverted, with a skull. */
   dead?: boolean;
   /** Vector icon drawn above the label (row-3 globals etc.). */

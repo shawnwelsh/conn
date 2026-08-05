@@ -280,8 +280,18 @@ export function renderTile(spec: TileSpec): Buffer {
   // Not the targeted session: veil it. LAST, so it dims the skull too — a
   // dead session you aren't pointed at should recede like every other
   // non-target, not glow brighter than the live one you're driving.
+  //
+  // `pulse` breathes that veil on the slow clock for a session blocked on a
+  // prompt the deck can't answer. It only ever moves between dim and dimmer:
+  // the bright end stays clearly darker than an unveiled key, because full
+  // brightness is reserved for "this is where your keystrokes go" and must not
+  // be borrowed by a key that merely wants attention. A targeted session gets
+  // the same breath as a light wash, so the cue is visible on every key.
   if (spec.veil) {
-    ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
+    ctx.fillStyle = spec.pulse ? "rgba(0, 0, 0, 0.3)" : "rgba(0, 0, 0, 0.5)";
+    ctx.fillRect(0, 0, S, S);
+  } else if (spec.pulse) {
+    ctx.fillStyle = "rgba(0, 0, 0, 0.22)";
     ctx.fillRect(0, 0, S, S);
   }
 

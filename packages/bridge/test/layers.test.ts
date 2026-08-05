@@ -60,6 +60,60 @@ describe("target restore after an interrupt morph (permission or question)", () 
   });
 });
 
+// An MCP elicitation ("Are you sure you want to execute dax queries…?") raises
+// NO hook, so the deck can't offer buttons for it — but the session is stuck.
+// The slow breath says "come and look" without borrowing the one visual that
+// means "your keystrokes land here".
+describe("row-1 slow pulse for a session blocked at an unanswerable prompt", () => {
+  const agents = (): DeckLayerState => ({
+    row1: { mode: "agents", page: 0 },
+    row2: "idle",
+    row2Cmd: { mode: "default", page: 0 },
+    row3Page: 0,
+    controls: { planNext: "plan", modelNext: 1 },
+  });
+
+  it("breathes a waiting session on the SLOW clock, not the 2Hz flash", () => {
+    const r = new SessionRegistry(5);
+    const a = start(r, "a");
+    const stuck = start(r, "stuck");
+    r.target(a.sessionId);
+    r.setStatus(stuck, "waiting");
+
+    // slowPhase is the 6th argument; flashPhase (5th) must not drive it.
+    const lit = computeTiles(r, agents(), cfg, [], false, true);
+    const dark = computeTiles(r, agents(), cfg, [], false, false);
+    expect(lit[stuck.slot]!.pulse).toBe(true);
+    expect(dark[stuck.slot]!.pulse).toBe(false);
+    // The fast clock alone never pulses it.
+    expect(computeTiles(r, agents(), cfg, [], true, false)[stuck.slot]!.pulse).toBe(false);
+  });
+
+  it("stays veiled while breathing — it must not look like the targeted console", () => {
+    // Full brightness means "keystrokes go here". A key that borrows that look
+    // to ask for attention is how input lands in the wrong window.
+    const r = new SessionRegistry(5);
+    const a = start(r, "a");
+    const stuck = start(r, "stuck");
+    r.target(a.sessionId);
+    r.setStatus(stuck, "waiting");
+    const tiles = computeTiles(r, agents(), cfg, [], false, true);
+    expect(tiles[stuck.slot]!.veil).toBe(true); // still receded
+    expect(tiles[a.slot]!.veil).toBe(false); // the target stays the bright one
+    expect(tiles[a.slot]!.pulse).toBe(false); // and doesn't breathe
+  });
+
+  it("leaves settled sessions alone", () => {
+    const r = new SessionRegistry(5);
+    const a = start(r, "a");
+    const b = start(r, "b");
+    r.setStatus(b, "thinking");
+    const tiles = computeTiles(r, agents(), cfg, [], false, true);
+    expect(tiles[a.slot]!.pulse).toBe(false);
+    expect(tiles[b.slot]!.pulse).toBe(false);
+  });
+});
+
 describe("row-1 stale dimming", () => {
   it("dims a slot with no events past the threshold, keeps fresh ones lit", () => {
     const r = new SessionRegistry(5);
