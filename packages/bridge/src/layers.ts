@@ -295,6 +295,11 @@ export function computeTiles(
   /** Alternates ~2×/sec while a morph layer is active, driving the flash on
    * the requesting session's key. */
   flashPhase = false,
+  /** The SLOW clock (~1 breath every 2s), for sessions blocked on a prompt the
+   * deck can't answer. Deliberately a different rhythm from flashPhase so the
+   * two cues are never confused: fast strobe = "answer me here", slow breath =
+   * "come and look". */
+  slowPhase = false,
 ): TileSpec[] {
   // Reboot takes over the ENTIRE deck. The bridge is about to exit, and the
   // plugin keeps the last frame it received — so this screen stays up for the
@@ -464,6 +469,11 @@ export function computeTiles(
         // say which — voice landed in the wrong window more than once.
         veil: Boolean(targeted) && !isMorphOrigin && session.sessionId !== targeted?.sessionId,
         dim: stale,
+        // Blocked on the human with nothing on the deck to answer it — breathe
+        // slowly so it's noticed without pretending to be answerable. The morph
+        // origin is excluded: it already strobes, and a key doing both at once
+        // reads as neither.
+        pulse: session.status === "waiting" && !isMorphOrigin && slowPhase,
         dead: session.windowDead,
       });
     }

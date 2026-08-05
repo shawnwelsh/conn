@@ -108,6 +108,8 @@ let sockets: DeckSocketServer;
 let lastImages: string[] = [];
 let flashPhase = false;
 let flashTimer: ReturnType<typeof setInterval> | null = null;
+let slowPhase = false;
+let slowTimer: ReturnType<typeof setInterval> | null = null;
 
 /** Render loop: recompute all 15 tiles, broadcast only the ones that changed.
  * The tile cache makes unchanged tiles nearly free to recompute. */
@@ -115,7 +117,7 @@ function pushRender(): void {
   // Boot: events can fire (e.g. STT status) before the WS server exists;
   // the explicit pushRender() after listen paints whatever state accrued.
   if (!sockets) return;
-  const tiles = computeTiles(registry, layer, cfg, commands.all(), flashPhase);
+  const tiles = computeTiles(registry, layer, cfg, commands.all(), flashPhase, slowPhase);
   const images = tiles.map((t) => {
     // Banner tiles are slices of one wide image; renderBanner caches slices.
     if (t.bannerSpan && t.bannerIndex !== undefined) {
@@ -153,6 +155,26 @@ function flashNeeded(): boolean {
     // A spoken-answer question is up and the mic is ready — pulse "Answer".
     (layer.ptt === "ready" && awaitingSpokenAnswer(registry, layer))
   );
+}
+
+/**
+ * The slow breath, for sessions blocked on a prompt the deck can't answer.
+ * ~1s per half-cycle against the flash's 500ms, so the two rhythms read as
+ * different things rather than "one key is a bit out of step". Runs only while
+ * a session is actually waiting, so an idle deck does no work.
+ */
+function syncSlowPulse(): void {
+  const active = registry.all().some((s) => s.status === "waiting");
+  if (active && !slowTimer) {
+    slowTimer = setInterval(() => {
+      slowPhase = !slowPhase;
+      pushRender();
+    }, 1000);
+  } else if (!active && slowTimer) {
+    clearInterval(slowTimer);
+    slowTimer = null;
+    slowPhase = false;
+  }
 }
 
 /** Run the flash animation only while something needs it. */
@@ -601,6 +623,7 @@ controller.setHooks({
 
 registry.on("changed", () => {
   syncFlash(flashNeeded());
+  syncSlowPulse();
   pushRender();
 });
 
@@ -690,6 +713,39 @@ function adoptTerminals(only?: SessionEntry): void {
     }
   }
 }
+/**
+ * Catch prompts NO HOOK REPORTS.
+ *
+ * Claude Code's hook vocabulary covers its own dialogs (PermissionRequest,
+ * AskUserQuestion, the idle/permission Notifications) but not everything that
+ * blocks a session on the human: an MCP server's elicitation ("Are you sure you
+ * want to execute dax queries…?") raises no hook at all, so the deck never
+ * learned the session was stuck and the key sat there looking fine.
+ *
+ * It does, however, publish `status: "waiting"` into its own session file
+ * whenever something is blocking on input — the same file the row-2 command
+ * guard already reads to refuse typing into a prompt. That signal was being
+ * read and used only to say NO; this promotes it to the deck as well.
+ *
+ * PROMOTE-ONLY, deliberately: it can raise a session to waiting but never lower
+ * one, so hooks keep ownership of every other transition and the next real
+ * activity clears it. Idle-at-the-prompt reports "idle", not "waiting", so a
+ * console merely sitting there does not light up.
+ */
+function pollPromptWaiting(): void {
+  for (const meta of readCliSessions(CC_SESSIONS_DIR, log)) {
+    if (meta.status !== "waiting") continue;
+    const entry = registry.get(meta.sessionId);
+    if (!entry || entry.status === "waiting") continue;
+    registry.setStatus(entry, "waiting");
+    log.info(
+      { session: meta.sessionId, label: entry.label },
+      "session is blocked at a prompt the deck gets no hook for — surfacing it",
+    );
+  }
+}
+setInterval(pollPromptWaiting, 5_000).unref();
+
 registry.on("session-added", (entry: SessionEntry) => adoptTerminals(entry));
 adoptTerminals(); // catch everything already running at boot
 
