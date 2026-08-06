@@ -1,7 +1,15 @@
 import { createCanvas, type SKRSContext2D } from "@napi-rs/canvas";
 import { createHash } from "node:crypto";
 import type { TileSpec, SessionStatus } from "@conn/shared";
-import { themeFor, SELECTED_BORDER, TILE_SIZE, FONT_FAMILY } from "./theme.js";
+import {
+  themeFor,
+  SELECTED_BORDER,
+  TILE_SIZE,
+  FONT_FAMILY,
+  VEIL_ALPHA,
+  VEIL_ALPHA_BREATH,
+  TARGET_ALPHA_BREATH,
+} from "./theme.js";
 
 /**
  * The single tile renderer every layer goes through.
@@ -288,10 +296,10 @@ export function renderTile(spec: TileSpec): Buffer {
   // be borrowed by a key that merely wants attention. A targeted session gets
   // the same breath as a light wash, so the cue is visible on every key.
   if (spec.veil) {
-    ctx.fillStyle = spec.pulse ? "rgba(0, 0, 0, 0.3)" : "rgba(0, 0, 0, 0.5)";
+    ctx.fillStyle = `rgba(0, 0, 0, ${spec.pulse ? VEIL_ALPHA_BREATH : VEIL_ALPHA})`;
     ctx.fillRect(0, 0, S, S);
   } else if (spec.pulse) {
-    ctx.fillStyle = "rgba(0, 0, 0, 0.22)";
+    ctx.fillStyle = `rgba(0, 0, 0, ${TARGET_ALPHA_BREATH})`;
     ctx.fillRect(0, 0, S, S);
   }
 

@@ -117,6 +117,48 @@ export function readCliSessions(dir: string = CC_SESSIONS_DIR, log?: Logger): Cl
   return [...byId.values()].map((v) => v.session);
 }
 
+/**
+ * Claude Code's current status per session — whatever they happen to be
+ * running in. `"waiting"` means BLOCKED ON THE HUMAN.
+ *
+ * Returns the status BOTH ways on purpose. An earlier version returned only
+ * the waiting ids, which made the deck's promotion one-way: it could raise a
+ * key to waiting but had nothing to lower it with, so a session that was
+ * briefly at a prompt kept breathing for attention long after it was answered
+ * — nothing cleared it, because a quiet session sends no hooks. If this file
+ * is trusted to raise the flag it has to be trusted to drop it.
+ *
+ * Deliberately NOT filtered to `entrypoint: "cli"` the way readCliSessions is.
+ * That filter exists because DELIVERY needs a console pid to type into; saying
+ * a session is stuck needs no pid at all, and a session in the desktop app sits
+ * on an MCP elicitation exactly as easily as one in a terminal. Inheriting the
+ * delivery filter here made those prompts invisible for a reason that had
+ * nothing to do with them.
+ *
+ * Freshest record per session wins (one session can have several, under
+ * different pids), and a record whose process is gone is ignored — otherwise a
+ * leftover file could pin a key on "waiting" forever, and nothing would ever
+ * clear it because a dead session generates no activity.
+ */
+export function readPromptStatuses(dir: string = CC_SESSIONS_DIR, log?: Logger): Map<string, string> {
+  const freshest = new Map<string, { at: number; status: string }>();
+  for (const meta of readRecords(dir, log)) {
+    if (typeof meta.sessionId !== "string") continue;
+    // Only records that actually CARRY a status are evidence. A record with no
+    // status field says nothing about the session — treating its absence as
+    // "not waiting" would let a silent record cancel a live one's prompt.
+    if (typeof meta.status !== "string" || !meta.status) continue;
+    if (typeof meta.pid === "number" && !isRunning(meta.pid)) continue;
+    const at = typeof meta.statusUpdatedAt === "number" ? meta.statusUpdatedAt : (meta.updatedAt ?? 0);
+    const prev = freshest.get(meta.sessionId);
+    if (prev && at < prev.at) continue;
+    freshest.set(meta.sessionId, { at, status: meta.status });
+  }
+  const out = new Map<string, string>();
+  for (const [sessionId, v] of freshest) out.set(sessionId, v.status);
+  return out;
+}
+
 /** Cheap liveness check — signal 0 tests existence without touching the
  * process. EPERM means it exists but belongs to someone else. */
 function isRunning(pid: number): boolean {
