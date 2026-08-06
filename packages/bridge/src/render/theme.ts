@@ -41,5 +41,25 @@ export function themeFor(state: string): TileTheme {
 }
 
 export const SELECTED_BORDER = "#ffffff";
+
+/**
+ * How hard a non-targeted session recedes. This was 0.5, which made the
+ * targeted key unmistakable but left the rest genuinely hard to read at a
+ * glance — measured at ~30 mean luma against the targeted key's ~142.
+ *
+ * The hierarchy doesn't rest on this alone: a targeted idle key also switches
+ * to bright cyan (`idleActive`), so it differs in HUE and not merely in
+ * brightness. That's what leaves room to lighten the veil without weakening the
+ * one signal that matters — which console your keystrokes and dictation reach.
+ */
+export const VEIL_ALPHA = 0.35;
+/** A veiled key at the bright end of its slow breath (TileSpec.pulse): lighter
+ * than the resting veil, still clearly darker than an unveiled key. */
+export const VEIL_ALPHA_BREATH = 0.18;
+/** The TARGETED key at the bright end of its breath — a light wash, kept below
+ * VEIL_ALPHA_BREATH so a breathing target still outranks a breathing
+ * neighbour. */
+export const TARGET_ALPHA_BREATH = 0.12;
+
 export const TILE_SIZE = 144; // @2x per Elgato SDK guidance for programmatic setImage
 export const FONT_FAMILY = "Segoe UI, sans-serif";
