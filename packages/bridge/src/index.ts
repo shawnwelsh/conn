@@ -8,7 +8,7 @@ import { SessionRegistry, pathWithin, type SessionEntry } from "./registry.js";
 import type { SessionStatus } from "@conn/shared";
 import { BindingStore, restoreConsoleBindings } from "./bindings.js";
 import { DenyReasonFlow } from "./denyReason.js";
-import { readCcSessionNames, readCliSessions, readWaitingSessionIds, CC_SESSIONS_DIR } from "./sessionMeta.js";
+import { readCcSessionNames, readCliSessions, readPromptStatuses, CC_SESSIONS_DIR } from "./sessionMeta.js";
 import { DecisionStore } from "./decisions.js";
 import {
   advanceQuestion,
@@ -727,25 +727,52 @@ function adoptTerminals(only?: SessionEntry): void {
  * guard already reads to refuse typing into a prompt. That signal was being
  * read and used only to say NO; this promotes it to the deck as well.
  *
- * PROMOTE-ONLY, deliberately: it can raise a session to waiting but never lower
- * one, so hooks keep ownership of every other transition and the next real
- * activity clears it. Idle-at-the-prompt reports "idle", not "waiting", so a
- * console merely sitting there does not light up.
+ * SYMMETRIC: it raises a key to waiting AND takes it back down when Claude Code
+ * stops reporting the block. An earlier version only ever promoted, on the
+ * theory that "the next real activity clears it" — but a session that goes
+ * quiet after you answer its prompt sends no hooks at all, so three keys sat
+ * breathing for attention they no longer needed. An attention cue that cries
+ * wolf is worse than none, so the same source that raises it lowers it.
+ *
+ * It only ever undoes ITS OWN promotions (`promotedWaiting`): a `waiting` that
+ * came from a hook — a held permission, a question morph — belongs to that
+ * hook, and this must not clear a real dialog out from under it.
  *
  * Covers DESKTOP-app sessions as well as terminals: being stuck is worth
  * showing wherever the session lives, and only delivery needs a console pid
- * (see readWaitingSessionIds).
+ * (see readPromptStatuses).
  */
+const promotedWaiting = new Set<string>();
+
 function pollPromptWaiting(): void {
-  for (const sessionId of readWaitingSessionIds(CC_SESSIONS_DIR, log)) {
+  const statuses = readPromptStatuses(CC_SESSIONS_DIR, log);
+  for (const [sessionId, status] of statuses) {
     const entry = registry.get(sessionId);
-    if (!entry || entry.status === "waiting") continue;
-    registry.setStatus(entry, "waiting");
-    log.info(
-      { session: sessionId, label: entry.label, kind: entry.windowKind },
-      "session is blocked at a prompt the deck gets no hook for — surfacing it",
-    );
+    if (!entry) continue;
+    if (status === "waiting") {
+      // Claim it whenever Claude Code corroborates, even if the key is ALREADY
+      // waiting — otherwise a session that was waiting when the bridge started
+      // (surfaced straight from this same metadata) is never ours to lower, and
+      // sticks on waiting for the rest of the run.
+      promotedWaiting.add(sessionId);
+      if (entry.status === "waiting") continue;
+      registry.setStatus(entry, "waiting");
+      log.info(
+        { session: sessionId, label: entry.label, kind: entry.windowKind },
+        "session is blocked at a prompt the deck gets no hook for — surfacing it",
+      );
+      continue;
+    }
+    // No longer blocked. Undo our own promotion, and follow Claude Code to
+    // whatever it's doing now rather than guessing at a previous state.
+    if (!promotedWaiting.has(sessionId)) continue;
+    promotedWaiting.delete(sessionId);
+    if (entry.status !== "waiting") continue; // a hook already moved it on
+    registry.setStatus(entry, ccStatusToDeck(status) ?? "idle");
+    log.info({ session: sessionId, label: entry.label, status }, "prompt cleared — key settles");
   }
+  // A session that vanished from the metadata can't be tracked either way.
+  for (const id of [...promotedWaiting]) if (!statuses.has(id)) promotedWaiting.delete(id);
 }
 setInterval(pollPromptWaiting, 5_000).unref();
 
