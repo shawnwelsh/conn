@@ -603,8 +603,25 @@ controller.setHooks({
         revertQuestion();
       }
       void (async () => {
-        const ok = await deliverMultiSelectAnswer(delivery, session, checked, isLast, multi);
-        log.info({ session: q.sessionId, picked: checked.length, isLast, multi, ok }, "multi-select answered from deck");
+        const trace: string[] = [];
+        const startedAt = Date.now();
+        const ok = await deliverMultiSelectAnswer(delivery, session, checked, isLast, undefined, trace);
+        // The exact keys, in order, with the picks they were meant to produce.
+        // A summary ("picked: 4, ok: true") looks perfect even when the console
+        // silently swallowed a toggle — which is precisely what happened.
+        log.info(
+          {
+            session: q.sessionId,
+            picked: checked.length,
+            indices: checked,
+            keys: trace.join(" "),
+            ms: Date.now() - startedAt,
+            isLast,
+            multi,
+            ok,
+          },
+          "multi-select answered from deck",
+        );
       })();
       return;
     }
