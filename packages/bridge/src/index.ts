@@ -759,19 +759,17 @@ function adoptTerminals(only?: SessionEntry): void {
  * showing wherever the session lives, and only delivery needs a console pid
  * (see readPromptStatuses).
  */
-const promotedWaiting = new Set<string>();
+/** Is the DECK itself holding a dialog for this session? Then its `waiting` is
+ * the morph's, and the poll must not clear a live panel out from under it. */
+function morphHolds(sessionId: string): boolean {
+  return layer.permission?.sessionId === sessionId || layer.question?.sessionId === sessionId;
+}
 
 function pollPromptWaiting(): void {
-  const statuses = readPromptStatuses(CC_SESSIONS_DIR, log);
-  for (const [sessionId, status] of statuses) {
+  for (const [sessionId, status] of readPromptStatuses(CC_SESSIONS_DIR, log)) {
     const entry = registry.get(sessionId);
     if (!entry) continue;
     if (status === "waiting") {
-      // Claim it whenever Claude Code corroborates, even if the key is ALREADY
-      // waiting — otherwise a session that was waiting when the bridge started
-      // (surfaced straight from this same metadata) is never ours to lower, and
-      // sticks on waiting for the rest of the run.
-      promotedWaiting.add(sessionId);
       if (entry.status === "waiting") continue;
       registry.setStatus(entry, "waiting");
       log.info(
@@ -780,16 +778,20 @@ function pollPromptWaiting(): void {
       );
       continue;
     }
-    // No longer blocked. Undo our own promotion, and follow Claude Code to
-    // whatever it's doing now rather than guessing at a previous state.
-    if (!promotedWaiting.has(sessionId)) continue;
-    promotedWaiting.delete(sessionId);
-    if (entry.status !== "waiting") continue; // a hook already moved it on
+    // Claude Code says this session is NOT blocked while the key says it is.
+    // Believe Claude Code — unless the deck is holding the dialog itself.
+    //
+    // This used to demand that WE had promoted the key, tracked in a Set. That
+    // Set is per-process, so a session surfaced as waiting at BOOT (read from
+    // this very metadata) whose prompt was answered before the first poll was
+    // never "ours", and stuck on waiting for the life of the bridge — a key
+    // breathing for attention across restarts, which is exactly what a stale
+    // attention cue must never do. Ownership was the wrong idea: the current
+    // truth is enough, and it survives restarts because it holds no state.
+    if (entry.status !== "waiting" || morphHolds(sessionId)) continue;
     registry.setStatus(entry, ccStatusToDeck(status) ?? "idle");
     log.info({ session: sessionId, label: entry.label, status }, "prompt cleared — key settles");
   }
-  // A session that vanished from the metadata can't be tracked either way.
-  for (const id of [...promotedWaiting]) if (!statuses.has(id)) promotedWaiting.delete(id);
 }
 setInterval(pollPromptWaiting, 5_000).unref();
 

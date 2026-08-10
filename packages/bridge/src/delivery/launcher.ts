@@ -195,9 +195,47 @@ export class ConsoleLauncher {
   }
 
   /**
+   * What a new session's branch should be cut from: the DEFAULT BRANCH AS THE
+   * REMOTE HAS IT, not the primary checkout's local HEAD.
+   *
+   * findRepoRoot already resolves a worktree back to its primary checkout, so
+   * new work never inherits the feature branch you happen to be looking at.
+   * But the primary checkout drifts — it was 7 commits behind origin/main on
+   * the machine this was written for — and every session started there begins
+   * on stale code, silently. Worse, if that checkout is ever parked on a
+   * feature branch, EVERY new session inherits it with no signal on the deck.
+   *
+   * Falls back to local HEAD when there's no remote, no origin/HEAD, or the
+   * fetch failed (offline) — a slightly stale base beats refusing to launch.
+   */
+  async baseCommit(root: string): Promise<string | null> {
+    // origin/HEAD names the default branch without assuming it's called main.
+    const symbolic = await this.gitOut(root, ["symbolic-ref", "--quiet", "refs/remotes/origin/HEAD"]);
+    const ref = symbolic?.trim() || (await this.remoteRefFallback(root));
+    if (ref) {
+      const sha = await this.gitOut(root, ["rev-parse", ref]);
+      if (sha?.trim()) return sha.trim();
+      this.log.warn({ root, ref }, "launcher: could not resolve the remote default branch — using local HEAD");
+    }
+    const head = await this.gitOut(root, ["rev-parse", "HEAD"]);
+    return head?.trim() ?? null;
+  }
+
+  private async remoteRefFallback(root: string): Promise<string | null> {
+    for (const ref of ["refs/remotes/origin/main", "refs/remotes/origin/master"]) {
+      if (await this.git(root, ["rev-parse", "--verify", "--quiet", ref], 15_000, true)) return ref;
+    }
+    return null;
+  }
+
+  /**
    * Build the next spare in the background. `git worktree add` is 19-32s on a
    * real repo — the entire cost of New — so it gets paid while nobody is
    * waiting. Never throws: a missing spare only means the old slow path.
+   *
+   * The fetch rides along here for the same reason: it's the one moment nobody
+   * is waiting on us, so the remote refs are fresh by the time a spare is
+   * claimed — without putting network latency in front of the New key.
    */
   async prewarm(root: string): Promise<void> {
     if (!this.useWorktrees || this.prewarming.has(root)) return;
@@ -205,6 +243,9 @@ export class ConsoleLauncher {
     if (existsSync(join(dir, ".git"))) return; // one is already banked
     this.prewarming.add(root);
     try {
+      // Refs only — never touches a working tree, so it can't disturb whatever
+      // is checked out anywhere. Failure (offline) is fine: we fall back.
+      await this.git(root, ["fetch", "--quiet", "origin"], 60_000, true);
       // A stale branch from a half-finished claim would block the add. Not
       // finding one is the normal case, so it must not log as a failure.
       await this.git(root, ["branch", "-D", `deck/${SPARE_NAME}`], 15_000, true);
@@ -229,7 +270,7 @@ export class ConsoleLauncher {
     const spare = this.spareDir(root);
     if (!existsSync(join(spare, ".git"))) return null;
     if (!(await this.git(root, ["worktree", "move", spare, dir]))) return null;
-    const head = await this.gitOut(root, ["rev-parse", "HEAD"]);
+    const head = await this.baseCommit(root);
     // `switch -C` renames AND rebases the tree onto head in one step.
     const switched = head && (await this.git(dir, ["switch", "-C", `deck/${name}`, head]));
     if (!switched) {
@@ -257,7 +298,12 @@ export class ConsoleLauncher {
    * Returns the worktree path, or null on any failure (caller falls back). */
   private async createWorktree(root: string, name: string, dir: string): Promise<string | null> {
     this.log.info({ root, name, timeoutMs: this.worktreeTimeoutMs }, "launcher: creating worktree…");
-    const args = ["-C", root, "worktree", "add", dir, "-b", `deck/${name}`];
+    // Same base as the spare path — the remote's default branch, not the
+    // primary checkout's local HEAD. Without this the slow path would quietly
+    // keep the old behaviour and new sessions would start stale whenever no
+    // spare happened to be banked.
+    const base = await this.baseCommit(root);
+    const args = ["-C", root, "worktree", "add", dir, "-b", `deck/${name}`, ...(base ? [base] : [])];
     const result = await new Promise<{ code: number | null; err: string }>((res) => {
       const git = spawn("git", args, {
         stdio: ["ignore", "ignore", "pipe"],
