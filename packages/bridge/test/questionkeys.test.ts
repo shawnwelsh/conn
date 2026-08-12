@@ -63,9 +63,35 @@ describe("deliverQuestionAnswer (arrow-navigated menu)", () => {
 // navigate". ↓ moves, SPACE toggles, ENTER on an option row TOGGLES TOO, TAB
 // leaves the group, and only Enter on the Submit tab submits.
 describe("deliverMultiSelectAnswer (checkbox menu)", () => {
-  it("walks down to each checked option in menu order, Spaces it, then Tabs out", async () => {
+  const consoleSession: SessionRef = { ...session, windowKind: "console" };
+  const desktopSession: SessionRef = { ...session, windowKind: "desktop" };
+
+  // The Claude app is an Electron UI, not the Ink TUI — Enter proceeds there.
+  // Firing the console's Tab tail at it broke answering from the deck outright.
+  describe("desktop dialect (Claude app)", () => {
+    it("finishes with Enter, not Tab", async () => {
+      const d = new Rec();
+      await deliverMultiSelectAnswer(d, desktopSession, [0, 2], true, false, 0);
+      expect(d.calls).toEqual(["key:space", "key:down", "key:down", "key:space", "key:enter"]);
+      expect(d.calls).not.toContain("key:tab");
+    });
+
+    it("adds the Submit-step Enter on the last of a multi-question ask", async () => {
+      const d = new Rec();
+      await deliverMultiSelectAnswer(d, desktopSession, [0], true, true, 0);
+      expect(d.calls).toEqual(["key:space", "key:enter", "key:enter"]);
+    });
+
+    it("a non-last question just proceeds", async () => {
+      const d = new Rec();
+      await deliverMultiSelectAnswer(d, desktopSession, [0], false, true, 0);
+      expect(d.calls).toEqual(["key:space", "key:enter"]);
+    });
+  });
+
+  it("console: walks down to each checked option, Spaces it, then Tabs out", async () => {
     const d = new Rec();
-    await deliverMultiSelectAnswer(d, session, [0, 2], true, 0);
+    await deliverMultiSelectAnswer(d, consoleSession, [0, 2], true, false, 0);
     // cursor starts on option 1: toggle 0 in place, ↓↓ to 2, toggle, Tab to
     // Submit, Enter there.
     expect(d.calls).toEqual([
@@ -75,7 +101,7 @@ describe("deliverMultiSelectAnswer (checkbox menu)", () => {
 
   it("sorts the taps so cursor moves are minimal and correct regardless of tap order", async () => {
     const d = new Rec();
-    await deliverMultiSelectAnswer(d, session, [2, 0], true, 0);
+    await deliverMultiSelectAnswer(d, consoleSession, [2, 0], true, false, 0);
     expect(d.calls).toEqual([
       "key:space", "key:down", "key:down", "key:space", "key:tab", "key:enter",
     ]);
@@ -86,7 +112,7 @@ describe("deliverMultiSelectAnswer (checkbox menu)", () => {
   // selected, three ticked, form left unsubmitted.
   it("NEVER presses Enter while the cursor is on an option row", async () => {
     const d = new Rec();
-    await deliverMultiSelectAnswer(d, session, [0, 1, 2], true, 0);
+    await deliverMultiSelectAnswer(d, consoleSession, [0, 1, 2], true, false, 0);
     const enterAt = d.calls.indexOf("key:enter");
     const tabAt = d.calls.indexOf("key:tab");
     expect(tabAt).toBeGreaterThan(-1);
@@ -96,13 +122,13 @@ describe("deliverMultiSelectAnswer (checkbox menu)", () => {
 
   it("a non-last question Tabs to the next group and stops — no Enter at all", async () => {
     const d = new Rec();
-    await deliverMultiSelectAnswer(d, session, [0], false, 0);
+    await deliverMultiSelectAnswer(d, consoleSession, [0], false, false, 0);
     expect(d.calls).toEqual(["key:space", "key:tab"]);
   });
 
   it("nothing checked still Tabs out rather than pressing Enter on an option", async () => {
     const d = new Rec();
-    await deliverMultiSelectAnswer(d, session, [], true, 0);
+    await deliverMultiSelectAnswer(d, consoleSession, [], true, false, 0);
     expect(d.calls).toEqual(["key:tab", "key:enter"]);
   });
 
@@ -112,7 +138,7 @@ describe("deliverMultiSelectAnswer (checkbox menu)", () => {
   it("records the exact keystrokes in order", async () => {
     const d = new Rec();
     const trace: string[] = [];
-    await deliverMultiSelectAnswer(d, session, [0, 2], true, 0, trace);
+    await deliverMultiSelectAnswer(d, consoleSession, [0, 2], true, false, 0, trace);
     expect(trace).toEqual(["space", "down", "down", "space", "tab", "enter"]);
   });
 
@@ -120,7 +146,7 @@ describe("deliverMultiSelectAnswer (checkbox menu)", () => {
     const d = new Rec();
     d.sendKey = async (_s, c) => { d.calls.push(`key:${c}`); return c !== "space"; };
     const trace: string[] = [];
-    const ok = await deliverMultiSelectAnswer(d, session, [1], true, 0, trace);
+    const ok = await deliverMultiSelectAnswer(d, consoleSession, [1], true, false, 0, trace);
     expect(ok).toBe(false);
     expect(trace).toEqual(["down", "space:FAILED"]);
   });

@@ -25,6 +25,18 @@ export interface SessionRef {
    * handle we captured at launch (before any rename it's the codename, i.e.
    * the cwd leaf). */
   ccName?: string;
+  /**
+   * Which UI this session presents, because the two ANSWER KEYSTROKES DIFFER
+   * and delivery alone cannot tell:
+   *  - "console": a raw-mode TUI. Its question menus are Ink widgets, where
+   *    Tab moves between question groups and Enter on an option row toggles.
+   *  - "desktop": a tab in the Claude app — an Electron UI whose dialogs are
+   *    ordinary focusable controls, where Enter proceeds.
+   * Routing used to key off `pid` alone, but that only decides how a key is
+   * TRANSPORTED (input buffer vs window). It says nothing about which key to
+   * send, so a sequence tuned against the TUI was being fired at the app.
+   */
+  windowKind?: "console" | "desktop";
 }
 
 export interface DeliveryAdapter {

@@ -1,6 +1,7 @@
 import { EventEmitter } from "node:events";
 import { basename, join, resolve, isAbsolute, dirname } from "node:path";
 import { readFileSync, statSync } from "node:fs";
+import { homedir } from "node:os";
 import type { SessionStatus } from "@conn/shared";
 import { RingBuffer } from "./log.js";
 import type { AnyHookEvent } from "./hookTypes.js";
@@ -776,6 +777,12 @@ export function deriveLabel(cwd: string | undefined): string {
     const pretty = prettifyBranch(branch);
     if (pretty) return pretty;
   }
+  // A session opened without picking a project sits in the HOME directory, and
+  // the leaf there is your Windows username — so the key read "swelsh", which
+  // names neither the work nor anywhere useful, and looked like a phantom.
+  // Only the home directory itself: a folder BELOW it still names itself
+  // usefully (…\Documents → "Documents").
+  if (samePath(cwd, homedir())) return "Home";
   return basename(cwd.replace(/[\\/]+$/, "")) || "session";
 }
 

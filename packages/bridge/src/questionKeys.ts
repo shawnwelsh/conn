@@ -71,6 +71,10 @@ export async function deliverMultiSelectAnswer(
   session: SessionRef,
   checked: number[], // 0-based option indices toggled ON, any order
   isLast: boolean,
+  /** The ask has >1 question → the DESKTOP app lands on a "Submit answers"
+   * step after the last one. Unused by the console dialect, which reaches
+   * Submit by Tab instead. */
+  multi: boolean,
   /**
    * Gap between keystrokes. A key can report ok while the CONSOLE still drops
    * it: injection writes into the input buffer far faster than an Ink TUI
@@ -98,14 +102,27 @@ export async function deliverMultiSelectAnswer(
     await pause();
   }
   await pause(); // let the last toggle finish painting
-  // TAB, never Enter. On this form Enter is a SYNONYM FOR SPACE on an option
-  // row, so the old closing Enter re-toggled the last thing you picked and
-  // silently un-picked it — "I chose four and only three were ticked", with
-  // the form left sitting there unsubmitted. Tab leaves the option list: to
-  // the next question group, or from the last group onto the Submit tab.
+
+  // THE TAIL IS DIALECT-SPECIFIC. The toggles above are common to both UIs;
+  // how you leave the list is not, and sending the console's tail to the
+  // desktop app broke answering there entirely.
+  if (session.windowKind === "desktop") {
+    // Claude app (Electron): ordinary focusable controls — Enter proceeds, and
+    // a multi-question ask ends on a "Submit answers" step needing one more.
+    if (!(await send("enter"))) return false;
+    if (!isLast || !multi) return true;
+    await new Promise((r) => setTimeout(r, gapMs * 3));
+    return send("enter");
+  }
+
+  // Console TUI: TAB, never Enter. Here Enter is a SYNONYM FOR SPACE on an
+  // option row, so a closing Enter re-toggles the last thing you picked and
+  // silently un-picks it — "I chose four and only three were ticked", with the
+  // form left unsubmitted. Tab leaves the option list: to the next question
+  // group, or from the last group onto the Submit tab.
   if (!(await send("tab"))) return false;
   if (!isLast) return true;
   await pause();
-  // Only here, on the Submit tab, does Enter mean "Submit Answers".
+  // Only there, on the Submit tab, does Enter mean "Submit Answers".
   return send("enter");
 }

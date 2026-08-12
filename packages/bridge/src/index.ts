@@ -605,7 +605,7 @@ controller.setHooks({
       void (async () => {
         const trace: string[] = [];
         const startedAt = Date.now();
-        const ok = await deliverMultiSelectAnswer(delivery, session, checked, isLast, undefined, trace);
+        const ok = await deliverMultiSelectAnswer(delivery, session, checked, isLast, multi, undefined, trace);
         // The exact keys, in order, with the picks they were meant to produce.
         // A summary ("picked: 4, ok: true") looks perfect even when the console
         // silently swallowed a toggle — which is precisely what happened.

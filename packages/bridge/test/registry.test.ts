@@ -1,7 +1,7 @@
 import { describe, expect, it, beforeAll, afterAll } from "vitest";
 import { mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
-import { tmpdir } from "node:os";
+import { tmpdir, homedir } from "node:os";
 import { SessionRegistry, deriveLabel, prettifyBranch, samePath, pathWithin } from "../src/registry.js";
 
 function start(registry: SessionRegistry, id: string, cwd = `C:\\dev\\${id}`) {
@@ -22,6 +22,18 @@ describe("deriveLabel", () => {
     // These temp-ish paths aren't git repos, so we get the leaf directory.
     expect(deriveLabel("C:\\nope\\not-a-repo-xyz")).toBe("not-a-repo-xyz");
     expect(deriveLabel(undefined)).toBe("session");
+  });
+
+  it("names the HOME directory 'Home', not your username", () => {
+    // A session opened without picking a project sits here, and the leaf is
+    // the Windows username — a key reading "swelsh" names neither the work nor
+    // anywhere useful, and reads as a phantom.
+    expect(deriveLabel(homedir())).toBe("Home");
+    expect(deriveLabel(homedir().toUpperCase())).toBe("Home"); // paths are case-insensitive
+  });
+
+  it("still names folders BELOW home after themselves", () => {
+    expect(deriveLabel(join(homedir(), "Documents"))).toBe("Documents");
   });
 });
 
