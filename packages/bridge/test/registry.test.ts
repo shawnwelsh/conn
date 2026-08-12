@@ -1,7 +1,7 @@
 import { describe, expect, it, beforeAll, afterAll } from "vitest";
 import { mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
-import { tmpdir } from "node:os";
+import { tmpdir, homedir } from "node:os";
 import { SessionRegistry, deriveLabel, prettifyBranch, samePath, pathWithin } from "../src/registry.js";
 
 function start(registry: SessionRegistry, id: string, cwd = `C:\\dev\\${id}`) {
@@ -22,6 +22,18 @@ describe("deriveLabel", () => {
     // These temp-ish paths aren't git repos, so we get the leaf directory.
     expect(deriveLabel("C:\\nope\\not-a-repo-xyz")).toBe("not-a-repo-xyz");
     expect(deriveLabel(undefined)).toBe("session");
+  });
+
+  it("names the HOME directory 'Home', not your username", () => {
+    // A session opened without picking a project sits here, and the leaf is
+    // the Windows username — a key reading "swelsh" names neither the work nor
+    // anywhere useful, and reads as a phantom.
+    expect(deriveLabel(homedir())).toBe("Home");
+    expect(deriveLabel(homedir().toUpperCase())).toBe("Home"); // paths are case-insensitive
+  });
+
+  it("still names folders BELOW home after themselves", () => {
+    expect(deriveLabel(join(homedir(), "Documents"))).toBe("Documents");
   });
 });
 
@@ -300,13 +312,26 @@ describe("working-set + pager model", () => {
     expect(r.bySlot(3)?.sessionId).toBe("d");
   });
 
-  it("floats an overflow session to MRU front on activity; working never reorders", () => {
+  // Activity used to float an overflow session to the front (MRU), which meant
+  // background chatter chose which session filled the next freed slot on your
+  // row. Nothing reorders on activity now — only arrival, death, release, or a
+  // deliberate move.
+  it("activity NEVER reorders, on the row or in overflow", () => {
     const r = new SessionRegistry(5);
     fill(r, ["a", "b", "c", "d", "e", "f"]);
     r.recordEvent(r.get("f")!, "PostToolUse");
-    expect(r.snapshot().overflow).toEqual(["f", "e"]);
-    r.recordEvent(r.get("a")!, "PostToolUse"); // working member — no reorder
+    expect(r.snapshot().overflow).toEqual(["e", "f"]); // arrival order, untouched
+    r.recordEvent(r.get("a")!, "PostToolUse");
     expect(r.snapshot().working).toEqual(["a", "b", "c", "d"]);
+  });
+
+  it("a new session joins the BACK of the queue, never jumping the row", () => {
+    // Unshifting new sessions onto the overflow front put every freshly-started
+    // automation first in line for the next freed working slot.
+    const r = new SessionRegistry(5);
+    fill(r, ["a", "b", "c", "d", "e", "f"]);
+    start(r, "g");
+    expect(r.snapshot().overflow).toEqual(["e", "f", "g"]);
   });
 
   it("a waiting session is NOT yanked onto the visible page", () => {
@@ -383,10 +408,44 @@ describe("working-set + pager model", () => {
     const r = new SessionRegistry(5);
     fill(r, ["a", "b", "c", "d", "e", "f"]); // working [a,b,c,d], overflow [e,f]
     r.release("a");
-    // pager deactivates (5 left), working refills from overflow
-    expect(r.pagerActive()).toBe(false);
-    expect(r.snapshot().working).toEqual(["b", "c", "d", "e", "f"]);
+    // The pager LATCHES at exactly slotCount: dropping 6→5 holds it on, so the
+    // row keeps its shape instead of growing a fifth session key back.
+    expect(r.pagerActive()).toBe(true);
+    expect(r.snapshot().working).toEqual(["b", "c", "d", "e"]);
+    expect(r.snapshot().overflow).toEqual(["f"]);
     expect(r.targetedSession?.sessionId).toBe("b");
+  });
+
+  // The row used to resize every time the session count crossed slotCount,
+  // shoving a session on or off the visible row — with automations starting
+  // and ending around that boundary, it rearranged under your thumb.
+  it("the pager latches: on above slotCount, off only BELOW it", () => {
+    const r = new SessionRegistry(5);
+    fill(r, ["a", "b", "c", "d", "e"]); // exactly 5 — no pager yet
+    expect(r.pagerActive()).toBe(false);
+    expect(r.snapshot().working).toHaveLength(5);
+
+    start(r, "f"); // 6 → on
+    expect(r.pagerActive()).toBe(true);
+    r.release("f"); // back to 5 → HOLDS, no reshuffle
+    expect(r.pagerActive()).toBe(true);
+    expect(r.snapshot().working).toEqual(["a", "b", "c", "d"]);
+
+    r.release("e"); // 4 → below the band, releases
+    expect(r.pagerActive()).toBe(false);
+  });
+
+  it("evicts by last activity, not by queue position, when over the cap", () => {
+    // Overflow is arrival-ordered now, so its tail is the NEWEST session —
+    // popping it would drop the very thing you just started.
+    const r = new SessionRegistry(5, 6);
+    fill(r, ["a", "b", "c", "d", "e", "f"]);
+    r.get("e")!.lastEventAt = 1; // the genuinely idle one
+    r.get("f")!.lastEventAt = Date.now();
+    start(r, "g"); // 7th → one must go
+    expect(r.get("e")).toBeUndefined();
+    expect(r.get("f")).toBeDefined();
+    expect(r.get("g")).toBeDefined();
   });
 });
 

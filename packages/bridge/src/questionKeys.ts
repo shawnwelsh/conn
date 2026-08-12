@@ -46,35 +46,83 @@ export async function deliverQuestionAnswer(
 /**
  * Deliver a MULTI-SELECT question answer to a console.
  *
- * Claude Code renders these as a checkbox list: ↑/↓ moves the highlight, SPACE
- * toggles the box under it, ENTER proceeds. The highlight starts on option 1,
- * so we walk DOWN to each chosen option (in menu order), Space it, then Enter.
- * The deck tracked which boxes you toggled; this replays them in one go.
+ * The form's own footer states its key model, and it is NOT the single-select
+ * one: "Enter to select · Tab/Arrow keys to navigate". Concretely —
  *
- *  - Single-question ask: that Enter submits.
- *  - MULTI-question ask: the last question's Enter lands on the "Submit answers"
- *    step, so one more Enter ships it (same tail as the single-select path).
+ *   ↑/↓    move the highlight within a question group
+ *   SPACE  toggles the box under it
+ *   ENTER  on an option row is a SYNONYM FOR SPACE — it toggles, it does not
+ *          proceed. This is the trap: the obvious "finish with Enter" lands on
+ *          the last option you picked and turns it back OFF.
+ *   TAB    leaves the option list — to the next question group, and from the
+ *          last group onto the Submit tab
+ *   ENTER  on the Submit tab means "Submit Answers"
+ *
+ * So we walk DOWN to each chosen option (in menu order), Space it, then Tab
+ * out; the final question Tabs onto Submit and Enters there. The deck tracked
+ * which boxes you toggled and this replays them in one go.
+ *
+ * Getting this wrong was invisible from our side: every keystroke reported ok,
+ * because injection only confirms writing to the input buffer — never that the
+ * TUI did what we meant by it.
  */
 export async function deliverMultiSelectAnswer(
   delivery: DeliveryAdapter,
   session: SessionRef,
   checked: number[], // 0-based option indices toggled ON, any order
   isLast: boolean,
-  multi: boolean, // the ask has >1 question → a "Submit answers" step follows
-  gapMs = 80,
+  /** The ask has >1 question → the DESKTOP app lands on a "Submit answers"
+   * step after the last one. Unused by the console dialect, which reaches
+   * Submit by Tab instead. */
+  multi: boolean,
+  /**
+   * Gap between keystrokes. A key can report ok while the CONSOLE still drops
+   * it: injection writes into the input buffer far faster than an Ink TUI
+   * re-renders a checkbox list.
+   */
+  gapMs = 140,
+  /** Keystroke-by-keystroke record, so a bad run can be read back rather than
+   * guessed at. `chord:FAILED` marks one the adapter itself rejected. */
+  trace?: string[],
 ): Promise<boolean> {
+  const send = async (chord: string): Promise<boolean> => {
+    const ok = await delivery.sendKey(session, chord);
+    trace?.push(ok ? chord : `${chord}:FAILED`);
+    return ok;
+  };
+  const pause = () => new Promise((r) => setTimeout(r, gapMs));
+
   let cursor = 0; // the highlight starts on option 1
   for (const idx of [...checked].sort((a, b) => a - b)) {
     for (; cursor < idx; cursor++) {
-      if (!(await delivery.sendKey(session, "down"))) return false;
-      await new Promise((r) => setTimeout(r, gapMs));
+      if (!(await send("down"))) return false;
+      await pause();
     }
-    if (!(await delivery.sendKey(session, "space"))) return false;
-    await new Promise((r) => setTimeout(r, gapMs));
+    if (!(await send("space"))) return false;
+    await pause();
   }
-  // Enter proceeds — submits this question's picks (or advances to the next).
-  if (!(await delivery.sendKey(session, "enter"))) return false;
-  if (!isLast || !multi) return true;
-  await new Promise((r) => setTimeout(r, gapMs * 3));
-  return delivery.sendKey(session, "enter");
+  await pause(); // let the last toggle finish painting
+
+  // THE TAIL IS DIALECT-SPECIFIC. The toggles above are common to both UIs;
+  // how you leave the list is not, and sending the console's tail to the
+  // desktop app broke answering there entirely.
+  if (session.windowKind === "desktop") {
+    // Claude app (Electron): ordinary focusable controls — Enter proceeds, and
+    // a multi-question ask ends on a "Submit answers" step needing one more.
+    if (!(await send("enter"))) return false;
+    if (!isLast || !multi) return true;
+    await new Promise((r) => setTimeout(r, gapMs * 3));
+    return send("enter");
+  }
+
+  // Console TUI: TAB, never Enter. Here Enter is a SYNONYM FOR SPACE on an
+  // option row, so a closing Enter re-toggles the last thing you picked and
+  // silently un-picks it — "I chose four and only three were ticked", with the
+  // form left unsubmitted. Tab leaves the option list: to the next question
+  // group, or from the last group onto the Submit tab.
+  if (!(await send("tab"))) return false;
+  if (!isLast) return true;
+  await pause();
+  // Only there, on the Submit tab, does Enter mean "Submit Answers".
+  return send("enter");
 }

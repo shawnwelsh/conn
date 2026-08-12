@@ -8,7 +8,7 @@ import { SessionRegistry, pathWithin, type SessionEntry } from "./registry.js";
 import type { SessionStatus } from "@conn/shared";
 import { BindingStore, restoreConsoleBindings } from "./bindings.js";
 import { DenyReasonFlow } from "./denyReason.js";
-import { readCcSessionNames, readCliSessions, CC_SESSIONS_DIR } from "./sessionMeta.js";
+import { readCcSessionNames, readCliSessions, readPromptStatuses, CC_SESSIONS_DIR } from "./sessionMeta.js";
 import { DecisionStore } from "./decisions.js";
 import {
   advanceQuestion,
@@ -603,8 +603,25 @@ controller.setHooks({
         revertQuestion();
       }
       void (async () => {
-        const ok = await deliverMultiSelectAnswer(delivery, session, checked, isLast, multi);
-        log.info({ session: q.sessionId, picked: checked.length, isLast, multi, ok }, "multi-select answered from deck");
+        const trace: string[] = [];
+        const startedAt = Date.now();
+        const ok = await deliverMultiSelectAnswer(delivery, session, checked, isLast, multi, undefined, trace);
+        // The exact keys, in order, with the picks they were meant to produce.
+        // A summary ("picked: 4, ok: true") looks perfect even when the console
+        // silently swallowed a toggle — which is precisely what happened.
+        log.info(
+          {
+            session: q.sessionId,
+            picked: checked.length,
+            indices: checked,
+            keys: trace.join(" "),
+            ms: Date.now() - startedAt,
+            isLast,
+            multi,
+            ok,
+          },
+          "multi-select answered from deck",
+        );
       })();
       return;
     }
@@ -727,21 +744,53 @@ function adoptTerminals(only?: SessionEntry): void {
  * guard already reads to refuse typing into a prompt. That signal was being
  * read and used only to say NO; this promotes it to the deck as well.
  *
- * PROMOTE-ONLY, deliberately: it can raise a session to waiting but never lower
- * one, so hooks keep ownership of every other transition and the next real
- * activity clears it. Idle-at-the-prompt reports "idle", not "waiting", so a
- * console merely sitting there does not light up.
+ * SYMMETRIC: it raises a key to waiting AND takes it back down when Claude Code
+ * stops reporting the block. An earlier version only ever promoted, on the
+ * theory that "the next real activity clears it" — but a session that goes
+ * quiet after you answer its prompt sends no hooks at all, so three keys sat
+ * breathing for attention they no longer needed. An attention cue that cries
+ * wolf is worse than none, so the same source that raises it lowers it.
+ *
+ * It only ever undoes ITS OWN promotions (`promotedWaiting`): a `waiting` that
+ * came from a hook — a held permission, a question morph — belongs to that
+ * hook, and this must not clear a real dialog out from under it.
+ *
+ * Covers DESKTOP-app sessions as well as terminals: being stuck is worth
+ * showing wherever the session lives, and only delivery needs a console pid
+ * (see readPromptStatuses).
  */
+/** Is the DECK itself holding a dialog for this session? Then its `waiting` is
+ * the morph's, and the poll must not clear a live panel out from under it. */
+function morphHolds(sessionId: string): boolean {
+  return layer.permission?.sessionId === sessionId || layer.question?.sessionId === sessionId;
+}
+
 function pollPromptWaiting(): void {
-  for (const meta of readCliSessions(CC_SESSIONS_DIR, log)) {
-    if (meta.status !== "waiting") continue;
-    const entry = registry.get(meta.sessionId);
-    if (!entry || entry.status === "waiting") continue;
-    registry.setStatus(entry, "waiting");
-    log.info(
-      { session: meta.sessionId, label: entry.label },
-      "session is blocked at a prompt the deck gets no hook for — surfacing it",
-    );
+  for (const [sessionId, status] of readPromptStatuses(CC_SESSIONS_DIR, log)) {
+    const entry = registry.get(sessionId);
+    if (!entry) continue;
+    if (status === "waiting") {
+      if (entry.status === "waiting") continue;
+      registry.setStatus(entry, "waiting");
+      log.info(
+        { session: sessionId, label: entry.label, kind: entry.windowKind },
+        "session is blocked at a prompt the deck gets no hook for — surfacing it",
+      );
+      continue;
+    }
+    // Claude Code says this session is NOT blocked while the key says it is.
+    // Believe Claude Code — unless the deck is holding the dialog itself.
+    //
+    // This used to demand that WE had promoted the key, tracked in a Set. That
+    // Set is per-process, so a session surfaced as waiting at BOOT (read from
+    // this very metadata) whose prompt was answered before the first poll was
+    // never "ours", and stuck on waiting for the life of the bridge — a key
+    // breathing for attention across restarts, which is exactly what a stale
+    // attention cue must never do. Ownership was the wrong idea: the current
+    // truth is enough, and it survives restarts because it holds no state.
+    if (entry.status !== "waiting" || morphHolds(sessionId)) continue;
+    registry.setStatus(entry, ccStatusToDeck(status) ?? "idle");
+    log.info({ session: sessionId, label: entry.label, status }, "prompt cleared — key settles");
   }
 }
 setInterval(pollPromptWaiting, 5_000).unref();

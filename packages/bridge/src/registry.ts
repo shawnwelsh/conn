@@ -1,6 +1,7 @@
 import { EventEmitter } from "node:events";
 import { basename, join, resolve, isAbsolute, dirname } from "node:path";
 import { readFileSync, statSync } from "node:fs";
+import { homedir } from "node:os";
 import type { SessionStatus } from "@conn/shared";
 import { RingBuffer } from "./log.js";
 import type { AnyHookEvent } from "./hookTypes.js";
@@ -118,11 +119,31 @@ export class SessionRegistry extends EventEmitter {
     return [...this.sessions.values()];
   }
 
-  /** True when the Page key occupies the last slot (more sessions than slots).
-   * Counts the VISIBLE list (working + overflow), not the sessions map — swept
-   * (hidden) sessions are out of both, so they must not force the pager on. */
+  /** True when the Page key occupies the last slot. LATCHED — see syncPager. */
   pagerActive(): boolean {
-    return this.working.length + this.overflow.length > this.slotCount;
+    return this.pagerLatched;
+  }
+
+  private pagerLatched = false;
+
+  /**
+   * Recompute the pager latch, with a one-session HYSTERESIS band.
+   *
+   * On above slotCount, off only below it; at exactly slotCount the previous
+   * answer stands. Without that band the pager flickers on and off as sessions
+   * cross the boundary — and because capacity is one smaller while it shows,
+   * each flicker RESIZES the working set and shoves a session on or off the
+   * visible row. With automation sessions starting and ending around that
+   * boundary all day, that was the row rearranging itself under your thumb.
+   *
+   * The cost is deliberate: at exactly slotCount sessions you see slotCount-1
+   * of them plus the Page key, rather than all of them. A row that always means
+   * the same thing beats one more key.
+   */
+  private syncPager(): void {
+    const total = this.working.length + this.overflow.length;
+    if (total > this.slotCount) this.pagerLatched = true;
+    else if (total < this.slotCount) this.pagerLatched = false;
   }
 
   /** Working-set size: one fewer than slotCount while the pager is shown. */
@@ -468,17 +489,20 @@ export class SessionRegistry extends EventEmitter {
     if (launch.hwnd) entry.hwnd = launch.hwnd;
   }
 
+  /**
+   * Activity updates the entry, and DELIBERATELY DOES NOT REORDER anything.
+   *
+   * This used to float an active overflow session to the front (MRU). That
+   * contradicted the rule setStatus already states — a session that needs you
+   * stays where it is, and off-page attention is announced on the Page key
+   * rather than by rearranging the deck. Worse, the front is what fills the
+   * next freed working slot, so background chatter decided which session
+   * appeared on your row. Order now changes only when YOU move something, or
+   * when a session arrives, dies, or leaves.
+   */
   recordEvent(entry: SessionEntry, event: string, detail?: string): void {
     entry.lastEventAt = Date.now();
     entry.events.push({ at: Date.now(), event, detail });
-    // MRU: any activity floats an overflow session to the front (working
-    // sessions never reorder).
-    const i = this.overflow.indexOf(entry.sessionId);
-    if (i > 0) {
-      this.overflow.splice(i, 1);
-      this.overflow.unshift(entry.sessionId);
-      this.emit("changed");
-    }
   }
 
   setStatus(entry: SessionEntry, status: SessionStatus): void {
@@ -646,9 +670,15 @@ export class SessionRegistry extends EventEmitter {
   private place(sessionId: string): void {
     const cwd = this.sessions.get(sessionId)?.cwd;
     const rank = cwd !== undefined ? this.savedRank.get(cwd) : undefined;
+    this.syncPager();
     if (rank === undefined) {
+      // END of the line, not the front. A new session used to be unshifted onto
+      // the overflow FRONT, which put it first in line for the next freed
+      // working slot — so an automation starting up could displace whatever you
+      // were looking at. Appending matches how a swept session returns (wake)
+      // and how a dead one is demoted: new things join the back of the queue.
       if (this.working.length < this.capacity()) this.working.push(sessionId);
-      else this.overflow.unshift(sessionId);
+      else this.overflow.push(sessionId);
       this.rebalance();
       return;
     }
@@ -676,18 +706,30 @@ export class SessionRegistry extends EventEmitter {
 
   /** Enforce capacity, fill freed slots from overflow, cap total, sync slots. */
   private rebalance(): void {
+    this.syncPager();
     const cap = this.capacity();
     while (this.working.length > cap) this.overflow.unshift(this.working.pop()!);
-    // Fill freed slots from the overflow front — but dead sessions stay at
-    // the end of the line, never promoted back onto the deck.
+    // Fill freed slots from the overflow FRONT, which is now arrival order and
+    // therefore stable: the session that has been queueing longest gets the
+    // slot. It used to be MRU order, so whichever background session last did
+    // anything would appear on your row — the deck picking for you, differently
+    // each time.
     while (this.working.length < cap) {
       const next = this.overflow.findIndex((id) => !this.sessions.get(id)?.windowDead);
       if (next === -1) break;
       this.working.push(this.overflow.splice(next, 1)[0]!);
     }
-    // Cap total tracked sessions — drop the least-recently-used overflow tail.
+    // Cap total tracked sessions. Evict by LAST ACTIVITY, not by position:
+    // overflow is arrival-ordered now, so its tail is the NEWEST session — the
+    // last thing you'd want dropped. (Under the old MRU ordering the tail was
+    // genuinely the least-recently-used, which is why popping worked.)
     while (this.sessions.size > this.maxTracked && this.overflow.length > 0) {
-      const victim = this.overflow.pop()!;
+      let victimAt = 0;
+      for (let i = 1; i < this.overflow.length; i++) {
+        const at = this.sessions.get(this.overflow[i]!)?.lastEventAt ?? 0;
+        if (at < (this.sessions.get(this.overflow[victimAt]!)?.lastEventAt ?? 0)) victimAt = i;
+      }
+      const victim = this.overflow.splice(victimAt, 1)[0]!;
       this.sessions.delete(victim);
       if (this.targeted === victim) this.targeted = this.working[0] ?? this.overflow[0] ?? null;
     }
@@ -735,6 +777,12 @@ export function deriveLabel(cwd: string | undefined): string {
     const pretty = prettifyBranch(branch);
     if (pretty) return pretty;
   }
+  // A session opened without picking a project sits in the HOME directory, and
+  // the leaf there is your Windows username — so the key read "swelsh", which
+  // names neither the work nor anywhere useful, and looked like a phantom.
+  // Only the home directory itself: a folder BELOW it still names itself
+  // usefully (…\Documents → "Documents").
+  if (samePath(cwd, homedir())) return "Home";
   return basename(cwd.replace(/[\\/]+$/, "")) || "session";
 }
 

@@ -127,7 +127,12 @@ conInject(pid, text) {
       NumPut("ushort", 1, buf, offset + 8)           ; wRepeatCount
       NumPut("ushort", 0, buf, offset + 10)          ; wVirtualKeyCode
       NumPut("ushort", 0, buf, offset + 12)          ; wVirtualScanCode
-      NumPut("ushort", code, buf, offset + 14)       ; UnicodeChar
+      ; Character on the key-DOWN record only. Carrying it on the key-up too
+      ; makes a reader that translates both records emit every byte twice — so
+      ; a single Down arrow ("\x1b[B") arrives as TWO complete escape sequences
+      ; and the cursor jumps two rows. Observed live: the deck sent
+      ; space/down/space to tick A and B, and A and C came back ticked.
+      NumPut("ushort", A_Index = 1 ? code : 0, buf, offset + 14)  ; UnicodeChar
       NumPut("uint", 0, buf, offset + 16)            ; dwControlKeyState
       offset += 20
     }
