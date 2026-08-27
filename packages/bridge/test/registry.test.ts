@@ -2,11 +2,46 @@ import { describe, expect, it, beforeAll, afterAll } from "vitest";
 import { mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir, homedir } from "node:os";
-import { SessionRegistry, deriveLabel, prettifyBranch, samePath, pathWithin } from "../src/registry.js";
+import { SessionRegistry, deriveLabel, prettifyBranch, samePath, pathWithin, sessionCovered } from "../src/registry.js";
 
 function start(registry: SessionRegistry, id: string, cwd = `C:\\dev\\${id}`) {
   return registry.ensure({ session_id: id, cwd, hook_event_name: "SessionStart" });
 }
+
+// One stuck launch used to deny a key to every other session in the repo:
+// deck worktrees live at <repo>/.claude/worktrees/<name>, so a bidirectional
+// path check made a pending launch "cover" anything running at the repo root.
+describe("sessionCovered (is this session already on the deck?)", () => {
+  // Forward slashes on purpose: pathWithin normalises separators, and this
+  // keeps the fixtures free of backslash-escaping traps.
+  const REPO = "C:/dev/revops-platform";
+  const WT = REPO + "/.claude/worktrees/amber-badger";
+
+  it("a pending launch does NOT cover a session running at the repo root", () => {
+    // The live failure: one console launched but not yet typed in denied a key
+    // to every other session in that repo, because deck worktrees sit UNDER
+    // the repo root and the path check ran both ways.
+    const entries = [{ sessionId: "launching:9", pid: 68468, cwd: WT }];
+    expect(sessionCovered(entries, { pid: 67124, cwd: REPO })).toBe(false);
+  });
+
+  it("a pending launch DOES cover the session that starts inside its tree", () => {
+    const entries = [{ sessionId: "launching:9", pid: 68468, cwd: WT }];
+    expect(sessionCovered(entries, { pid: 99, cwd: WT })).toBe(true);
+    expect(sessionCovered(entries, { pid: 99, cwd: WT + "/scratch" })).toBe(true);
+  });
+
+  it("the same PID is covered — one console is one process", () => {
+    const entries = [{ sessionId: "real", pid: 4242, cwd: REPO }];
+    expect(sessionCovered(entries, { pid: 4242, cwd: "C:/anywhere" })).toBe(true);
+  });
+
+  it("a REAL session never covers another just by sharing a directory", () => {
+    // Resume makes no worktree, so several live sessions share one cwd.
+    const entries = [{ sessionId: "real", pid: 1, cwd: REPO }];
+    expect(sessionCovered(entries, { pid: 2, cwd: REPO })).toBe(false);
+  });
+});
 
 describe("prettifyBranch (feature name)", () => {
   it("drops the namespace prefix, trailing hash, and date; hyphens→spaces", () => {
