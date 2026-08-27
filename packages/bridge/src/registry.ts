@@ -741,6 +741,34 @@ export class SessionRegistry extends EventEmitter {
   }
 }
 
+/**
+ * Is a Claude Code session ALREADY represented on the deck?
+ *
+ * Identity is the PID — one live console is one process. Directory is not
+ * identity: `Resume` makes no worktree, so several sessions legitimately share
+ * one cwd, and keying on the tree hid real consoles behind whichever was
+ * adopted first.
+ *
+ * The provisional clause is one-directional on purpose, matching
+ * reconcileProvisional: a session counts as covered only when its cwd is INSIDE
+ * a pending launch's tree, because that is the session that launch is waiting
+ * for. The reverse — "a provisional lives somewhere under this session's cwd" —
+ * is true for EVERY session at a repo root whenever any worktree launch is
+ * outstanding (deck worktrees live at <repo>/.claude/worktrees/<name>), so one
+ * console you had launched but not yet typed in silently denied a key to every
+ * other session in that repo.
+ */
+export function sessionCovered(
+  entries: ReadonlyArray<{ sessionId: string; pid?: number; cwd: string }>,
+  meta: { pid?: number; cwd?: string },
+): boolean {
+  return entries.some(
+    (s) =>
+      (meta.pid !== undefined && s.pid === meta.pid) ||
+      (s.sessionId.startsWith("launching:") && pathWithin(meta.cwd ?? "", s.cwd)),
+  );
+}
+
 /** Case/separator-insensitive Windows path equality. */
 export function samePath(a: string, b: string): boolean {
   const norm = (p: string) => p.replace(/[\\/]+/g, "\\").replace(/\\+$/, "").toLowerCase();

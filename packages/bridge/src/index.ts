@@ -4,7 +4,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { spawn, spawnSync } from "node:child_process";
 import { loadConfig } from "./config.js";
 import { createLogger } from "./log.js";
-import { SessionRegistry, pathWithin, type SessionEntry } from "./registry.js";
+import { SessionRegistry, pathWithin, sessionCovered, type SessionEntry } from "./registry.js";
 import type { SessionStatus } from "@conn/shared";
 import { BindingStore, restoreConsoleBindings } from "./bindings.js";
 import { DenyReasonFlow } from "./denyReason.js";
@@ -715,15 +715,14 @@ function adoptTerminals(only?: SessionEntry): void {
     // The provisional clause stays: a launch still in flight owns its tree, and
     // the session that eventually starts there belongs to that key (it
     // reconciles above), so it must not also get a second one here.
-    const covered = registry
-      .all()
-      .some(
-        (s) =>
-          (meta.pid !== undefined && s.pid === meta.pid) ||
-          (s.sessionId.startsWith("launching:") &&
-            (pathWithin(meta.cwd ?? "", s.cwd) || pathWithin(s.cwd, meta.cwd ?? ""))),
-      );
-    if (covered) continue;
+    // The provisional clause is ONE-DIRECTIONAL, matching reconcileProvisional:
+    // the arriving session's cwd must be INSIDE the pending launch's tree. The
+    // reverse ("the provisional lives somewhere under this session's cwd") is
+    // true for every session at a repo root whenever any worktree launch is
+    // outstanding — deck worktrees live at <repo>/.claude/worktrees/<name> — so
+    // a single console you had launched but not yet typed in silently denied a
+    // key to every other session in that repo.
+    if (sessionCovered(registry.all(), meta)) continue;
     const added = registry.addKnownTerminal({ ...meta, status: ccStatusToDeck(meta.status) });
     if (added) {
       log.info({ session: meta.sessionId, label: added.label, pid: meta.pid }, "surfaced terminal session from Claude Code metadata");
