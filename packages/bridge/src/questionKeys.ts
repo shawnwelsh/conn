@@ -69,10 +69,15 @@ export async function deliverQuestionAnswer(
 export async function focusDesktopConversation(
   delivery: DeliveryAdapter,
   session: SessionRef,
-  gapMs = 350,
-  settleMs = 1000,
+  gapMs = 250,
+  /** How long the search results get to settle before Enter. This is the one
+   * pause that must not be trimmed away: pressing Enter early takes whichever
+   * row happened to be there, which means answering the wrong conversation.
+   * The post-jump render wait is derived from it and is far less critical. */
+  settleMs = 850,
   trace?: string[],
 ): Promise<boolean> {
+  const renderMs = Math.round(settleMs * 0.45);
   const name = session.ccName;
   if (!name) return false; // never guess at a name the app does not use
   const pause = (ms = gapMs) => new Promise((r) => setTimeout(r, ms));
@@ -92,7 +97,7 @@ export async function focusDesktopConversation(
   trace?.push(`search:${name}`);
   await pause(settleMs); // results settle, or Enter picks the wrong conversation
   if (!(await send("enter"))) return false;
-  await pause(settleMs); // let the conversation render before we answer into it
+  await pause(renderMs); // let the conversation render before we act on it
   return true;
 }
 

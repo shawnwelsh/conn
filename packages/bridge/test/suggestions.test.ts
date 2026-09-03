@@ -64,7 +64,7 @@ describe("needsSpokenAnswer (can a canned 'yes' answer this?)", () => {
 
 describe("suggestion layer gating + accept", () => {
   const cfg = {
-    slots: 5, doubleTapMs: 300, longPressMs: 500, moveCancelSeconds: 5,
+    slots: 5, desktopJumpSettleMs: 0, doubleTapMs: 300, longPressMs: 500, moveCancelSeconds: 5,
     cannedCommands: {}, suggestionAcceptText: "yes",
     ptt: { enabled: true, python: "python", model: "m", language: "en", maxSeconds: 60, reasonMaxSeconds: 10, renameMaxSeconds: 10 },
   } as unknown as DeckConfig;

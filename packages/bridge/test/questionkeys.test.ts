@@ -7,7 +7,7 @@ const session: SessionRef = { sessionId: "s", cwd: "C:\\dev\\s", label: "s", pid
 class Rec implements DeliveryAdapter {
   calls: string[] = [];
   async focus(): Promise<boolean> { this.calls.push("focus"); return true; }
-  async sendText(): Promise<boolean> { return true; }
+  async sendText(_s: SessionRef, _t: string): Promise<boolean> { return true; }
   async sendKey(_s: SessionRef, c: string): Promise<boolean> { this.calls.push(`key:${c}`); return true; }
   async sendSequence(): Promise<boolean> { return true; }
   async findWindowByPid(): Promise<number | null> { return null; }
