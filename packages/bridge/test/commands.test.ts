@@ -73,7 +73,7 @@ describe("CommandStore", () => {
 });
 
 describe("row-2 command pager + move", () => {
-  const cfg = { slots: 5, doubleTapMs: 300, longPressMs: 500, moveCancelSeconds: 5, cmdPagerRevertSeconds: 6 } as unknown as DeckConfig;
+  const cfg = { slots: 5, desktopJumpSettleMs: 0, doubleTapMs: 300, longPressMs: 500, moveCancelSeconds: 5, cmdPagerRevertSeconds: 6 } as unknown as DeckConfig;
 
   function setup(entryNames: string[]) {
     writeFileSync(file, JSON.stringify(entryNames));

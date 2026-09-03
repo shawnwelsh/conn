@@ -34,7 +34,7 @@ import { registerApiRoutes } from "./http/api.js";
 import { livenessSweep } from "./liveness.js";
 import { endsPendingQuestion } from "./status.js";
 import { ensureSidecarDir, looksEnumerated, readOptions } from "./optionReader.js";
-import { deliverQuestionAnswer, deliverMultiSelectAnswer } from "./questionKeys.js";
+import { deliverQuestionAnswer, deliverMultiSelectAnswer, focusDesktopConversation } from "./questionKeys.js";
 import { QUESTION_OPTIONS_PER_PAGE } from "./layers.js";
 import { awaitingSpokenAnswer } from "./suggestions.js";
 import type { AskUserQuestionInput } from "./hookTypes.js";
@@ -164,7 +164,10 @@ function flashNeeded(): boolean {
  * a session is actually waiting, so an idle deck does no work.
  */
 function syncSlowPulse(): void {
-  const active = registry.all().some((s) => s.status === "waiting");
+  // VISIBLE sessions only. all() includes ones Tidy has swept away, and a
+  // hidden session going "waiting" would start this 1Hz clock re-rendering the
+  // deck once a second for a key that is not on it — work nobody can see.
+  const active = registry.orderedEntries().some((s) => s.status === "waiting");
   if (active && !slowTimer) {
     slowTimer = setInterval(() => {
       slowPhase = !slowPhase;
@@ -518,6 +521,38 @@ function rebootBridge(): void {
   setTimeout(() => process.exit(0), 600);
 }
 
+/**
+ * Put a desktop session's conversation on screen before we answer into it.
+ *
+ * Returns false when the deck must NOT send keys. The Claude app is one window
+ * holding every conversation as a tab, so an unfocused answer lands in whatever
+ * chat was last visible — and an Enter there can submit a stray message into
+ * someone else's thread. Refusing is the safe outcome; the human still has the
+ * question on screen.
+ */
+async function readyDesktopTarget(session: SessionEntry, trace?: string[]): Promise<boolean> {
+  if (session.windowKind !== "desktop") return true; // consoles target exactly
+  if (!session.ccName) {
+    // The deck's label is cwd-derived ("Home", a branch name) and the app has
+    // never heard of it, so its search cannot find this conversation. Surface
+    // the app and let the human answer rather than guessing at a target.
+    void delivery.focus(session);
+    log.warn(
+      { session: session.sessionId, label: session.label },
+      "desktop answer refused: no Claude Code name to search for — app focused, answer on screen",
+    );
+    return false;
+  }
+  const jumped = await focusDesktopConversation(delivery, session, undefined, undefined, trace);
+  if (!jumped) {
+    log.warn(
+      { session: session.sessionId, name: session.ccName },
+      "desktop answer refused: could not jump to the conversation",
+    );
+  }
+  return jumped;
+}
+
 controller.setHooks({
   onReboot: rebootBridge,
   onPermissionKey: (index) => {
@@ -576,9 +611,11 @@ controller.setHooks({
       revertQuestion();
     }
     void (async () => {
+      const trace: string[] = [];
+      if (!(await readyDesktopTarget(session, trace))) return;
       const ok = await deliverQuestionAnswer(delivery, session, absolute + 1, isLast, multi);
       log.info(
-        { session: q.sessionId, option: options[absolute], isLast, multi, ok },
+        { session: q.sessionId, option: options[absolute], isLast, multi, ok, jump: trace.join(" ") || undefined },
         "question answered from deck",
       );
     })();
@@ -605,6 +642,7 @@ controller.setHooks({
       void (async () => {
         const trace: string[] = [];
         const startedAt = Date.now();
+        if (!(await readyDesktopTarget(session, trace))) return;
         const ok = await deliverMultiSelectAnswer(delivery, session, checked, isLast, multi, undefined, trace);
         // The exact keys, in order, with the picks they were meant to produce.
         // A summary ("picked: 4, ok: true") looks perfect even when the console

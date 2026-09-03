@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { deliverQuestionAnswer, deliverMultiSelectAnswer } from "../src/questionKeys.js";
+import { deliverQuestionAnswer, deliverMultiSelectAnswer, focusDesktopConversation } from "../src/questionKeys.js";
 import type { DeliveryAdapter, SessionRef } from "../src/delivery/adapter.js";
 
 const session: SessionRef = { sessionId: "s", cwd: "C:\\dev\\s", label: "s", pid: 1 };
@@ -7,7 +7,7 @@ const session: SessionRef = { sessionId: "s", cwd: "C:\\dev\\s", label: "s", pid
 class Rec implements DeliveryAdapter {
   calls: string[] = [];
   async focus(): Promise<boolean> { this.calls.push("focus"); return true; }
-  async sendText(): Promise<boolean> { return true; }
+  async sendText(_s: SessionRef, _t: string): Promise<boolean> { return true; }
   async sendKey(_s: SessionRef, c: string): Promise<boolean> { this.calls.push(`key:${c}`); return true; }
   async sendSequence(): Promise<boolean> { return true; }
   async findWindowByPid(): Promise<number | null> { return null; }
@@ -56,6 +56,47 @@ describe("deliverQuestionAnswer (arrow-navigated menu)", () => {
     const ok = await deliverQuestionAnswer(d, session, 3, true, true, 0);
     expect(ok).toBe(false);
     expect(d.calls).toEqual(["key:down", "key:down", "key:enter"]);
+  });
+});
+
+// The Claude app is ONE window holding every conversation as a tab, so an
+// unfocused answer lands in whatever chat was last on screen — reporting ok the
+// whole way. Its search is the only handle we have.
+describe("focusDesktopConversation", () => {
+  class RecText extends Rec {
+    async sendText(_s: SessionRef, t: string): Promise<boolean> { this.calls.push(`text:${t}`); return true; }
+  }
+
+  it("Ctrl+1 first, then search, type the name, and Enter", async () => {
+    // Ctrl+1 is load-bearing: the app's search omits the conversation you are
+    // ALREADY in, so without it the target may never be listed.
+    const d = new RecText();
+    const ok = await focusDesktopConversation(
+      d, { sessionId: "s", cwd: "C:/x", label: "finance report", ccName: "finance report", windowKind: "desktop" }, 0, 0,
+    );
+    expect(ok).toBe(true);
+    expect(d.calls).toEqual(["key:ctrl+1", "key:ctrl+shift+k", "text:finance report", "key:enter"]);
+  });
+
+  it("REFUSES when Claude Code has no name for the conversation", async () => {
+    // A cwd-derived label ("Home", a branch name) is a string the app has never
+    // heard of. Searching it would land on an arbitrary chat and answer THAT.
+    const d = new RecText();
+    const ok = await focusDesktopConversation(
+      d, { sessionId: "s", cwd: "C:/x", label: "Home", windowKind: "desktop" }, 0, 0,
+    );
+    expect(ok).toBe(false);
+    expect(d.calls).toEqual([]); // not a single key sent
+  });
+
+  it("stops as soon as a keystroke is refused", async () => {
+    const d = new RecText();
+    d.sendKey = async (_s, c) => { d.calls.push(`key:${c}`); return c !== "ctrl+shift+k"; };
+    const ok = await focusDesktopConversation(
+      d, { sessionId: "s", cwd: "C:/x", label: "x", ccName: "x", windowKind: "desktop" }, 0, 0,
+    );
+    expect(ok).toBe(false);
+    expect(d.calls).toEqual(["key:ctrl+1", "key:ctrl+shift+k"]);
   });
 });
 

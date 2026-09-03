@@ -38,7 +38,7 @@ describe("pending-launch binding (windowKind)", () => {
 });
 
 describe("per-kind command dialects", () => {
-  const cfg = { slots: 5, doubleTapMs: 300, longPressMs: 500, moveCancelSeconds: 5, cannedCommands: {} } as unknown as DeckConfig;
+  const cfg = { slots: 5, desktopJumpSettleMs: 0, doubleTapMs: 300, longPressMs: 500, moveCancelSeconds: 5, cannedCommands: {} } as unknown as DeckConfig;
 
   class RecordingAdapter implements DeliveryAdapter {
     calls: string[] = [];

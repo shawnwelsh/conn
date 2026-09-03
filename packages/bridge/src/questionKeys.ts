@@ -44,6 +44,64 @@ export async function deliverQuestionAnswer(
 }
 
 /**
+ * Bring a DESKTOP session's conversation to the front before answering it.
+ *
+ * The Claude app is ONE window (title just "Claude") with every conversation as
+ * a tab, so there is no per-session hwnd to target and no title to match. Keys
+ * sent to it land in whichever conversation was last on screen — which is how a
+ * question displayed correctly on the deck could be answered into a different
+ * chat entirely, reporting ok the whole way.
+ *
+ * The app's own search is the only handle we have:
+ *   Ctrl+1        jump to the pinned first chat. REQUIRED: the search omits the
+ *                 conversation you are already in, so without this the target
+ *                 may not be listed at all.
+ *   Ctrl+Shift+K  open search
+ *   <name>        type it, then WAIT — the results need a beat to settle, and
+ *                 an early Enter takes whatever row was there first
+ *   Enter         jump
+ *
+ * Only ever called with `ccName` — Claude Code's own name for the conversation,
+ * which is what the app calls it too. A cwd-derived deck label ("Home", a branch
+ * name) is a string the app has never heard of, and searching it would land on
+ * an arbitrary chat and answer THAT. Callers must refuse instead.
+ */
+export async function focusDesktopConversation(
+  delivery: DeliveryAdapter,
+  session: SessionRef,
+  gapMs = 250,
+  /** How long the search results get to settle before Enter. This is the one
+   * pause that must not be trimmed away: pressing Enter early takes whichever
+   * row happened to be there, which means answering the wrong conversation.
+   * The post-jump render wait is derived from it and is far less critical. */
+  settleMs = 850,
+  trace?: string[],
+): Promise<boolean> {
+  const renderMs = Math.round(settleMs * 0.45);
+  const name = session.ccName;
+  if (!name) return false; // never guess at a name the app does not use
+  const pause = (ms = gapMs) => new Promise((r) => setTimeout(r, ms));
+  const send = async (chord: string): Promise<boolean> => {
+    const ok = await delivery.sendKey(session, chord);
+    trace?.push(ok ? chord : `${chord}:FAILED`);
+    return ok;
+  };
+  if (!(await send("ctrl+1"))) return false;
+  await pause();
+  if (!(await send("ctrl+shift+k"))) return false;
+  await pause();
+  if (!(await delivery.sendText(session, name))) {
+    trace?.push("search:FAILED");
+    return false;
+  }
+  trace?.push(`search:${name}`);
+  await pause(settleMs); // results settle, or Enter picks the wrong conversation
+  if (!(await send("enter"))) return false;
+  await pause(renderMs); // let the conversation render before we act on it
+  return true;
+}
+
+/**
  * Deliver a MULTI-SELECT question answer to a console.
  *
  * The form's own footer states its key model, and it is NOT the single-select

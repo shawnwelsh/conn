@@ -7,7 +7,7 @@ import type { DeliveryAdapter, SessionRef } from "../src/delivery/adapter.js";
 import type { SttEngine, SttStatus } from "../src/stt/sidecar.js";
 
 const cfg = {
-  slots: 5,
+  slots: 5, desktopJumpSettleMs: 0,
   doubleTapMs: 300,
   longPressMs: 500,
   moveCancelSeconds: 5,
