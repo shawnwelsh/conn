@@ -164,7 +164,10 @@ function flashNeeded(): boolean {
  * a session is actually waiting, so an idle deck does no work.
  */
 function syncSlowPulse(): void {
-  const active = registry.all().some((s) => s.status === "waiting");
+  // VISIBLE sessions only. all() includes ones Tidy has swept away, and a
+  // hidden session going "waiting" would start this 1Hz clock re-rendering the
+  // deck once a second for a key that is not on it — work nobody can see.
+  const active = registry.orderedEntries().some((s) => s.status === "waiting");
   if (active && !slowTimer) {
     slowTimer = setInterval(() => {
       slowPhase = !slowPhase;
