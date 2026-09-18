@@ -8,7 +8,8 @@ import type { Logger } from "../log.js";
 
 /**
  * Hook ingress. Claude Code `http` hooks POST their JSON input here.
- * Everything is logged verbatim; /hooks/event and /hooks/question always
+ * Every event is logged with its unbounded fields capped (see forLog);
+ * /hooks/event and /hooks/question always
  * answer 200 {} immediately — only /hooks/permission-request may hold its
  * response (Phase 2, via the decisions store).
  */
@@ -28,6 +29,32 @@ export interface HookHandlers {
   onTurnEnded?: (sessionId: string, lastMessage: string) => void;
 }
 
+/**
+ * Hook payloads carry whole tool bodies — one WebFetch result in this log ran
+ * to 236 KB — and every session fires PostToolUse constantly. Logged verbatim
+ * they grew bridge.log to 251 MB in twelve days, and appending to a file that
+ * size stalled the event loop enough that /api/state took 7 SECONDS and the
+ * deck was visibly laggy. Keep every field that identifies WHAT happened; cap
+ * only the three that carry unbounded content.
+ */
+const MAX_FIELD_CHARS = 500;
+
+function capped(value: unknown): unknown {
+  if (value === undefined || value === null) return value;
+  const text = typeof value === "string" ? value : JSON.stringify(value);
+  if (text === undefined || text.length <= MAX_FIELD_CHARS) return value;
+  return `${text.slice(0, MAX_FIELD_CHARS)}… [${text.length} chars elided]`;
+}
+
+/** The event as it should be LOGGED: same shape, bounded size. */
+export function forLog(event: AnyHookEvent): unknown {
+  const rest = { ...(event as Record<string, unknown>) };
+  for (const field of ["tool_input", "tool_response", "last_assistant_message"]) {
+    if (field in rest) rest[field] = capped(rest[field]);
+  }
+  return rest;
+}
+
 export function registerHookRoutes(
   app: FastifyInstance,
   registry: SessionRegistry,
@@ -36,7 +63,7 @@ export function registerHookRoutes(
 ): void {
   app.post("/hooks/event", async (req) => {
     const event = req.body as AnyHookEvent;
-    log.info({ hook: event.hook_event_name, session: event.session_id, payload: event }, "hook");
+    log.info({ hook: event.hook_event_name, session: event.session_id, payload: forLog(event) }, "hook");
     if (isSidecarEvent(event.cwd)) return {}; // our own classifier talking
     applyEvent(registry, event);
     if (event.hook_event_name === "SessionEnd") handlers.onSessionEnd?.(event.session_id);
@@ -50,7 +77,7 @@ export function registerHookRoutes(
 
   app.post("/hooks/question", async (req) => {
     const event = req.body as AnyHookEvent;
-    log.info({ hook: "question", session: event.session_id, payload: event }, "hook");
+    log.info({ hook: "question", session: event.session_id, payload: forLog(event) }, "hook");
     // Never block: record activity, hand off to the morph handler, return.
     applyEvent(registry, event);
     handlers.onQuestion?.(event);
@@ -59,7 +86,7 @@ export function registerHookRoutes(
 
   app.post("/hooks/permission-request", async (req) => {
     const event = req.body as AnyHookEvent;
-    log.info({ hook: "PermissionRequest", session: event.session_id, payload: event }, "hook");
+    log.info({ hook: "PermissionRequest", session: event.session_id, payload: forLog(event) }, "hook");
     applyEvent(registry, event);
     // NEVER hold the sidecar's own request: it would wait on a deck press for
     // a decision nobody can see, while the bridge waits on the sidecar. Tools
