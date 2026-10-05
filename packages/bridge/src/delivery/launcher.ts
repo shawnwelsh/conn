@@ -344,15 +344,17 @@ export class ConsoleLauncher {
    * than dumping a session somewhere useless. No fallback → cwd stands.
    */
   resolveLaunchDir(cwd: string, fallbackDir?: string): string {
-    if (
-      fallbackDir &&
-      fallbackDir !== cwd &&
-      existsSync(fallbackDir) &&
-      !findRepoRoot(cwd) &&
-      findRepoRoot(fallbackDir)
-    ) {
-      return fallbackDir;
-    }
+    if (!fallbackDir || fallbackDir === cwd) return cwd;
+    if (!existsSync(fallbackDir) || !findRepoRoot(fallbackDir)) return cwd;
+    // GONE is its own case, and the repo test cannot stand in for it: a
+    // DELETED WORKTREE still resolves to a repo, because findRepoRoot walks up
+    // past the missing folder and finds the parent's .git. So New, pointed at a
+    // session whose worktree had been cleaned up, passed the repo check, failed
+    // the existence check below, and refused — the key flashed and nothing
+    // happened, three presses running.
+    if (!existsSync(cwd)) return fallbackDir;
+    // Not a repo at all (the desktop app's home dir): nothing to branch from.
+    if (!findRepoRoot(cwd)) return fallbackDir;
     return cwd;
   }
 
