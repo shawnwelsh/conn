@@ -1,12 +1,34 @@
 import pino from "pino";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, statSync, renameSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import type { DeckConfig } from "./config.js";
 
 export type Logger = pino.Logger;
 
+/** Roll bridge.log over past this size, keeping one previous generation. */
+const MAX_LOG_BYTES = 64 * 1024 * 1024;
+
+/**
+ * Bound the log at startup. Capping the payloads slows the growth but does not
+ * stop it: this bridge runs for weeks at a time, and an append-only file that
+ * nothing ever truncates eventually blocks the event loop on every write —
+ * which is exactly how a 251 MB bridge.log made the deck laggy. One previous
+ * generation is kept, so recent history survives a roll.
+ */
+function rollIfHuge(file: string): void {
+  try {
+    if (statSync(file).size < MAX_LOG_BYTES) return;
+    const previous = `${file}.1`;
+    try { rmSync(previous); } catch { /* no previous generation yet */ }
+    renameSync(file, previous);
+  } catch {
+    // No log yet, or it is locked — never let logging setup stop the bridge.
+  }
+}
+
 export function createLogger(cfg: DeckConfig): Logger {
   mkdirSync(cfg.log.dir, { recursive: true });
+  rollIfHuge(join(cfg.log.dir, "bridge.log"));
   const destination = pino.destination({
     dest: join(cfg.log.dir, "bridge.log"),
     mkdir: true,

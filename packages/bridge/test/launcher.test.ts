@@ -123,6 +123,19 @@ describe("pre-warmed spare worktree (real git)", () => {
     expect(launcher.resolveLaunchDir(repo, repo)).toBe(repo);
   });
 
+  it("redirects a DELETED WORKTREE — the case the repo check cannot catch", () => {
+    // The live failure: New was pointed at a session whose worktree had been
+    // cleaned up. A deleted worktree still resolves to its PARENT repo, because
+    // findRepoRoot walks up past the missing folder and finds mainrepo/.git —
+    // so the "is it a repo?" test passed, the fallback never fired, and launch
+    // refused on the existence check. The key flashed and nothing happened.
+    const launcher = makeLauncher();
+    const deleted = join(repo, ".claude", "worktrees", "determined-meitner-98842e");
+    expect(existsSync(deleted)).toBe(false);
+    expect(findRepoRoot(deleted)).toBe(repo); // still "inside" the repo — the trap
+    expect(launcher.resolveLaunchDir(deleted, repo)).toBe(repo);
+  });
+
   it("claiming with no spare banked returns null so the caller builds one", async () => {
     const launcher = makeLauncher();
     const dir = join(repo, ".claude", "worktrees", "keen-vole");

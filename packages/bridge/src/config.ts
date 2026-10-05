@@ -67,6 +67,19 @@ export interface DeckConfig {
    * brings us back — and nothing has to survive our death. Derived from the
    * environment, never read from config.json. */
   supervised?: boolean;
+  /**
+   * How long the Claude app's conversation SEARCH gets to settle before the
+   * deck presses Enter on it (ms).
+   *
+   * The app is one window with every conversation as a tab, so the deck reaches
+   * a specific one via Ctrl+1 -> Ctrl+Shift+K -> type the name -> Enter. This
+   * is the pause that must not be too short: Enter arriving early takes
+   * whichever row was on screen, which means acting on the WRONG conversation.
+   * Exposed because the right value depends on the machine, and finding it
+   * should not require a code change. The post-jump render wait derives from
+   * it, so one number tunes the whole sequence.
+   */
+  desktopJumpSettleMs: number;
   /** Milliseconds between typed text and the submitting Enter on DESKTOP
    * sessions — the Electron app renders its input/slash-popup async and an
    * instant Enter is swallowed. Consoles never delay. */
@@ -174,6 +187,7 @@ export function loadConfig(): DeckConfig {
   // this process was started, and a config file could easily claim otherwise.
   cfg.supervised = process.env.CONN_SUPERVISED === "1";
   cfg.desktopSubmitDelayMs ??= 250;
+  cfg.desktopJumpSettleMs ??= 2000;
   cfg.ptt ??= {} as DeckConfig["ptt"];
   cfg.ptt.enabled ??= true;
   cfg.ptt.python ??= "python";

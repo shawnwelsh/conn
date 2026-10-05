@@ -6,7 +6,7 @@ import type { DeckConfig } from "../src/config.js";
 import type { DeliveryAdapter, SessionRef } from "../src/delivery/adapter.js";
 import type { CommandEntry, CommandSource } from "../src/commands.js";
 
-const cfg = { slots: 5, doubleTapMs: 300, longPressMs: 500, moveCancelSeconds: 5 } as unknown as DeckConfig;
+const cfg = { slots: 5, desktopJumpSettleMs: 0, doubleTapMs: 300, longPressMs: 500, moveCancelSeconds: 5 } as unknown as DeckConfig;
 const noopLog = { info: () => {}, warn: () => {}, debug: () => {} } as never;
 const flush = () => new Promise((r) => setTimeout(r, 300)); // past the console submit gap
 

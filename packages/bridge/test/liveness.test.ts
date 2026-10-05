@@ -1,6 +1,9 @@
-import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
+import { describe, expect, it, vi, beforeEach, afterEach, beforeAll, afterAll } from "vitest";
+import { mkdirSync, rmSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { SessionRegistry } from "../src/registry.js";
-import { livenessSweep } from "../src/liveness.js";
+import { livenessSweep, cwdVanished } from "../src/liveness.js";
 import { NoopAdapter, type DeliveryAdapter } from "../src/delivery/adapter.js";
 
 const noopLog = { info: () => {}, warn: () => {}, debug: () => {} } as never;
@@ -74,5 +77,65 @@ describe("dead-window lifecycle", () => {
     vi.setSystemTime(new Date("2026-07-17T15:01:00Z")); // past 3h — gone
     await livenessSweep(r, adapterWhere({}), 3 * 3_600_000, noopLog);
     expect(r.get("a")).toBeUndefined();
+  });
+});
+
+// Desktop sessions carry neither pid nor hwnd, so nothing in this sweep ever
+// examined them: a key whose worktree had been cleaned up sat looking live
+// indefinitely. A vanished working directory is that missing signal — and it
+// is deliberately the weakest one.
+describe("vanished working directory", () => {
+  const fixture = join(tmpdir(), `conn-liveness-cwd-${process.pid}`);
+  const repo = join(fixture, "repo");
+  const gone = join(repo, ".claude", "worktrees", "deleted-one");
+
+  beforeAll(() => mkdirSync(join(repo, ".git"), { recursive: true }));
+  afterAll(() => rmSync(fixture, { recursive: true, force: true }));
+
+  const desktop = (r: SessionRegistry, id: string, cwd: string) =>
+    r.ensure({ session_id: id, cwd, hook_event_name: "SessionStart" });
+
+  it("recognises a deleted worktree, but not an unreachable volume", () => {
+    expect(cwdVanished(gone)).toBe(true); // repo still there, this tree is not
+    expect(cwdVanished(repo)).toBe(false); // exists
+    expect(cwdVanished(undefined)).toBe(false);
+    // Whole tree unreachable (unmounted drive / OneDrive blip): refuse to judge.
+    expect(cwdVanished(join(fixture, "nope", "deeper", "still"))).toBe(false);
+  });
+
+  it("skulls a desktop session whose worktree was deleted", async () => {
+    const r = new SessionRegistry(5);
+    const s = desktop(r, "stale", gone);
+    await livenessSweep(r, new NoopAdapter(() => {}) as DeliveryAdapter, 3_600_000, noopLog);
+    expect(s.windowDead).toBe(true);
+  });
+
+  it("NEVER skulls one Claude Code still has a process for", async () => {
+    // The directory is gone, but the conversation is open — the key is real.
+    const r = new SessionRegistry(5);
+    const s = desktop(r, "stale", gone);
+    await livenessSweep(r, new NoopAdapter(() => {}) as DeliveryAdapter, 3_600_000, noopLog, new Set(["stale"]));
+    expect(s.windowDead).toBeFalsy();
+  });
+
+  it("NEVER skulls a BOUND console over a missing directory", async () => {
+    // A console survives its directory being removed — you can still type in
+    // it — and an unknown liveness answer must not combine with a missing
+    // folder to kill it either. Bound sessions are judged by their process.
+    for (const liveness of [true, null] as const) {
+      const r = new SessionRegistry(5);
+      r.registerPendingLaunch({ cwd: gone, pid: 4242, hwnd: 0, at: Date.now() });
+      const s = r.ensure({ session_id: "live", cwd: gone, hook_event_name: "SessionStart" });
+      expect(s.pid).toBe(4242);
+      await livenessSweep(r, adapterWhere({ 4242: liveness }), 3_600_000, noopLog);
+      expect(s.windowDead).toBeFalsy();
+    }
+  });
+
+  it("leaves a session whose directory is perfectly fine alone", async () => {
+    const r = new SessionRegistry(5);
+    const s = desktop(r, "ok", repo);
+    await livenessSweep(r, new NoopAdapter(() => {}) as DeliveryAdapter, 3_600_000, noopLog);
+    expect(s.windowDead).toBeFalsy();
   });
 });

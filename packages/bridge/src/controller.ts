@@ -9,6 +9,7 @@ import type { Logger } from "./log.js";
 import { GestureRecognizer, type Gesture } from "./gestures.js";
 import type { ConsoleLauncher } from "./delivery/launcher.js";
 import { activeSuggestion, needsSpokenAnswer } from "./suggestions.js";
+import { focusDesktopConversation } from "./questionKeys.js";
 import { isAwaitingInput, CC_SESSIONS_DIR } from "./sessionMeta.js";
 import type { CommandSource, CommandEntry } from "./commands.js";
 import type { SttEngine } from "./stt/sidecar.js";
@@ -222,7 +223,7 @@ export class DeckController {
   private async row1FocusMaximize(session: SessionEntry | undefined): Promise<void> {
     if (!session) return;
     this.registry.target(session.sessionId);
-    await this.delivery.focus(session);
+    await this.surface(session);
     const goFull = !this.maximized.has(session.sessionId);
     const ok = (await this.delivery.setWindowState?.(session, goFull ? "maximize" : "restore")) ?? false;
     if (ok) {
@@ -250,7 +251,7 @@ export class DeckController {
     const id = this.morphSessionId();
     const session = id ? this.registry.get(id) : undefined;
     if (!session) return;
-    const ok = await this.delivery.focus(session);
+    const ok = await this.surface(session);
     this.log.info({ session: session.sessionId, ok }, "banner tap → focus asking session");
   }
 
@@ -282,6 +283,28 @@ export class DeckController {
     this.hooks.onPermissionDefer?.();
   }
 
+  /**
+   * Bring a session to the front — properly.
+   *
+   * For a console this is an ordinary window activation. For a DESKTOP session
+   * it is not: the Claude app is one window holding every conversation as a
+   * tab, so activating it merely raises whichever chat was last on screen.
+   * Anything sent afterwards — a command, a dictated sentence, an answer —
+   * lands THERE, in someone else's thread, while every call reports success.
+   * focusDesktopConversation drives the app's own search to reach the right
+   * one; it needs Claude Code's name for the conversation, so a session the
+   * deck only knows by its directory falls back to raising the app.
+   */
+  private async surface(session: SessionEntry): Promise<boolean> {
+    if (session.windowKind === "desktop" && session.ccName) {
+      if (await focusDesktopConversation(this.delivery, session, undefined, this.cfg.desktopJumpSettleMs)) {
+        return true;
+      }
+      this.log.warn({ session: session.label }, "desktop jump failed — falling back to raising the app");
+    }
+    return this.delivery.focus(session);
+  }
+
   /** Tap = target, and NOTHING moves. The session stays on the key you pressed
    * so the next press lands where your hand already is. */
   private row1Tap(session: SessionEntry | undefined): void {
@@ -293,7 +316,7 @@ export class DeckController {
   private async row1DoubleTap(session: SessionEntry | undefined): Promise<void> {
     if (!session) return;
     this.registry.target(session.sessionId);
-    const ok = await this.delivery.focus(session);
+    const ok = await this.surface(session);
     this.log.info({ session: session.sessionId, ok }, "focus");
   }
 
@@ -602,6 +625,14 @@ export class DeckController {
    * the box. Consoles are a raw byte stream and need no delay.
    */
   private async typeSubmit(target: SessionEntry, text: string): Promise<boolean> {
+    // A desktop session must be SELECTED first, not merely activated: the app
+    // types into whatever conversation is showing, so without this a command or
+    // a dictated sentence lands in an unrelated thread.
+    //
+    // Only when there is something to select. Without a Claude Code name we
+    // cannot drive the app's search, and raising the app is what sendText
+    // already does — so intervening there would add a step and change nothing.
+    if (target.windowKind === "desktop" && target.ccName && !(await this.surface(target))) return false;
     if (!(await this.delivery.sendText(target, text))) return false;
     // Let the input settle before the Enter. Desktop needs the most (its
     // slash popup renders async). Consoles need a beat too once the text is
@@ -641,6 +672,7 @@ export class DeckController {
   }
 
   private async sendChordsSpaced(target: SessionEntry, chords: string[]): Promise<boolean> {
+    if (target.windowKind === "desktop" && target.ccName && !(await this.surface(target))) return false;
     const gap =
       target.windowKind === "desktop" ? (this.cfg.desktopSubmitDelayMs ?? 250) : CONSOLE_SUBMIT_GAP_MS;
     for (const [i, chord] of chords.entries()) {

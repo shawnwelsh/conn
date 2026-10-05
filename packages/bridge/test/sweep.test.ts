@@ -7,7 +7,7 @@ import { NoopAdapter } from "../src/delivery/adapter.js";
 
 const noopLog = { info: () => {}, warn: () => {}, debug: () => {} } as never;
 const cfg = {
-  slots: 5,
+  slots: 5, desktopJumpSettleMs: 0,
   doubleTapMs: 300,
   longPressMs: 500,
   moveCancelSeconds: 5,

@@ -8,6 +8,7 @@
   "moveCancelSeconds": 5,
   "cmdPagerRevertSeconds": 6,
   "desktopSubmitDelayMs": 250,
+  "desktopJumpSettleMs": 2000,
   "staleSessionMinutes": 60,
   "deadSessionSweepHours": 3,
   "alwaysAllowDestination": "session",
