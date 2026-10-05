@@ -8,7 +8,7 @@ import { SessionRegistry, pathWithin, sessionCovered, type SessionEntry } from "
 import type { SessionStatus } from "@conn/shared";
 import { BindingStore, restoreConsoleBindings } from "./bindings.js";
 import { DenyReasonFlow } from "./denyReason.js";
-import { readCcSessionNames, readCliSessions, readPromptStatuses, CC_SESSIONS_DIR } from "./sessionMeta.js";
+import { readCcSessionNames, readCliSessions, readPromptStatuses, readLiveSessionIds, CC_SESSIONS_DIR } from "./sessionMeta.js";
 import { DecisionStore } from "./decisions.js";
 import {
   advanceQuestion,
@@ -876,7 +876,13 @@ setInterval(() => {
   // metadata is the only place that name is published).
   registry.refreshLabels(readCcSessionNames(CC_SESSIONS_DIR, log));
   adoptTerminals();
-  void livenessSweep(registry, delivery, cfg.deadSessionSweepHours * 3_600_000, log).finally(() =>
+  void livenessSweep(
+    registry,
+    delivery,
+    cfg.deadSessionSweepHours * 3_600_000,
+    log,
+    readLiveSessionIds(CC_SESSIONS_DIR, log),
+  ).finally(() =>
     pushRender(),
   );
 }, 30_000).unref();

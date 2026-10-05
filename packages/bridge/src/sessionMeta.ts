@@ -159,6 +159,24 @@ export function readPromptStatuses(dir: string = CC_SESSIONS_DIR, log?: Logger):
   return out;
 }
 
+/**
+ * Session ids Claude Code still has a LIVE process for — any entrypoint, with
+ * or without a status.
+ *
+ * readPromptStatuses cannot stand in for this: it requires a `status` field,
+ * and desktop-app records routinely carry none. Used to protect a running
+ * session from being skulled because its working directory vanished.
+ */
+export function readLiveSessionIds(dir: string = CC_SESSIONS_DIR, log?: Logger): Set<string> {
+  const live = new Set<string>();
+  for (const meta of readRecords(dir, log)) {
+    if (typeof meta.sessionId !== "string") continue;
+    if (typeof meta.pid !== "number" || !isRunning(meta.pid)) continue;
+    live.add(meta.sessionId);
+  }
+  return live;
+}
+
 /** Cheap liveness check — signal 0 tests existence without touching the
  * process. EPERM means it exists but belongs to someone else. */
 function isRunning(pid: number): boolean {
